@@ -1916,13 +1916,14 @@ function getCasesByStatus(options) {
     }
 
     if (searchTerm) {
-      const lowerCaseSearchTerm = searchTerm.toLowerCase();
-      const searchableHeaders = ['Main Task ID', 'Case Title', 'Category', 'Account Name', 'Useremail'];
-      filteredRecords = filteredRecords.filter(record => {
-        return searchableHeaders.some(header =>
-          record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
-        );
-      });
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        // EXPANDED SEARCH: Added more relevant fields for a comprehensive search.
+        const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
+        filteredRecords = filteredRecords.filter(record => {
+            return searchableHeaders.some(header =>
+                record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
+            );
+        });
     }
 
     filteredRecords.sort((a, b) => {
@@ -2037,36 +2038,42 @@ function getLogsForCase(caseId) {
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
 
     // Helper function to reduce redundant code
-    const fetchLogData = (sheetName, relatedIdColumnName) => {
-      const sheet = ss.getSheetByName(sheetName);
-      if (!sheet || sheet.getLastRow() < 2) return [];
+    const fetchLogData = (sheetName, ...relatedIdColumnNames) => {
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet || sheet.getLastRow() < 2) return [];
 
-      const data = sheet.getDataRange().getValues();
-      const headers = data.shift();
-      const relatedIdIndex = headers.indexOf(relatedIdColumnName);
+        const data = sheet.getDataRange().getValues();
+        const headers = data.shift();
+        let relatedIdIndex = -1;
 
-      if (relatedIdIndex === -1) {
-        Logger.log(`Warning: Column "${relatedIdColumnName}" not found in sheet "${sheetName}".`);
-        return [];
-      }
-
-      const logs = [];
-      data.forEach(row => {
-        if (String(row[relatedIdIndex]).trim() === String(caseId).trim()) {
-          let record = {};
-          headers.forEach((header, i) => {
-            // Convert any date objects to ISO strings for reliable transfer
-            record[header] = row[i] instanceof Date ? row[i].toISOString() : row[i];
-          });
-          logs.push(record);
+        // Find the first matching column name
+        for (const colName of relatedIdColumnNames) {
+            relatedIdIndex = headers.indexOf(colName);
+            if (relatedIdIndex !== -1) break;
         }
-      });
-      return logs;
+
+        if (relatedIdIndex === -1) {
+            Logger.log(`Warning: None of the potential related ID columns (${relatedIdColumnNames.join(", ")}) were found in sheet "${sheetName}".`);
+            return [];
+        }
+
+        const logs = [];
+        data.forEach(row => {
+            if (String(row[relatedIdIndex]).trim() === String(caseId).trim()) {
+                let record = {};
+                headers.forEach((header, i) => {
+                    record[header] = row[i] instanceof Date ? row[i].toISOString() : row[i];
+                });
+                logs.push(record);
+            }
+        });
+        return logs;
     };
 
-    const escalationLogs = fetchLogData("Escalation Logs", "Related Case ID");
-    const pausingLogs = fetchLogData("Pausing Logs", "Related Case ID");
-    const cooperationLogs = fetchLogData("Cooperation Logs", "Related Case ID");
+    // Use the flexible helper function with multiple possible column names
+    const escalationLogs = fetchLogData("Escalation Logs", "Related Case ID", "Main Task ID", "Case ID");
+    const pausingLogs = fetchLogData("Pausing Logs", "Related Case ID", "Main Task ID", "Case ID");
+    const cooperationLogs = fetchLogData("Cooperation Logs", "Related Case ID", "Main Task ID", "Case ID");
 
     return {
       escalationLogs: escalationLogs,
@@ -2186,4 +2193,71 @@ function createSheetWithData(data, headers, fileName) {
     Logger.log(`Error in createSheetWithData: ${e.toString()}`);
     throw new Error("Failed to create the spreadsheet. " + e.message);
   }
+}
+
+// =================================================================================
+// --- CASE ACTION FUNCTIONS ---
+// =================================================================================
+
+function updateCaseField(caseId, fieldName, value) {
+    try {
+        if (!caseId || !fieldName) {
+            throw new Error("Case ID or field name is missing.");
+        }
+
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+        if (!sheet) throw new Error("AvailableCases sheet not found.");
+
+        const dataRange = sheet.getDataRange();
+        const values = dataRange.getValues();
+        const headers = values.shift();
+        const caseIdColumnIndex = headers.indexOf('Main Task ID');
+        const fieldColumnIndex = headers.indexOf(fieldName);
+
+        if (caseIdColumnIndex === -1) throw new Error("'Main Task ID' column not found.");
+        if (fieldColumnIndex === -1) throw new Error(`'${fieldName}' column not found.`);
+
+        let rowNumberToUpdate = -1;
+        for (let i = 0; i < values.length; i++) {
+            if (values[i][caseIdColumnIndex] == caseId) {
+                rowNumberToUpdate = i + 2; // +1 for header offset, +1 for 1-based indexing
+                break;
+            }
+        }
+
+        if (rowNumberToUpdate === -1) throw new Error(`Case with ID '${caseId}' not found.`);
+
+        sheet.getRange(rowNumberToUpdate, fieldColumnIndex + 1).setValue(value);
+        return `Case ${caseId}: ${fieldName} updated successfully.`;
+
+    } catch (e) {
+        Logger.log(`Error in updateCaseField: ${e.toString()}`);
+        throw new Error(`Failed to update ${fieldName}. ${e.message}`);
+    }
+}
+
+function claimCase(caseId) {
+    const userEmail = Session.getActiveUser().getEmail();
+    return updateCaseField(caseId, 'Useremail', userEmail);
+}
+
+function pauseCase(caseId) {
+    return updateCaseField(caseId, 'Pause Start Time', new Date());
+}
+
+function unpauseCase(caseId) {
+    return updateCaseField(caseId, 'Pause End Time', new Date());
+}
+
+function escalateCase(caseId) {
+    return updateCaseField(caseId, 'Escalated Start Time', new Date());
+}
+
+function deEscalateCase(caseId) {
+    return updateCaseField(caseId, 'Escalated End Time', new Date());
+}
+
+function endCase(caseId) {
+    return updateCaseField(caseId, 'Main Task End Date/Time', new Date());
 }

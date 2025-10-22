@@ -181,6 +181,9 @@
 </div>
 <!-- ===== NEW LOG SECTIONS END ===== -->
         <div class="modal-actions">
+          <div id="case-action-buttons" style="margin-right: auto;">
+              <!-- Buttons will be dynamically inserted here -->
+          </div>
           <button id="modal-btn-edit" class="btn-secondary" onclick="toggleEditMode()">Edit</button>
           <button id="modal-btn-cancel" class="btn-secondary" onclick="cancelEdit()" style="display:none;">Cancel</button>
           <button id="modal-btn-save" class="btn-primary" onclick="saveChanges(this)" style="display:none;">Save</button>
@@ -220,8 +223,30 @@
         caseDataStoreByStatus = {}; // Reset data store
         STATUS_SECTIONS.forEach(status => {
             offsets[status] = 0;
-            container.insertAdjacentHTML('beforeend', createTableSectionHTML(status));
-            loadCases(status);
+            const initiallyOpen = status === 'Not Started' || status === 'In Progress';
+            container.insertAdjacentHTML('beforeend', createTableSectionHTML(status, initiallyOpen));
+            if (initiallyOpen) {
+                loadCases(status);
+            }
+        });
+
+        // Add event listener for toggling sections
+        document.getElementById('cases-container').addEventListener('click', function(event) {
+            const header = event.target.closest('.section-header');
+            if (header) {
+                const status = header.dataset.status;
+                const section = header.parentElement;
+                const tableContainer = section.querySelector('.table-container');
+                const isLoaded = section.dataset.loaded === 'true';
+
+                if (!isLoaded) {
+                    loadCases(status);
+                    section.dataset.loaded = 'true';
+                }
+                tableContainer.style.display = tableContainer.style.display === 'none' ? 'block' : 'none';
+                const icon = header.querySelector('.toggle-icon');
+                icon.textContent = tableContainer.style.display === 'none' ? '▶' : '▼';
+            }
         });
     }
 
@@ -259,26 +284,29 @@
         const tableBody = document.getElementById(tableBodyId);
         if (!tableBody) return;
 
-        // Clear loader or previous content on initial load
-        if (offsets[status] === 0) {
-            tableBody.innerHTML = '';
-        }
+        const isInitialLoad = offsets[status] === 0;
 
-        // Reset data store on a fresh load (initial or "Show All")
-        if (isShowingAll || offsets[status] === 0) {
-            caseDataStoreByStatus[status] = [];
+        // Update data stores
+        if (isInitialLoad) {
+            caseDataStoreByStatus[status] = cases || [];
+        } else if (cases && cases.length > 0) {
+            caseDataStoreByStatus[status] = (caseDataStoreByStatus[status] || []).concat(cases);
         }
 
         if (cases && cases.length > 0) {
-            // Append new cases to the status-specific store
-            caseDataStoreByStatus[status] = (caseDataStoreByStatus[status] || []).concat(cases);
-            // Update global store for modal
             cases.forEach(caseData => {
                 caseDataStore[caseData['Main Task ID']] = caseData;
             });
         }
 
-        renderTable(status); // Re-render the entire table with new data
+        // Render: full re-render on initial load, append on "Show More"
+        if (isInitialLoad) {
+            renderTable(status);
+        } else if (cases && cases.length > 0) {
+            let newRowsHtml = '';
+            cases.forEach(caseData => newRowsHtml += createTableRowHTML(caseData));
+            tableBody.insertAdjacentHTML('beforeend', newRowsHtml);
+        }
 
         offsets[status] += (cases ? cases.length : 0);
         const showMoreBtn = document.getElementById(`show-more-${status.toLowerCase().replace(/ /g, '-')}`);
@@ -316,12 +344,18 @@
     }
 
     // --- HTML TEMPLATING ---
-    function createTableSectionHTML(status) {
+    function createTableSectionHTML(status, isOpen = false) {
       const statusId = status.toLowerCase().replace(/ /g, '-');
+      const isLoaded = isOpen ? 'true' : 'false';
+      const icon = isOpen ? '▼' : '▶';
+      const display = isOpen ? 'block' : 'none';
+
       return `
-        <div class="table-section">
-          <h2>${status}</h2>
-          <div class="table-container">
+        <div class="table-section" data-status="${status}" data-loaded="${isLoaded}">
+          <h2 class="section-header" data-status="${status}" style="cursor: pointer;">
+            <span class="toggle-icon">${icon}</span> ${status}
+          </h2>
+          <div class="table-container" style="display: ${display};">
             <table>
               <thead>
                 <tr>
@@ -516,6 +550,54 @@ function getOriginalLog(logId, logType) {
         .getLogsForCase(caseId);
 
     document.getElementById('case-modal').style.display = 'flex';
+    populateActionButtons(activeCaseData);
+}
+
+function handleCaseAction(action, caseId) {
+    const actionButton = event.target;
+    actionButton.disabled = true;
+    actionButton.textContent = 'Processing...';
+
+    google.script.run
+        .withSuccessHandler(response => {
+            alert(response);
+            actionButton.disabled = false;
+            actionButton.textContent = action.replace(/([A-Z])/g, ' $1').trim(); // Restore original text
+            closeCaseModal();
+            initializeBoard(); // Refresh the board to reflect changes
+        })
+        .withFailureHandler(err => {
+            alert('Error: ' + err.message);
+            actionButton.disabled = false;
+            actionButton.textContent = action.replace(/([A-Z])/g, ' $1').trim(); // Restore original text
+        })
+        [action](caseId);
+}
+
+function populateActionButtons(caseData) {
+    const container = document.getElementById('case-action-buttons');
+    container.innerHTML = ''; // Clear existing buttons
+    const caseId = caseData['Main Task ID'];
+
+    // --- BUTTON DEFINITIONS ---
+    const buttons = [
+        { text: 'Claim Case', condition: !caseData['Useremail'], action: () => handleCaseAction('claimCase', caseId) },
+        { text: 'Pause Case', action: () => handleCaseAction('pauseCase', caseId) },
+        { text: 'Unpause', action: () => handleCaseAction('unpauseCase', caseId) },
+        { text: 'Escalate', action: () => handleCaseAction('escalateCase', caseId) },
+        { text: 'De-Escalate', action: () => handleCaseAction('deEscalateCase', caseId) },
+        { text: 'End Case', action: () => handleCaseAction('endCase', caseId) }
+    ];
+
+    buttons.forEach(btn => {
+        if (btn.condition !== false) { // Show button if condition is true or undefined
+            const buttonEl = document.createElement('button');
+            buttonEl.className = 'btn-secondary'; // Or a different class for actions
+            buttonEl.textContent = btn.text;
+            buttonEl.onclick = btn.action;
+            container.appendChild(buttonEl);
+        }
+    });
 }
     function closeCaseModal() {
         document.getElementById('case-modal').style.display = 'none';
