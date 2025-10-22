@@ -218,6 +218,7 @@
     .details-container { padding: 20px; }
     .details-container h4 { color: var(--text-primary); font-weight: 700; margin-top: 0; margin-bottom: 15px; }
     .details-container table { box-shadow: none; border: 1px solid var(--border-light); }
+    .scrollable-table-container { max-height: 400px; overflow-y: auto; }
     .details-container th { background-color: #F9FAFB; }
 
     .loader {
@@ -555,11 +556,11 @@
       if (caseData.length === 0) {
         tableHtml += '<p>No case activity found for this agent in the selected period.</p>';
       } else {
-        tableHtml += `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Start Time</th><th>End Time</th><th>Idle Time Before</th><th>Current Status</th></tr></thead><tbody>`;
+        tableHtml += `<div class="scrollable-table-container"><table><thead><tr><th>Case ID</th><th>Account Name</th><th>Start Time</th><th>End Time</th><th>Idle Time Before</th><th>Current Status</th></tr></thead><tbody>`;
         caseData.forEach(c => {
           tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${c.startTimeISO ? new Date(c.startTimeISO).toLocaleString() : 'N/A'}</td><td>${c.endTimeISO ? new Date(c.endTimeISO).toLocaleString() : 'N/A'}</td><td>${formatDuration(c.idleTimeBeforeThisCaseSeconds)}</td><td>${c.status || 'N/A'}</td></tr>`;
         });
-        tableHtml += '</tbody></table>';
+        tableHtml += '</tbody></table></div>';
       }
       container.innerHTML = tableHtml;
     }
@@ -900,11 +901,11 @@
           .withSuccessHandler(caseDetails => {
             let tableHtml = `<div class="leaderboard-details-container"><h4>Case Details</h4>`;
             if (caseDetails && caseDetails.length > 0) {
-              tableHtml += `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Handling Time</th></tr></thead><tbody>`;
+              tableHtml += `<div class="scrollable-table-container"><table><thead><tr><th>Case ID</th><th>Account Name</th><th>Handling Time</th></tr></thead><tbody>`;
               caseDetails.forEach(c => {
                 tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${formatDuration(c.handlingTime)}</td></tr>`;
               });
-              tableHtml += `</tbody></table>`;
+              tableHtml += `</tbody></table></div>`;
             } else {
               tableHtml += `<p>No completed cases found for this agent in the selected period.</p>`;
             }
