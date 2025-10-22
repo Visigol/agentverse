@@ -162,6 +162,28 @@
       <button onclick="handleSearch()">Search</button>
     </div>
 
+    <div id="search-results-container" class="table-section" style="display: none;">
+        <h2 class="section-header">
+            Search Results
+            <button onclick="closeSearchResults()" style="float: right; font-size: 0.8em; cursor: pointer;">X</button>
+        </h2>
+        <div class="table-container">
+            <table id="search-results-table">
+                <thead>
+                    <tr>
+                        <th>SLA Status</th>
+                        <th>Menu Request Sent Date</th>
+                        <th>Task ID</th>
+                        <th>Country</th>
+                        <th>Account Name</th>
+                    </tr>
+                </thead>
+                <tbody id="search-results-body">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <div id="cases-container">
       <!-- Tables will be injected here -->
     </div>
@@ -960,7 +982,44 @@ function hideGuide() {
 }
 
     // --- UTILITIES & VERSION CHECKER ---
-    function handleSearch(){initializeBoard()}
+    function handleSearch() {
+        const searchTerm = document.getElementById('searchInput').value;
+        if (!searchTerm) {
+            closeSearchResults();
+            return;
+        }
+
+        document.getElementById('cases-container').style.display = 'none';
+        document.getElementById('search-results-container').style.display = 'block';
+        const tableBody = document.getElementById('search-results-body');
+        tableBody.innerHTML = '<tr><td colspan="5"><div class="loader" style="display:block;"></div></td></tr>';
+
+        google.script.run
+            .withSuccessHandler(cases => {
+                let tableHtml = '';
+                if (cases && cases.length > 0) {
+                    cases.forEach(caseData => {
+                        caseDataStore[caseData['Main Task ID']] = caseData;
+                        tableHtml += createTableRowHTML(caseData);
+                    });
+                } else {
+                    tableHtml = '<tr><td colspan="5" style="text-align:center; color: var(--text-secondary); padding: 10px;">No cases found.</td></tr>';
+                }
+                tableBody.innerHTML = tableHtml;
+            })
+            .withFailureHandler(err => {
+                console.error(err);
+                tableBody.innerHTML = '<tr><td colspan="5"><p class="error-message">Error searching cases.</p></td></tr>';
+            })
+            .searchAllCases(searchTerm);
+    }
+
+    function closeSearchResults() {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('search-results-container').style.display = 'none';
+        document.getElementById('cases-container').style.display = 'block';
+        initializeBoard();
+    }
     function escape(str){return(str+"").replace(/[\\"']/g,"\\$&").replace(/\u0000/g,"\\0")}
     function formatTime(s) {
     if (isNaN(s) || !isFinite(s)) s = 0;
