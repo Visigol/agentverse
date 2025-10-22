@@ -102,6 +102,7 @@
     .btn-end { background-color: var(--primary-accent); color: white; }
     .btn-unpause { background-color: #5EADDD; color: white; }
     .btn-deescalate { background-color: #A78BFA; color: white; }
+    #case-action-buttons { display: flex; gap: 15px; }
     #edit-guide-sidebar { display: none; flex-basis: 350px; background-color: #F9FAFB; padding: 25px; box-sizing: border-box; border-left: 1px solid var(--border-light); overflow-y: auto;}
     #edit-guide-sidebar.visible { display: block; }
     #edit-guide-sidebar h3 { margin-top: 0; font-size: 1.4em; color: var(--primary-accent); }
