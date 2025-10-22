@@ -87,13 +87,13 @@ function doGet(e) {
       return HtmlService.createHtmlOutputFromFile('production')
         .setTitle('Production Dashboard')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-    } 
+    }
     // --- ADD THIS BLOCK ---
     else if (e.parameter.page === 'cases') {
       return HtmlService.createHtmlOutputFromFile('cases')
         .setTitle('Case Management')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-    } 
+    }
     // --- END ADDITION ---
     else {
       // Otherwise, show the default manager homepage.
@@ -157,9 +157,9 @@ function logCorrectionRequest(originalLogData, reason, newTimestampStr) {
       "",                       // G: Reviewed By
       newTimestamp              // H: Corrected Timestamp
     ]);
-    
+
     return "Correction request submitted successfully!";
-    
+
   } catch (e) {
     console.error("logCorrectionRequest Error: " + e.toString());
     throw new Error("Could not submit request. " + e.message);
@@ -178,7 +178,7 @@ function logCorrectionRequest(originalLogData, reason, newTimestampStr) {
 function syncAllDataSources() {
   const sourceSpreadsheet = SpreadsheetApp.openById(CONFIG.SOURCE_DATA.ID);
   const targetSpreadsheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-  
+
   const syncMap = [
     { sourceName: "Main Tasks",       targetName: "AvailableCases" },
     { sourceName: "Escalation Logs",  targetName: "Escalation Logs" },
@@ -189,10 +189,10 @@ function syncAllDataSources() {
   syncMap.forEach(map => {
     const sourceSheetName = map.sourceName;
     const targetSheetName = map.targetName;
-    
+
     try {
       Logger.log(`Starting sync for: ${sourceSheetName} -> ${targetSheetName}`);
-      
+
       const sourceSheet = sourceSpreadsheet.getSheetByName(sourceSheetName);
       let targetSheet = targetSpreadsheet.getSheetByName(targetSheetName);
 
@@ -200,7 +200,7 @@ function syncAllDataSources() {
         Logger.log(`Source sheet "${sourceSheetName}" not found. Skipping.`);
         return;
       }
-      
+
       if (!targetSheet) {
         targetSheet = targetSpreadsheet.insertSheet(targetSheetName);
         Logger.log(`Target sheet "${targetSheetName}" was not found and has been created.`);
@@ -208,7 +208,7 @@ function syncAllDataSources() {
 
       const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
       const primaryKeyColumnName = CONFIG.SOURCE_DATA.PRIMARY_KEYS[sourceSheetName];
-      
+
       if (!primaryKeyColumnName) {
         Logger.log(`Primary key for "${sourceSheetName}" not defined in CONFIG. Skipping.`);
         return;
@@ -218,16 +218,16 @@ function syncAllDataSources() {
         Logger.log(`Primary key "${primaryKeyColumnName}" not found in source sheet "${sourceSheetName}". Skipping.`);
         return;
       }
-      
+
       const sourceData = sourceSheet.getLastRow() > 1 ? sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, sourceSheet.getLastColumn()).getValues() : [];
-      
+
       targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
       const targetData = targetSheet.getLastRow() > 1 ? targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, targetSheet.getLastColumn()).getValues() : [];
 
       // --- THE FIX IS HERE: Convert the primary key to a trimmed string for reliable matching. ---
       const sourceMap = new Map(sourceData.map(row => [String(row[primaryKeyIndex]).trim(), row]));
       const targetMap = new Map(targetData.map(row => [String(row[primaryKeyIndex]).trim(), {rowData: row, rowIndex: targetData.indexOf(row) + 2}]));
-      
+
       const rowsToUpdate = [];
       const rowsToAdd = [];
 
@@ -242,14 +242,14 @@ function syncAllDataSources() {
           rowsToAdd.push(sourceRow);
         }
       }
-      
+
       if (rowsToUpdate.length > 0) {
         rowsToUpdate.forEach(update => {
           targetSheet.getRange(update.rowIndex, 1, 1, update.data.length).setValues([update.data]);
         });
         Logger.log(`Updated ${rowsToUpdate.length} rows in "${targetSheetName}".`);
       }
-      
+
       if (rowsToAdd.length > 0) {
         targetSheet.getRange(targetSheet.getLastRow() + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
         Logger.log(`Added ${rowsToAdd.length} new rows to "${targetSheetName}".`);
@@ -258,7 +258,7 @@ function syncAllDataSources() {
       if (rowsToUpdate.length === 0 && rowsToAdd.length === 0) {
         Logger.log(`No changes detected for "${targetSheetName}". Sheet is already up to date.`);
       }
-      
+
       Logger.log(`Sync completed for: ${sourceSheetName}`);
 
     } catch(e) {
@@ -284,7 +284,7 @@ function onEditSpecial(e) {
       // Not a sheet we need to sync, so we do nothing.
       return;
     }
-    
+
     // Get info about the edit
     const editedRow = editedRange.getRow();
     const editedCol = editedRange.getColumn();
@@ -335,17 +335,17 @@ function onEditSpecial(e) {
 // =================================================================================
 function applyProtections() {
   const targetSpreadsheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-  
+
   Object.entries(CONFIG.SOURCE_DATA.PRIMARY_KEYS).forEach(([sheetName, keyColumnName]) => {
     const sheet = targetSpreadsheet.getSheetByName(sheetName);
     if (sheet) {
       const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
       const colIndex = headers.indexOf(keyColumnName);
-      
+
       if (colIndex !== -1) {
         const rangeToProtect = sheet.getRange(2, colIndex + 1, sheet.getMaxRows());
         const protection = rangeToProtect.protect().setDescription(`Protected ${keyColumnName}`);
-        
+
         // This ensures you (the owner) and other editors can still edit, but warns them.
         const me = Session.getEffectiveUser();
         protection.addEditor(me);
@@ -374,13 +374,13 @@ function getImportantLinks() {
     const spreadsheetId = CONFIG.ATTENDANCE.ID;
     const sheetName = CONFIG.ATTENDANCE.SHEETS.IMPORTANT_LINKS;
     Logger.log(`Attempting to open Spreadsheet ID: ${spreadsheetId}`);
-    
+
     const ss = SpreadsheetApp.openById(spreadsheetId);
     Logger.log("Spreadsheet opened successfully.");
 
     Logger.log(`Attempting to get sheet named: "${sheetName}"`);
     const sheet = ss.getSheetByName(sheetName);
-    
+
     if (!sheet) {
       Logger.log(`ERROR: Sheet "${sheetName}" was not found.`);
       return [];
@@ -392,7 +392,7 @@ function getImportantLinks() {
       Logger.log("Sheet has no data rows (only header or is empty).");
       return [];
     }
-    
+
     const dataRange = sheet.getRange(2, 1, lastRow - 1, 4);
     const rawData = dataRange.getValues();
     Logger.log(`Found ${rawData.length} rows of data.`);
@@ -404,7 +404,7 @@ function getImportantLinks() {
       url: row[2],
       description: row[3]
     })).filter(link => link.category && link.name && link.url);
-    
+
     Logger.log(`Processed and filtered ${links.length} valid links.`);
     Logger.log("--- Finished getImportantLinks ---");
     return links;
@@ -459,7 +459,7 @@ function getVersionDetails() {
       return { runningVersion: SCRIPT_APP_VERSION, error: `Config sheet "${sheetName}" not found.` };
     }
     Logger.log(`Sheet "${sheetName}" found successfully.`);
-    
+
     const data = versionSheet.getRange("A2:B" + Math.max(2, versionSheet.getLastRow())).getValues();
     Logger.log(`Found ${data.length} rows of config data.`);
     // Logger.log(`Raw config data: ${JSON.stringify(data)}`); // Optional: Uncomment to see the data
@@ -498,7 +498,7 @@ function handleVersionDetailsResponse(versionInfo) {
     const featuresDisplayEl = document.getElementById('updateFeaturesDisplay');
     const versionErrorEl = document.getElementById('versionError');
     if (!versionDisplayEl || !statusMsgEl || !updateNotificationEl) return;
-    
+
     versionErrorEl.style.display = 'none';
     if (versionInfo && versionInfo.error) {
         versionDisplayEl.textContent = "Error";
@@ -554,7 +554,7 @@ function getAllAgents() {
     }
     // Reads Column A (Email) and Column B (Name)
     const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
-    
+
     return data
       .map(row => ({ email: row[0], name: row[1] }))
       .filter(agent => agent.email); // Filter out any empty rows
@@ -635,7 +635,7 @@ function getPendingRequests() {
     return userRequests.map(row => {
       const correctedTimestamp = row[7] instanceof Date ? Utilities.formatDate(row[7], Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss") : "N/A";
       const originalTimestamp = row[1] instanceof Date ? Utilities.formatDate(row[1], Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss") : row[1];
-      
+
       return {
         sessionId: row[3],          // Original Session ID from Column D
         originalAction: row[2],     // Original Action from Column C
@@ -666,7 +666,7 @@ function getInitialAgentState() {
       Logger.log("ERROR: No active user or email found.");
       return { ..._getFallbackStateForAgent(agentEmail, ""), error: "Could not retrieve agent email." };
     }
-    
+
     const agentName = getAgentName_(agentEmail);
     Logger.log(`Step 2: Agent name found: ${agentName}`);
 
@@ -826,7 +826,7 @@ function _getFallbackStateForAgent(agentEmail, agentName) {
 function _determineCurrentAgentState(agentEmail, agentName) {
   Logger.log("--- Starting _determineCurrentAgentState ---");
   const state = _getFallbackStateForAgent(agentEmail, agentName);
-  
+
   try {
     const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
     const agentLogSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENT_LOG);
@@ -868,13 +868,13 @@ function _determineCurrentAgentState(agentEmail, agentName) {
         Logger.log(`Active session found: ${lastStartWork.sessionId}`);
         state.isWorking = true;
         state.currentSessionId = lastStartWork.sessionId;
-        
+
         let totalBreakMs = 0;
         let totalMeetingMs = 0;
         let lastBreakStart = null;
         let lastMeetingStart = null;
         let lastAction = "";
-        
+
         const sessionEntries = agentEntries.filter(e => e.sessionId === state.currentSessionId);
         state.workSessionActualStartTimeISO = sessionEntries[0].timestamp.toISOString();
 
@@ -891,7 +891,7 @@ function _determineCurrentAgentState(agentEmail, agentName) {
           }
           lastAction = entry.action;
         });
-        
+
         state.totalCompletedBreakDurationInSessionSeconds = Math.round(totalBreakMs / 1000);
         state.totalCompletedMeetingDurationInSessionSeconds = Math.round(totalMeetingMs / 1000);
 
@@ -912,10 +912,10 @@ function _determineCurrentAgentState(agentEmail, agentName) {
       Logger.log("CaseLog sheet found. Processing open cases.");
       const caseLogAllData = caseLogSheet.getDataRange().getValues();
       const agentAllCaseEvents = caseLogAllData
-        .filter(row => row[1] && String(row[1]).trim().toLowerCase() === agentEmail.toLowerCase() && row[3]) 
-        .map(row => ({ 
-          caseId: String(row[3]).trim(), 
-          action: row[4] ? String(row[4]).trim() : "" 
+        .filter(row => row[1] && String(row[1]).trim().toLowerCase() === agentEmail.toLowerCase() && row[3])
+        .map(row => ({
+          caseId: String(row[3]).trim(),
+          action: row[4] ? String(row[4]).trim() : ""
         }));
 
       const casesStatusMap = new Map();
@@ -942,7 +942,7 @@ function _determineCurrentAgentState(agentEmail, agentName) {
   } catch (e) {
     Logger.log(`CRITICAL ERROR in _determineCurrentAgentState for ${agentEmail}: ${e.toString()} at stack: ${e.stack}`);
   }
-  
+
   Logger.log("--- Finished _determineCurrentAgentState ---");
   return state;
 }
@@ -982,14 +982,14 @@ function getPendingApprovalRequests() {
     if (!sheet) return [];
 
     const allData = sheet.getDataRange().getValues();
-    allData.shift(); 
+    allData.shift();
     const pendingRequests = [];
 
     allData.forEach((row, index) => {
       const status = row[5];
       if (String(status).trim().toLowerCase() === 'waiting to be approved') {
-        const rowNumber = index + 2; 
-        
+        const rowNumber = index + 2;
+
         const formatDate = (dateValue) => {
             // --- CHANGE IS HERE ---
             // Send the full ISO string to preserve milliseconds
@@ -1028,7 +1028,7 @@ function applyCorrection(requestRowNumber) {
     const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
     const requestsSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.REQUESTS);
     if (!requestsSheet) throw new Error("Requests sheet not found.");
-    
+
     const requestData = requestsSheet.getRange(requestRowNumber, 1, 1, 8).getValues()[0];
     const agentEmail = requestData[0];
     const originalTimestamp = new Date(requestData[1]);
@@ -1050,12 +1050,12 @@ function applyCorrection(requestRowNumber) {
       const rowTimestamp = new Date(row[0]);
       const rowEmail = row[1];
       const rowAction = row[3];
-      
+
       // Find the specific row by matching email, action, and the exact original timestamp
       if (rowEmail === agentEmail && rowAction === originalAction && rowTimestamp.getTime() === originalTimestamp.getTime()) {
         agentLogSheet.getRange(i + 1, 1).setValue(correctedTimestamp); // Update Timestamp in Column A
         rowUpdated = true;
-        break; 
+        break;
       }
     }
 
@@ -1066,7 +1066,7 @@ function applyCorrection(requestRowNumber) {
     // --- Step 3: Update the request status to show it's completed ---
     requestsSheet.getRange(requestRowNumber, 6).setValue("Approved"); // Status in Column F (CORRECTED from "Applied")
     requestsSheet.getRange(requestRowNumber, 7).setValue(managerEmail); // Reviewed By in Column G
-    
+
     return `Correction for ${agentEmail} has been successfully applied.`;
 
   } catch (e) {
@@ -1388,7 +1388,7 @@ function getLeaderboardData(startDateStr, endDateStr) {
 
     const caseValues = caseSheet.getDataRange().getValues();
     const headers = caseValues.shift().map(h => h.toString().trim().toLowerCase());
-    
+
     // Define column names to look for
     const COLS = {
         EMAIL: "useremail",
@@ -1398,19 +1398,19 @@ function getLeaderboardData(startDateStr, endDateStr) {
         PAUSE: "stored pause duration",
         ESCALATION: "stored escalation duration"
     };
-    
+
     // Map header names to their column index
     const headerMap = {};
     Object.keys(COLS).forEach(key => {
         headerMap[key] = headers.indexOf(COLS[key]);
     });
-    
+
     caseValues.forEach(row => {
       const endTimeValue = row[headerMap.END_TIME];
       if (!endTimeValue) return;
       const endTime = new Date(endTimeValue);
       const caseStatus = row[headerMap.STATUS];
-      
+
       if (caseStatus === 'Completed' && endTime >= startDate && endTime <= endDate) {
         const agentEmail = row[headerMap.EMAIL];
         if (!agentEmail) return;
@@ -1418,13 +1418,13 @@ function getLeaderboardData(startDateStr, endDateStr) {
         if (!agentData[agentEmail]) {
           agentData[agentEmail] = { name: agentEmail, totalCases: 0, totalHandlingTime: 0 };
         }
-        
+
         const startTime = new Date(row[headerMap.START_TIME]);
         // Note: Durations in Sheets are fractions of a day. Convert to seconds.
         const pauseDuration = (parseFloat(row[headerMap.PAUSE]) || 0) * 86400;
         const escalationDuration = (parseFloat(row[headerMap.ESCALATION]) || 0) * 86400;
         const grossDuration = (endTime - startTime) / 1000; // in seconds
-        
+
         const netHandlingTime = grossDuration - pauseDuration - escalationDuration;
         agentData[agentEmail].totalCases++;
         agentData[agentEmail].totalHandlingTime += netHandlingTime > 0 ? netHandlingTime : 0;
@@ -1468,7 +1468,7 @@ function getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr) {
 
     const caseValues = caseSheet.getDataRange().getValues();
     const headers = caseValues.shift().map(h => h.toString().trim().toLowerCase());
-    
+
     const COLS = {
         EMAIL: "useremail",
         STATUS: "status",
@@ -1493,12 +1493,12 @@ function getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr) {
       if (!endTimeValue) return;
       const endTime = new Date(endTimeValue);
       const caseStatus = row[headerMap.STATUS];
-      
+
       if (caseStatus === 'Completed' && endTime >= startDate && endTime <= endDate) {
         const startTime = new Date(row[headerMap.START_TIME]);
         const pauseDuration = (parseFloat(row[headerMap.PAUSE]) || 0) * 86400; // in seconds
         const escalationDuration = (parseFloat(row[headerMap.ESCALATION]) || 0) * 86400; // in seconds
-        
+
         const grossDuration = (endTime - startTime) / 1000; // in seconds
         const netHandlingTime = grossDuration - pauseDuration - escalationDuration;
 
@@ -1593,12 +1593,12 @@ function getProductionFilterOptions() {
 
 function getProductionReport(filters) {
   try {
-    const { 
-      startDateStr, endDateStr, 
+    const {
+      startDateStr, endDateStr,
       drillDownStatus, drillDownMarket, drillDownTat,
       // New filter values from the front-end
-      selectedStatus, selectedMarket, selectedCategory, 
-      selectedTaskType, selectedRetailerType, selectedSlaReason 
+      selectedStatus, selectedMarket, selectedCategory,
+      selectedTaskType, selectedRetailerType, selectedSlaReason
     } = filters;
 
     // ... (blankSummary object remains the same)
@@ -1607,9 +1607,9 @@ function getProductionReport(filters) {
       menuComplexity: { marketData: {}, grandTotal: {} },
       ahtByMonth: { marketData: {}, grandTotal: {} },
       ahtByRetailer: { marketData: {}, grandTotal: {} },
-      ahtByCategory: { categoryData: {}, grandTotal: {} }, 
+      ahtByCategory: { categoryData: {}, grandTotal: {} },
       tatBucket: { marketData: {}, grandTotal: {} },
-      monthList: [], retailerTypeList: [], categoryList: [] 
+      monthList: [], retailerTypeList: [], categoryList: []
     };
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
@@ -1675,17 +1675,17 @@ const dataInDateRange = rawData.filter(row => {
     const menuComplexityAgg = {};
     const ahtByMonthAgg = {};
     const ahtByRetailerAgg = {};
-    const ahtByCategoryAgg = {}; 
+    const ahtByCategoryAgg = {};
     const tatBucketAgg = {};
     const monthSet = new Set();
     const retailerTypeSet = new Set();
-    const categorySet = new Set(); 
+    const categorySet = new Set();
     const now = new Date();
 
     dataInDateRange.forEach(row => {
       const country = row[headerMap.country];
       const status = row[headerMap.status];
-      const category = row[headerMap.category]; 
+      const category = row[headerMap.category];
       const startTime = row[headerMap.startTime];
       const endTime = row[headerMap.endTime];
       const retailerType = row[headerMap.retailerType];
@@ -1724,7 +1724,7 @@ const dataInDateRange = rawData.filter(row => {
     const complexityGrandTotalAgg = { aht: { sum: 0, count: 0 }, totalDishes: { sum: 0, count: 0 }, mainDishesPhotos: { sum: 0, count: 0 }, totalOptions: { sum: 0, count: 0 }, totalOptionGroups: { sum: 0, count: 0 } }; for (const country in menuComplexityAgg) { for (const metric in menuComplexityAgg[country]) { complexityGrandTotalAgg[metric].sum += menuComplexityAgg[country][metric].sum; complexityGrandTotalAgg[metric].count += menuComplexityAgg[country][metric].count; } } const menuComplexityGrandTotal = { avgAhtSeconds: (complexityGrandTotalAgg.aht.count > 0) ? (complexityGrandTotalAgg.aht.sum / complexityGrandTotalAgg.aht.count) : 0, avgTotalDishes: (complexityGrandTotalAgg.totalDishes.count > 0) ? (complexityGrandTotalAgg.totalDishes.sum / complexityGrandTotalAgg.totalDishes.count) : 0, avgMainDishesPhotos: (complexityGrandTotalAgg.mainDishesPhotos.count > 0) ? (complexityGrandTotalAgg.mainDishesPhotos.sum / complexityGrandTotalAgg.mainDishesPhotos.count) : 0, avgTotalOptions: (complexityGrandTotalAgg.totalOptions.count > 0) ? (complexityGrandTotalAgg.totalOptions.sum / complexityGrandTotalAgg.totalOptions.count) : 0, avgTotalOptionGroups: (complexityGrandTotalAgg.totalOptionGroups.count > 0) ? (complexityGrandTotalAgg.totalOptionGroups.sum / complexityGrandTotalAgg.totalOptionGroups.count) : 0 };
     const ahtByMonthGrandTotal = {}; monthList.forEach(month => { let monthSum = 0; let monthCount = 0; for (const country in ahtByMonthAgg) { if (ahtByMonthAgg[country][month]) { monthSum += ahtByMonthAgg[country][month].sum; monthCount += ahtByMonthAgg[country][month].count; } } ahtByMonthGrandTotal[month] = (monthCount > 0) ? (monthSum / monthCount) : 0; });
     const ahtByRetailerGrandTotal = {}; retailerTypeList.forEach(retailerType => { let retailerSum = 0; let retailerCount = 0; for (const country in ahtByRetailerAgg) { if (ahtByRetailerAgg[country][retailerType]) { retailerSum += ahtByRetailerAgg[country][retailerType].sum; retailerCount += ahtByRetailerAgg[country][retailerType].count; } } ahtByRetailerGrandTotal[retailerType] = (retailerCount > 0) ? (retailerSum / retailerCount) : 0; });
-    const ahtByCategoryGrandTotalAgg = { sum: 0, count: 0 }; for (const category in ahtByCategoryAgg) { ahtByCategoryGrandTotalAgg.sum += ahtByCategoryAgg[category].sum; ahtByCategoryGrandTotalAgg.count += ahtByCategoryAgg[category].count; } const ahtByCategoryGrandTotal = { avgAhtSeconds: (ahtByCategoryGrandTotalAgg.count > 0) ? (ahtByCategoryGrandTotalAgg.sum / ahtByCategoryGrandTotalAgg.count) : 0 }; 
+    const ahtByCategoryGrandTotalAgg = { sum: 0, count: 0 }; for (const category in ahtByCategoryAgg) { ahtByCategoryGrandTotalAgg.sum += ahtByCategoryAgg[category].sum; ahtByCategoryGrandTotalAgg.count += ahtByCategoryAgg[category].count; } const ahtByCategoryGrandTotal = { avgAhtSeconds: (ahtByCategoryGrandTotalAgg.count > 0) ? (ahtByCategoryGrandTotalAgg.sum / ahtByCategoryGrandTotalAgg.count) : 0 };
     const tatBucketGrandTotal = { under24: 0, between24and30: 0, between30and48: 0, over48: 0, total: 0 }; for (const country in tatBucketAgg) { for (const bucket in tatBucketAgg[country]) { tatBucketGrandTotal[bucket] += tatBucketAgg[country][bucket]; } } tatBucket.grandTotal = tatBucketGrandTotal;
     
     let drillDownDetails = [];
@@ -1738,18 +1738,18 @@ const dataInDateRange = rawData.filter(row => {
         if (filters.drillDownStatus === 'AHT by Category') { return category === filters.subFilter; }
         if (filters.drillDownStatus === 'Menu Complexity') { return country === filters.drillDownMarket; }
         const marketMatch = filters.drillDownMarket === 'All' || country === filters.drillDownMarket; return status === filters.drillDownStatus && marketMatch;
-      }).map(row => { 
-          const record = {}; 
-          headers.forEach((header, i) => { 
-              let value = row[i]; 
-              if (header === 'Stored Agent Handling Time' && value instanceof Date) { 
+      }).map(row => {
+          const record = {};
+          headers.forEach((header, i) => {
+              let value = row[i];
+              if (header === 'Stored Agent Handling Time' && value instanceof Date) {
                   const totalSeconds = value.getHours() * 3600 + value.getMinutes() * 60 + value.getSeconds();
-                  record[header] = totalSeconds / 86400.0; 
-              } else { 
-                  record[header] = (value instanceof Date) ? value.toISOString() : value; 
-              } 
-          }); 
-          return record; 
+                  record[header] = totalSeconds / 86400.0;
+              } else {
+                  record[header] = (value instanceof Date) ? value.toISOString() : value;
+              }
+          });
+          return record;
       });
     }
     const summary = { totalCounts, marketCounts, tatCounts, menuComplexity: { marketData: menuComplexity, grandTotal: menuComplexityGrandTotal }, ahtByMonth: { marketData: ahtByMonth, grandTotal: ahtByMonthGrandTotal }, ahtByRetailer: { marketData: ahtByRetailer, grandTotal: ahtByRetailerGrandTotal }, ahtByCategory: { categoryData: ahtByCategory, grandTotal: ahtByCategoryGrandTotal }, tatBucket: tatBucket, monthList, retailerTypeList, categoryList };
@@ -1786,7 +1786,7 @@ function getAgentAttendanceLog(dateRange) {
     if (!sheet) throw new Error("AgentLog sheet not found.");
 
     const allData = sheet.getDataRange().getValues();
-    allData.shift(); 
+    allData.shift();
 
     const agentLogs = allData.filter(row => {
       const rowEmail = (row[1] || "").toString().trim().toLowerCase();
@@ -1800,7 +1800,7 @@ function getAgentAttendanceLog(dateRange) {
       return {
         // --- CHANGE IS HERE ---
         // Send the full ISO string to preserve milliseconds
-        timestamp: timestamp.toISOString(), 
+        timestamp: timestamp.toISOString(),
         action: row[3],
         sessionId: row[4]
       };
@@ -1832,7 +1832,7 @@ function getAgentDashboardSummary() {
 
     const data = sheet.getDataRange().getValues();
     const headers = data.shift().map(h => h.toString().trim().toLowerCase());
-    
+
     const emailCol = headers.indexOf("useremail");
     const statusCol = headers.indexOf("status");
     const startTimeCol = headers.indexOf("main task start date/time");
@@ -1869,7 +1869,7 @@ function getAgentDashboardSummary() {
     });
 
     summary.aht = summary.closedToday > 0 ? summary.totalHandlingTime / summary.closedToday : 0;
-    
+
     return summary;
 
   } catch (e) {
@@ -1881,15 +1881,11 @@ function getAgentDashboardSummary() {
 
 /**
  * Fetches, filters, sorts, and paginates cases for the Case Management page.
- * Handles an 'All' status and serializes dates correctly.
- */
-/**
- * Fetches, filters, sorts, and paginates cases for the Case Management page.
  * Includes a smarter, targeted search.
  */
 function getCasesByStatus(options) {
   try {
-    const { status, searchTerm, limit = 20, offset = 0 } = options;
+    const { status, searchTerm, limit = 20, offset = 0, country } = options;
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
@@ -1897,39 +1893,46 @@ function getCasesByStatus(options) {
 
     const data = sheet.getDataRange().getValues();
     const headers = data.shift();
-    
+
     let records = data.map(row => {
       let record = {};
       headers.forEach((header, i) => { record[header] = row[i]; });
       return record;
     });
 
-    let filteredByStatus = records.filter(record => status === 'All' || record.Status === status);
+    let filteredRecords = records;
+    if (status !== 'All') {
+      if (status === 'Task Paused') {
+        filteredRecords = filteredRecords.filter(record => record['Pause Start Time'] && !record['Pause End Time']);
+      } else if (status === 'Escalated') {
+        filteredRecords = filteredRecords.filter(record => record['Escalated Start Time'] && !record['Escalated End Time']);
+      } else {
+        filteredRecords = filteredRecords.filter(record => record.Status === status);
+      }
+    }
 
-    let searchedRecords = filteredByStatus;
+    if (country) {
+      filteredRecords = filteredRecords.filter(record => record.Country === country);
+    }
+
     if (searchTerm) {
       const lowerCaseSearchTerm = searchTerm.toLowerCase();
-      
-      // Define which columns are searchable to avoid accidental matches
-      const searchableHeaders = ['Main Task ID', 'Country', 'Case Title', 'Category', 'Account Name', 'Useremail'];
-
-      searchedRecords = filteredByStatus.filter(record => {
-        // Check only the specified headers for a match
-        return searchableHeaders.some(header => 
+      const searchableHeaders = ['Main Task ID', 'Case Title', 'Category', 'Account Name', 'Useremail'];
+      filteredRecords = filteredRecords.filter(record => {
+        return searchableHeaders.some(header =>
           record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
         );
       });
     }
 
-    searchedRecords.sort((a, b) => {
-      const dateA = new Date(a['Main Task Start Date/Time'] || 0);
-      const dateB = new Date(b['Main Task Start Date/Time'] || 0);
+    filteredRecords.sort((a, b) => {
+      const dateA = new Date(a['Menu Request Sent Date'] || 0);
+      const dateB = new Date(b['Menu Request Sent Date'] || 0);
       return dateB - dateA;
     });
-    
-    const paginatedRecords = searchedRecords.slice(offset, offset + limit);
 
-    // Convert all Date objects to ISO strings before sending to the client
+    const paginatedRecords = filteredRecords.slice(offset, offset + limit);
+
     const serializableRecords = paginatedRecords.map(record => {
         const newRecord = {};
         for (const key in record) {
@@ -1986,7 +1989,7 @@ function updateCaseData(caseId, updatedData) {
     }
 
     // --- NEW LOGIC STARTS HERE ---
-    const dateTimeHeaders = ['Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Pause Time', 'Pause End Time', 'Salesforce Updated time', 'Date stamp', 'Menu Request Sent Date'];
+    const dateTimeHeaders = ['Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Pause Start Time', 'Pause End Time', 'Salesforce Updated time', 'Date stamp', 'Menu Request Sent Date'];
     const durationHeaders = ['Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time'];
 
     for (const header of Object.keys(updatedData)) {
@@ -2029,24 +2032,24 @@ function getLogsForCase(caseId) {
   if (!caseId) {
     return { escalationLogs: [], pausingLogs: [], cooperationLogs: [] };
   }
-  
+
   try {
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    
+
     // Helper function to reduce redundant code
     const fetchLogData = (sheetName, relatedIdColumnName) => {
       const sheet = ss.getSheetByName(sheetName);
       if (!sheet || sheet.getLastRow() < 2) return [];
-      
+
       const data = sheet.getDataRange().getValues();
       const headers = data.shift();
       const relatedIdIndex = headers.indexOf(relatedIdColumnName);
-      
+
       if (relatedIdIndex === -1) {
         Logger.log(`Warning: Column "${relatedIdColumnName}" not found in sheet "${sheetName}".`);
         return [];
       }
-      
+
       const logs = [];
       data.forEach(row => {
         if (String(row[relatedIdIndex]).trim() === String(caseId).trim()) {
@@ -2060,11 +2063,11 @@ function getLogsForCase(caseId) {
       });
       return logs;
     };
-    
+
     const escalationLogs = fetchLogData("Escalation Logs", "Related Case ID");
     const pausingLogs = fetchLogData("Pausing Logs", "Related Case ID");
     const cooperationLogs = fetchLogData("Cooperation Logs", "Related Case ID");
-    
+
     return {
       escalationLogs: escalationLogs,
       pausingLogs: pausingLogs,
@@ -2098,7 +2101,7 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
     const data = sheet.getDataRange().getValues();
     const headers = data.shift();
     const pkIndex = headers.indexOf(primaryKeyColumnName);
-    
+
     if (pkIndex === -1) {
       throw new Error(`Primary key column "${primaryKeyColumnName}" not found in sheet "${sheetName}".`);
     }
@@ -2155,11 +2158,11 @@ function createSheetWithData(data, headers, fileName) {
   try {
     // THIS LINE IS MODIFIED - It now uses the filename from the browser, with a fallback.
     const spreadsheetName = fileName || `Drill-down Export - ${new Date().toLocaleString()}`;
-    
+
     const newSs = SpreadsheetApp.create(spreadsheetName);
     const sheet = newSs.getSheets()[0];
     sheet.setName("Exported Data");
-    
+
     const rows = data.map(obj => headers.map(header => obj[header]));
     const outputData = [headers, ...rows];
 
@@ -2174,7 +2177,7 @@ function createSheetWithData(data, headers, fileName) {
     headers.forEach((_, i) => {
       sheet.autoResizeColumn(i + 1);
     });
-    
+
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
 
     return newSs.getUrl();

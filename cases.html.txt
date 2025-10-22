@@ -14,35 +14,66 @@
     .header { background-color: var(--card-background); padding: 25px 30px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
     .header h1 { margin: 0; font-size: 2.2em; font-weight: 800; }
     .page-container { padding: 30px; max-width: 100%; box-sizing: border-box; }
-    
+
     /* Search Bar */
     .search-container { display: flex; gap: 15px; margin-bottom: 30px; background-color: var(--card-background); padding: 20px; border-radius: 12px; box-shadow: 0 4px 8px var(--shadow-color); }
     .search-container input { flex-grow: 1; font-size: 1.1em; padding: 12px; border-radius: 8px; border: 1px solid var(--border-light); }
     .search-container button { font-size: 1.1em; padding: 12px 25px; border: none; border-radius: 8px; background-color: var(--primary-accent); color: white; cursor: pointer; }
 
-    /* Kanban Board Layout - CORRECTED FOR NO SCROLLING */
-    .kanban-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
-    .status-column { background-color: #F9FAFB; border-radius: 12px; padding: 15px; border: 1px solid var(--border-light); }
-    .status-column h2 { font-size: 1.2em; font-weight: 700; padding-bottom: 15px; border-bottom: 1px solid var(--border-light); margin: 0 0 15px 0; }
-    .case-container { display: flex; flex-direction: column; gap: 15px; min-height: 200px; }
-    
-    /* Individual Case Card Styling */
-    .case-card { background-color: var(--card-background); border-radius: 8px; box-shadow: 0 2px 4px var(--shadow-color); border: 1px solid var(--border-light); cursor: pointer; transition: box-shadow 0.2s; }
-    .case-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .case-summary { padding: 15px; }
-    .case-summary .field { margin-bottom: 8px; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .case-summary .field strong { color: var(--text-primary); }
-    .case-summary .field span { color: var(--text-secondary); }
-    .details-grid .field span.field-value {
-    background-color: #F9FAFB; /* A very light, clean grey */
-    border: 1px solid var(--border-light);
-    padding: 8px 12px;
-    border-radius: 6px;
-    min-height: 21px; /* Helps align with input fields */
-    display: block;   /* Ensures padding and height are applied */
-    white-space: pre-wrap; /* Allows long text and line breaks to wrap */
-    word-break: break-word; /* Prevents long text from overflowing */
-}
+    /* Table Layout */
+    .table-section {
+      background-color: var(--card-background);
+      border-radius: 12px;
+      box-shadow: 0 4px 8px var(--shadow-color);
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+    .table-section h2 {
+      font-size: 1.5em;
+      font-weight: 700;
+      padding: 20px;
+      margin: 0;
+      background-color: #F9FAFB;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .table-container {
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+    }
+    th {
+      font-size: 0.9em;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    th .sort-icon {
+      margin-left: 5px;
+      display: inline-block;
+    }
+    tbody tr {
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    tbody tr:hover {
+      background-color: #F9FAFB;
+    }
+    .group-header td {
+        background-color: #F3F4F6; /* A light grey */
+        font-weight: 600;
+        color: var(--text-primary);
+        padding-top: 10px;
+        padding-bottom: 10px;
+        font-size: 1.05em;
+    }
 
 
     /* NEW MODAL STYLES */
@@ -97,7 +128,6 @@
     #updateNotificationArea { margin-top: 5px; padding: 8px; background-color: var(--yellow); color: var(--text-primary); border-radius: 8px; }
     #updateNotificationArea button { width: 100%; padding: 6px; font-size: 0.9em; background-color: var(--text-primary); color: white; border: none; cursor: pointer; margin-top: 5px; }
 
-    @media (max-width: 1200px) { .kanban-board { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -122,30 +152,11 @@
       <button onclick="handleSearch()">Search</button>
     </div>
 
-    <div class="kanban-board">
-      <div class="status-column">
-        <h2>Not Started</h2>
-        <div class="case-container" id="cases-not-started"></div>
-        <button class="show-more-btn" onclick="loadCases('Not Started', true)">Show All</button>
-      </div>
-      <div class="status-column">
-        <h2>In Progress</h2>
-        <div class="case-container" id="cases-in-progress"></div>
-        <button class="show-more-btn" onclick="loadCases('In Progress', true)">Show All</button>
-      </div>
-      <div class="status-column">
-        <h2>Completed</h2>
-        <div class="case-container" id="cases-completed"></div>
-        <button class="show-more-btn" onclick="loadCases('Completed', true)">Show All</button>
-      </div>
-      <div class="status-column">
-        <h2>Cancelled</h2>
-        <div class="case-container" id="cases-cancelled"></div>
-        <button class="show-more-btn" onclick="loadCases('Cancelled', true)">Show All</button>
-      </div>
+    <div id="cases-container">
+      <!-- Tables will be injected here -->
     </div>
   </div>
-  
+
   <div id="case-modal" class="modal-overlay">
     <div class="modal-content">
       <div class="modal-main">
@@ -168,7 +179,7 @@
     <h3>Cooperation Logs</h3>
     <div id="cooperation-logs-grid"></div>
 </div>
-<!-- ===== NEW LOG SECTIONS END ===== -->  
+<!-- ===== NEW LOG SECTIONS END ===== -->
         <div class="modal-actions">
           <button id="modal-btn-edit" class="btn-secondary" onclick="toggleEditMode()">Edit</button>
           <button id="modal-btn-cancel" class="btn-secondary" onclick="cancelEdit()" style="display:none;">Cancel</button>
@@ -188,12 +199,14 @@
   </div>
 
   <script>
-    let caseDataStore = {}; // Add this line
+    let caseDataStore = {};
+    let caseDataStoreByStatus = {};
     // --- GLOBAL STATE ---
-    const STATUS_COLUMNS = ['Not Started', 'In Progress', 'Completed', 'Cancelled'];
-    let offsets = {'Not Started': 0, 'In Progress': 0, 'Completed': 0, 'Cancelled': 0};
+    const STATUS_SECTIONS = ['Not Started', 'In Progress', 'Task Paused', 'Escalated', 'Completed', 'Cancelled'];
+    let offsets = {};
+    STATUS_SECTIONS.forEach(s => offsets[s] = 0);
     let activeCaseData = null; // To store data for the open modal
-    const ALL_FIELDS = ['Created By', 'Useremail', 'Main Task ID', 'Country', 'Menu Request Sent Date', 'Language', 'Case Title', 'Category', 'Account Name', 'Status', 'Provider Id', 'City', 'Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Menu link', 'Dish Photos Link', 'Photo Coverage', 'Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Task TAT', 'Escalated Comment', 'Task Paused', 'Pause Time', 'Pause End Time', 'TAT Adherance', 'Salesforce Updated', 'Salesforce Updated time', 'Ready for QA', 'Date stamp', 'Task Type', 'Rework Count', 'No of Main dishes(Excluding Extras, drinks, sides etc.)', 'Total No. of dishes', 'Total No. of categories', 'Total no. of options', 'Total no. of option Groups', 'Total no. of tags', 'Total no. of timetables.', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Comments', 'Event Summary', 'Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time', 'Retailer Provider Type', 'Airtable Link', 'Description Coverage', 'Visual and Descriptive Elements', 'Claim Flag', 'SLA Missed Reason', 'SLA Missed Comment', 'Linking Snapshot URL'];
+    const ALL_FIELDS = ['Created By', 'Useremail', 'Main Task ID', 'Country', 'Menu Request Sent Date', 'Language', 'Case Title', 'Category', 'Account Name', 'Status', 'Provider Id', 'City', 'Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Menu link', 'Dish Photos Link', 'Photo Coverage', 'Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Task TAT', 'Escalated Comment', 'Task Paused', 'Pause Start Time', 'Paused End Time', 'TAT Adherance', 'Salesforce Updated', 'Salesforce Updated time', 'Ready for QA', 'Date stamp', 'Task Type', 'Rework Count', 'No of Main dishes(Excluding Extras, drinks, sides etc.)', 'Total No. of dishes', 'Total No. of categories', 'Total no. of options', 'Total no. of option Groups', 'Total no. of tags', 'Total no. of timetables.', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Comments', 'Event Summary', 'Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time', 'Retailer Provider Type', 'Airtable Link', 'Description Coverage', 'Visual and Descriptive Elements', 'Claim Flag', 'SLA Missed Reason', 'SLA Missed Comment', 'Linking Snapshot URL'];
 
     // --- INITIALIZATION ---
     window.addEventListener('load', function() {
@@ -202,11 +215,12 @@
     });
 
     function initializeBoard() {
-        const searchTerm = document.getElementById('searchInput').value;
-        STATUS_COLUMNS.forEach(status => {
+        const container = document.getElementById('cases-container');
+        container.innerHTML = '';
+        caseDataStoreByStatus = {}; // Reset data store
+        STATUS_SECTIONS.forEach(status => {
             offsets[status] = 0;
-            const container = document.getElementById(`cases-${status.toLowerCase().replace(/ /g, '-')}`);
-            if (container) container.innerHTML = '';
+            container.insertAdjacentHTML('beforeend', createTableSectionHTML(status));
             loadCases(status);
         });
     }
@@ -214,13 +228,14 @@
     // --- DATA FETCHING & RENDERING ---
     function loadCases(status, showAll = false) {
         const searchTerm = document.getElementById('searchInput').value;
-        const containerId = `cases-${status.toLowerCase().replace(/ /g, '-')}`;
-        const container = document.getElementById(containerId);
-        
-        if (!container) return;
+        const tableBodyId = `table-body-${status.toLowerCase().replace(/ /g, '-')}`;
+        const tableBody = document.getElementById(tableBodyId);
 
-        if (offsets[status] === 0 || showAll) {
-           container.innerHTML = '<div class="loader" style="display:block;"></div>';
+        if (!tableBody) return;
+
+        if (offsets[status] === 0) {
+           const loaderRow = `<tr><td colspan="5"><div class="loader" style="display:block;"></div></td></tr>`;
+           tableBody.innerHTML = loaderRow;
         }
 
         const options = {
@@ -234,47 +249,178 @@
             .withSuccessHandler(cases => displayCases(cases, status, showAll))
             .withFailureHandler(err => {
                 console.error(err);
-                container.innerHTML = '<p class="error-message">Error loading cases.</p>';
+                tableBody.innerHTML = '<tr><td colspan="5"><p class="error-message">Error loading cases.</p></td></tr>';
             })
             .getCasesByStatus(options);
     }
 
     function displayCases(cases, status, isShowingAll) {
-    const containerId = `cases-${status.toLowerCase().replace(/ /g, '-')}`;
-    const container = document.getElementById(containerId);
-    if (!container) return;
+        const tableBodyId = `table-body-${status.toLowerCase().replace(/ /g, '-')}`;
+        const tableBody = document.getElementById(tableBodyId);
+        if (!tableBody) return;
 
-    if (offsets[status] === 0 || isShowingAll) { container.innerHTML = ''; } 
-    else { container.querySelector('.loader')?.remove(); }
+        // Clear loader or previous content on initial load
+        if (offsets[status] === 0) {
+            tableBody.innerHTML = '';
+        }
 
-    if (!cases || cases.length === 0) {
-        if (offsets[status] === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding: 10px;">No cases found.</p>'; }
-    } else {
-        cases.forEach(caseData => {
-            // Store the full data object locally
-            caseDataStore[caseData['Main Task ID']] = caseData;
-            container.insertAdjacentHTML('beforeend', createCaseCardHTML(caseData));
-        });
+        // Reset data store on a fresh load (initial or "Show All")
+        if (isShowingAll || offsets[status] === 0) {
+            caseDataStoreByStatus[status] = [];
+        }
+
+        if (cases && cases.length > 0) {
+            // Append new cases to the status-specific store
+            caseDataStoreByStatus[status] = (caseDataStoreByStatus[status] || []).concat(cases);
+            // Update global store for modal
+            cases.forEach(caseData => {
+                caseDataStore[caseData['Main Task ID']] = caseData;
+            });
+        }
+
+        renderTable(status); // Re-render the entire table with new data
+
+        offsets[status] += (cases ? cases.length : 0);
+        const showMoreBtn = document.getElementById(`show-more-${status.toLowerCase().replace(/ /g, '-')}`);
+        if (showMoreBtn) {
+            showMoreBtn.style.display = (!cases || cases.length < 20 || isShowingAll) ? 'none' : 'block';
+        }
     }
 
-    offsets[status] = isShowingAll ? cases.length : offsets[status] + cases.length;
-    const showMoreBtn = container.nextElementSibling;
-    if (showMoreBtn) { showMoreBtn.style.display = (!cases || cases.length < 20 || isShowingAll) ? 'none' : 'block'; }
-}
-    
+    function renderTable(status) {
+        const tableBodyId = `table-body-${status.toLowerCase().replace(/ /g, '-')}`;
+        const tableBody = document.getElementById(tableBodyId);
+        const allCasesForStatus = caseDataStoreByStatus[status];
+
+        if (!allCasesForStatus || allCasesForStatus.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-secondary); padding: 10px;">No cases found.</td></tr>';
+            return;
+        }
+
+        const casesByCountry = allCasesForStatus.reduce((acc, caseData) => {
+            const country = caseData['Country'] || 'Unspecified';
+            if (!acc[country]) acc[country] = [];
+            acc[country].push(caseData);
+            return acc;
+        }, {});
+
+        const sortedCountries = Object.keys(casesByCountry).sort();
+        let tableHtml = '';
+        sortedCountries.forEach(country => {
+            tableHtml += `<tr class="group-header"><td colspan="5">${country}</td></tr>`;
+            casesByCountry[country].forEach(caseData => {
+                tableHtml += createTableRowHTML(caseData);
+            });
+        });
+        tableBody.innerHTML = tableHtml;
+    }
+
     // --- HTML TEMPLATING ---
-    function createCaseCardHTML(caseData) {
-    const caseId = caseData['Main Task ID'];
-    return `
-    <div class="case-card" id="case-${caseId}" onclick="openCaseModal('${caseId}')">
-        <div class="case-summary">
-            <div class="field"><strong>Task ID:</strong> <span>${caseId || 'N/A'}</span></div>
-            <div class="field"><strong>Country:</strong> <span>${caseData['Country'] || 'N/A'}</span></div>
-            <div class="field"><strong>Account:</strong> <span>${caseData['Account Name'] || 'N/A'}</span></div>
-            <div class="field"><strong>Category:</strong> <span>${caseData['Category'] || 'N/A'}</span></div>
+    function createTableSectionHTML(status) {
+      const statusId = status.toLowerCase().replace(/ /g, '-');
+      return `
+        <div class="table-section">
+          <h2>${status}</h2>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th onclick="sortTable('${statusId}', 0)">SLA Status <span class="sort-icon"></span></th>
+                  <th onclick="sortTable('${statusId}', 1)">Menu Request Sent Date <span class="sort-icon"></span></th>
+                  <th onclick="sortTable('${statusId}', 2)">Task ID</th>
+                  <th onclick="sortTable('${statusId}', 3)">Country</th>
+                  <th onclick="sortTable('${statusId}', 4)">Account Name</th>
+                </tr>
+              </thead>
+              <tbody id="table-body-${statusId}">
+              </tbody>
+            </table>
+            <button id="show-more-${statusId}" class="show-more-btn" onclick="loadCases('${status}', false)">Show More</button>
+          </div>
         </div>
-    </div>`;
-}
+      `;
+    }
+
+    function createTableRowHTML(caseData) {
+        const caseId = caseData['Main Task ID'];
+        const slaStatus = calculateSlaStatus(caseData);
+        return `
+            <tr onclick="openCaseModal('${caseId}')">
+                <td>${slaStatus.icon} ${slaStatus.text}</td>
+                <td>${formatDisplayDate(caseData['Menu Request Sent Date'])}</td>
+                <td>${caseId || 'N/A'}</td>
+                <td>${caseData['Country'] || 'N/A'}</td>
+                <td>${caseData['Account Name'] || 'N/A'}</td>
+            </tr>
+        `;
+    }
+
+    function calculateSlaStatus(caseData) {
+        const menuRequestDate = new Date(caseData['Menu Request Sent Date']);
+        if (isNaN(menuRequestDate.getTime())) {
+            return { icon: '❓', text: 'Invalid Date' };
+        }
+
+        const now = new Date();
+        let slaTime = menuRequestDate.getTime() + (24 * 60 * 60 * 1000); // 24 hours in milliseconds
+
+        if (caseData.Status === 'Escalated') {
+            const escalatedStartTime = new Date(caseData['Escalated Start Time']);
+            if (!isNaN(escalatedStartTime.getTime())) {
+                const escalatedTime = now - escalatedStartTime;
+                slaTime += escalatedTime;
+            }
+        }
+
+        const hoursRemaining = (slaTime - now) / (1000 * 60 * 60);
+
+        if (hoursRemaining < 0) {
+            return { icon: '🔥', text: 'Total SLA Overdue' };
+        } else if (hoursRemaining <= 4) {
+            return { icon: '🔴', text: 'Critical' };
+        } else if (hoursRemaining <= 8) {
+            return { icon: '🟠', text: 'Critical' };
+        } else if (hoursRemaining <= 16) {
+            return { icon: '🟡', text: 'Medium' };
+        } else {
+            return { icon: '🟢', text: 'Low' };
+        }
+    }
+
+    function sortTable(statusId, columnIndex) {
+        const statusWithSpaces = statusId.replace(/-/g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+        const tableBody = document.getElementById(`table-body-${statusId}`);
+        const allCasesForStatus = caseDataStoreByStatus[statusWithSpaces];
+        if (!allCasesForStatus || allCasesForStatus.length < 2) return;
+
+        const sortDirection = tableBody.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
+        const headers = tableBody.parentElement.querySelectorAll('th');
+        headers.forEach(th => th.querySelector('.sort-icon').textContent = '');
+        headers[columnIndex].querySelector('.sort-icon').textContent = sortDirection === 'asc' ? '▲' : '▼';
+
+        tableBody.dataset.sortDirection = sortDirection;
+        const dir = sortDirection === 'asc' ? 1 : -1;
+
+        allCasesForStatus.sort((a, b) => {
+            let aValue, bValue;
+            switch (columnIndex) {
+                case 0: // SLA Status
+                    const order = ['🔥', '🔴', '🟠', '🟡', '🟢', '❓'];
+                    const slaA = calculateSlaStatus(a).icon;
+                    const slaB = calculateSlaStatus(b).icon;
+                    return (order.indexOf(slaA) - order.indexOf(slaB)) * dir;
+                case 1: // Date
+                    aValue = new Date(a['Menu Request Sent Date'] || 0);
+                    bValue = new Date(b['Menu Request Sent Date'] || 0);
+                    return (aValue - bValue) * dir;
+                case 2: aValue = a['Main Task ID'] || ''; bValue = b['Main Task ID'] || ''; return aValue.localeCompare(bValue) * dir;
+                case 3: aValue = a['Country'] || ''; bValue = b['Country'] || ''; return aValue.localeCompare(bValue) * dir;
+                case 4: aValue = a['Account Name'] || ''; bValue = b['Account Name'] || ''; return aValue.localeCompare(bValue) * dir;
+                default: return 0;
+            }
+        });
+        renderTable(statusWithSpaces);
+    }
 
 /**
  * Main handler to display all fetched logs.
@@ -337,36 +483,38 @@ function getOriginalLog(logId, logType) {
     ALL_FIELDS.forEach(field => {
         let displayValue = activeCaseData[field] || '';
 
-        // --- NEW DISPLAY FORMATTING LOGIC ---
-        if (displayValue) { // Only format if there's a value
+        if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
             } else if (isDurationField(field)) {
-                // Convert fraction of day to seconds for formatTime function
                 const seconds = parseFloat(displayValue) * 86400;
                 displayValue = formatTime(seconds);
             }
         }
-        // --- END NEW LOGIC ---
 
         detailsHTML += `<div class="field"><strong>${field}</strong><span class="field-value">${displayValue}</span></div>`;
     });
     grid.innerHTML = detailsHTML;
 
     cancelEdit(true);
-    // Clear and hide previous logs
-document.getElementById('escalation-logs-container').style.display = 'none';
-document.getElementById('pausing-logs-container').style.display = 'none';
-document.getElementById('cooperation-logs-container').style.display = 'none';
-document.getElementById('escalation-logs-grid').innerHTML = '';
-document.getElementById('pausing-logs-grid').innerHTML = '';
-document.getElementById('cooperation-logs-grid').innerHTML = '';
 
-// Fetch the logs for this case
-google.script.run
-    .withSuccessHandler(displayCaseLogs)
-    .withFailureHandler(err => console.error('Could not load logs:', err))
-    .getLogsForCase(caseId);
+    document.getElementById('escalation-logs-container').style.display = 'none';
+    document.getElementById('pausing-logs-container').style.display = 'none';
+    document.getElementById('cooperation-logs-container').style.display = 'none';
+    document.getElementById('escalation-logs-grid').innerHTML = '';
+    document.getElementById('pausing-logs-grid').innerHTML = '';
+    document.getElementById('cooperation-logs-grid').innerHTML = '';
+
+    google.script.run
+        .withSuccessHandler(logs => {
+            activeCaseData.escalationLogs = logs.escalationLogs;
+            activeCaseData.pausingLogs = logs.pausingLogs;
+            activeCaseData.cooperationLogs = logs.cooperationLogs;
+            displayCaseLogs(logs);
+        })
+        .withFailureHandler(err => console.error('Could not load logs:', err))
+        .getLogsForCase(caseId);
+
     document.getElementById('case-modal').style.display = 'flex';
 }
     function closeCaseModal() {
@@ -467,12 +615,12 @@ logSections.forEach(gridId => {
     document.getElementById(gridId).querySelectorAll('input, textarea').forEach(input => {
         const logId = input.dataset.logId;
         const header = input.dataset.header;
-        
+
         let originalLog;
         if(gridId.includes('escalation')) originalLog = getOriginalLog(logId, 'escalationLogs');
         if(gridId.includes('pausing')) originalLog = getOriginalLog(logId, 'pausingLogs');
         if(gridId.includes('cooperation')) originalLog = getOriginalLog(logId, 'cooperationLogs');
-        
+
         const span = document.createElement('span');
         span.className = 'log-field-value';
         span.dataset.header = header;
@@ -570,7 +718,7 @@ cooperationUpdates.forEach((data, logId) => {
         })
         .updateCaseData(caseId, updatedData);
 }
-    
+
     // --- EDIT GUIDE LOGIC ---
     function handleTimeChange() {
     const guide = document.getElementById('edit-guide-sidebar');
@@ -620,7 +768,7 @@ cooperationUpdates.forEach((data, logId) => {
 function hideGuide() {
     document.getElementById('edit-guide-sidebar').classList.remove('visible');
 }
-    
+
     // --- UTILITIES & VERSION CHECKER ---
     function handleSearch(){initializeBoard()}
     function escape(str){return(str+"").replace(/[\\"']/g,"\\$&").replace(/\u0000/g,"\\0")}
