@@ -1824,32 +1824,33 @@ function updateCaseTimestampsFromLogs() {
     return;
   }
 
-  const mainData = mainSheet.getDataRange().getValues();
+  const mainRange = mainSheet.getDataRange();
+  const mainData = mainRange.getValues();
   const mainHeaders = mainData.shift();
   const mainCaseIdIndex = mainHeaders.indexOf('Main Task ID');
   const pauseStartIndex = mainHeaders.indexOf('Pause Start Time');
-  const pausedEndIndex = mainHeaders.indexOf('Paused End Time');
+  const pausedEndIndex = mainHeaders.indexOf('Pause End Time');
   const escalatedStartIndex = mainHeaders.indexOf('Escalated Start Time');
   const escalatedEndIndex = mainHeaders.indexOf('Escalated End Time');
 
   const processLogs = (sheetName, relatedIdCol, startCol, endCol) => {
     const logSheet = ss.getSheetByName(sheetName);
-    if (!logSheet) return {};
+    if (!logSheet) return new Map();
     const logData = logSheet.getDataRange().getValues();
-    const logHeaders = logData.shift();
-    const idIndex = logHeaders.indexOf(relatedIdCol);
-    const startIndex = logHeaders.indexOf(startCol);
-    const endIndex = logHeaders.indexOf(endCol);
-
-    if ([idIndex, startIndex, endIndex].includes(-1)) return {};
-
+    logData.shift();
     const openLogs = new Map();
+    const idIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(relatedIdCol);
+    const startIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(startCol);
+    const endIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(endCol);
+
+    if ([idIndex, startIndex, endIndex].includes(-1)) return new Map();
+
     logData.forEach(row => {
       const caseId = row[idIndex];
       const startTime = row[startIndex];
       const endTime = row[endIndex];
       if (caseId && startTime && !endTime) {
-        openLogs.set(caseId, startTime);
+        openLogs.set(String(caseId).trim(), startTime);
       }
     });
     return openLogs;
@@ -1858,32 +1859,30 @@ function updateCaseTimestampsFromLogs() {
   const openPauses = processLogs(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
   const openEscalations = processLogs(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalated Start Time', 'Escalated End Time');
 
-  mainData.forEach((row, i) => {
-    const caseId = row[mainCaseIdIndex];
+  let changesMade = false;
+  mainData.forEach(row => {
+    const caseId = String(row[mainCaseIdIndex]).trim();
     if (!caseId) return;
 
-    // Sync Pauses
-    const sheetPauseStart = row[pauseStartIndex];
-    const logPauseStart = openPauses.get(caseId);
-
-    if (logPauseStart && (!sheetPauseStart || sheetPauseStart.getTime() !== logPauseStart.getTime())) {
-      mainSheet.getRange(i + 2, pauseStartIndex + 1).setValue(logPauseStart);
-      mainSheet.getRange(i + 2, pausedEndIndex + 1).setValue('');
-    } else if (!logPauseStart && sheetPauseStart) {
-      mainSheet.getRange(i + 2, pauseStartIndex + 1).setValue('');
+    const currentPauseStart = openPauses.get(caseId) || '';
+    if (row[pauseStartIndex] !== currentPauseStart) {
+      row[pauseStartIndex] = currentPauseStart;
+      row[pausedEndIndex] = '';
+      changesMade = true;
     }
 
-    // Sync Escalations
-    const sheetEscalatedStart = row[escalatedStartIndex];
-    const logEscalatedStart = openEscalations.get(caseId);
-
-    if (logEscalatedStart && (!sheetEscalatedStart || sheetEscalatedStart.getTime() !== logEscalatedStart.getTime())) {
-      mainSheet.getRange(i + 2, escalatedStartIndex + 1).setValue(logEscalatedStart);
-      mainSheet.getRange(i + 2, escalatedEndIndex + 1).setValue('');
-    } else if (!logEscalatedStart && sheetEscalatedStart) {
-      mainSheet.getRange(i + 2, escalatedStartIndex + 1).setValue('');
+    const currentEscalationStart = openEscalations.get(caseId) || '';
+    if (row[escalatedStartIndex] !== currentEscalationStart) {
+      row[escalatedStartIndex] = currentEscalationStart;
+      row[escalatedEndIndex] = '';
+      changesMade = true;
     }
   });
+
+  if (changesMade) {
+    mainSheet.getRange(2, 1, mainData.length, mainHeaders.length).setValues(mainData);
+    Logger.log("updateCaseTimestampsFromLogs: Batch update complete.");
+  }
 }
 
 function getAgentDashboardSummary() {
@@ -1956,8 +1955,6 @@ function getAgentDashboardSummary() {
 function getCasesByStatus(options) {
   try {
     const { status, searchTerm, limit = 20, offset = 0, country } = options;
-
-    updateCaseTimestampsFromLogs();
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
@@ -2390,4 +2387,23 @@ function deEscalateCase(caseId) {
 
 function endCase(caseId) {
     return updateCaseField(caseId, 'Main Task End Date/Time', new Date());
+}
+
+/**
+ * Installs a time-based trigger to run the sync function automatically.
+ * This function should be run manually once by a developer to set up the trigger.
+ */
+function installSyncTrigger() {
+  // Deletes all existing triggers to prevent duplicates
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    ScriptApp.deleteTrigger(trigger);
+  });
+
+  // Creates a new trigger that runs every 15 minutes
+  ScriptApp.newTrigger('updateCaseTimestampsFromLogs')
+      .timeBased()
+      .everyMinutes(15)
+      .create();
+
+  Logger.log("Time-based trigger for updateCaseTimestampsFromLogs installed successfully.");
 }

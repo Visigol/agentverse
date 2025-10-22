@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Case Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --background-main: #F0F8F5; --primary-accent: #00B14F; --card-background: #FFFFFF;
+      --text-primary: #111827; --text-secondary: #6B7280; --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05); --red-deny: #EF4444; --yellow: #F59E0B; --blue: #3B82F6;
+    }
+    body { font-family: 'Inter', sans-serif; margin: 0; background-color: var(--background-main); color: var(--text-primary); }
+    .header { background-color: var(--card-background); padding: 25px 30px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 2.2em; font-weight: 800; }
+    .page-container { padding: 30px; max-width: 100%; box-sizing: border-box; }
+    .search-container { display: flex; gap: 15px; margin-bottom: 30px; background-color: var(--card-background); padding: 20px; border-radius: 12px; box-shadow: 0 4px 8px var(--shadow-color); }
+    .search-container input { flex-grow: 1; font-size: 1.1em; padding: 12px; border-radius: 8px; border: 1px solid var(--border-light); }
+    .search-container button { font-size: 1.1em; padding: 12px 25px; border: none; border-radius: 8px; background-color: var(--primary-accent); color: white; cursor: pointer; }
+    .table-section { background-color: var(--card-background); border-radius: 12px; box-shadow: 0 4px 8px var(--shadow-color); margin-bottom: 30px; overflow: hidden; }
+    .table-section h2 { font-size: 1.5em; font-weight: 700; padding: 20px; margin: 0; background-color: #F9FAFB; border-bottom: 1px solid var(--border-light); }
+    .table-container { padding: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-light); }
+    th { font-size: 0.9em; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="header"><h1>Case Management</h1></div>
+  <div class="page-container">
+    <div id="search-results-container" class="table-section" style="display: block;">
+        <h2 class="section-header">
+            Search Results
+            <button style="float: right; font-size: 0.8em; cursor: pointer;">X</button>
+        </h2>
+        <div class="table-container">
+            <table id="search-results-table">
+                <thead>
+                    <tr>
+                        <th>SLA Status</th>
+                        <th>Menu Request Sent Date</th>
+                        <th>Task ID</th>
+                        <th>Country</th>
+                        <th>Account Name</th>
+                    </tr>
+                </thead>
+                <tbody id="search-results-body">
+                    <tr>
+                        <td>🟢 Low</td>
+                        <td>10/21/2025, 10:00:00 PM</td>
+                        <td>CASE-12345</td>
+                        <td>USA</td>
+                        <td>Test Account 1</td>
+                    </tr>
+                    <tr>
+                        <td>🔴 Critical</td>
+                        <td>10/20/2025, 5:30:00 PM</td>
+                        <td>CASE-67890</td>
+                        <td>Canada</td>
+                        <td>Test Account 2</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+  </div>
+</body>
+</html>
