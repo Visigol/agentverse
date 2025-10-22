@@ -4,6 +4,7 @@
   <base target="_top">
   <title>Case Management</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     :root {
       --background-main: #F0F8F5; --primary-accent: #00B14F; --card-background: #FFFFFF;
@@ -89,10 +90,16 @@
     .details-grid .field span, .details-grid .field input, .details-grid .field textarea { font-size: 1em; color: var(--text-primary); background: none; border: none; padding: 0; width: 100%; font-family: 'Inter', sans-serif; }
     .details-grid .field input, .details-grid .field textarea { background-color: var(--background-main); border: 1px solid var(--border-light); padding: 8px; border-radius: 6px; }
     .details-grid .field textarea { resize: vertical; min-height: 60px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-light); }
-    .modal-actions button { font-size: 1em; padding: 10px 20px; border-radius: 8px; border:none; cursor:pointer; font-weight: 600; }
+    .truncate-link { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 250px; display: inline-block; vertical-align: middle; color: var(--blue); text-decoration: none; }
+    .truncate-link:hover { text-decoration: underline; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 15px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-light); }
+    .modal-actions button { font-size: 1em; padding: 10px 20px; border-radius: 8px; border:none; cursor:pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; }
     .btn-primary { background-color: var(--primary-accent); color: white; }
     .btn-secondary { background-color: var(--border-light); color: var(--text-primary); }
+    .btn-claim { background-color: var(--blue); color: white; }
+    .btn-pause { background-color: var(--yellow); color: white; }
+    .btn-escalate { background-color: var(--red-deny); color: white; }
+    .btn-end { background-color: var(--primary-accent); color: white; }
     #edit-guide-sidebar { display: none; flex-basis: 350px; background-color: #F9FAFB; padding: 25px; box-sizing: border-box; border-left: 1px solid var(--border-light); overflow-y: auto;}
     #edit-guide-sidebar.visible { display: block; }
     #edit-guide-sidebar h3 { margin-top: 0; font-size: 1.4em; color: var(--primary-accent); }
@@ -258,9 +265,17 @@
 
         if (!tableBody) return;
 
-        if (offsets[status] === 0) {
+        const showMoreBtn = document.getElementById(`show-more-${status.toLowerCase().replace(/ /g, '-')}`);
+        const btnText = showMoreBtn ? showMoreBtn.querySelector('.btn-text') : null;
+        const btnLoader = showMoreBtn ? showMoreBtn.querySelector('.btn-loader') : null;
+
+        if (offsets[status] === 0) { // Initial load
            const loaderRow = `<tr><td colspan="5"><div class="loader" style="display:block;"></div></td></tr>`;
            tableBody.innerHTML = loaderRow;
+        } else if (btnLoader && btnText) { // "Show More" click
+            btnText.style.display = 'none';
+            btnLoader.style.display = 'inline-block';
+            showMoreBtn.disabled = true;
         }
 
         const options = {
@@ -271,10 +286,22 @@
         };
 
         google.script.run
-            .withSuccessHandler(cases => displayCases(cases, status, showAll))
+            .withSuccessHandler(cases => {
+                if (btnLoader && btnText) {
+                    btnText.style.display = 'inline-block';
+                    btnLoader.style.display = 'none';
+                    showMoreBtn.disabled = false;
+                }
+                displayCases(cases, status, showAll);
+            })
             .withFailureHandler(err => {
                 console.error(err);
                 tableBody.innerHTML = '<tr><td colspan="5"><p class="error-message">Error loading cases.</p></td></tr>';
+                if (btnLoader && btnText) {
+                    btnText.style.display = 'inline-block';
+                    btnLoader.style.display = 'none';
+                    showMoreBtn.disabled = false;
+                }
             })
             .getCasesByStatus(options);
     }
@@ -369,7 +396,10 @@
               <tbody id="table-body-${statusId}">
               </tbody>
             </table>
-            <button id="show-more-${statusId}" class="show-more-btn" onclick="loadCases('${status}', false)">Show More</button>
+            <button id="show-more-${statusId}" class="show-more-btn" onclick="loadCases('${status}', false)">
+              <span class="btn-text">Show More</span>
+              <span class="loader btn-loader" style="display:none; height: 15px; width: 15px; border-width: 2px;"></span>
+            </button>
           </div>
         </div>
       `;
@@ -514,19 +544,26 @@ function getOriginalLog(logId, logType) {
     document.getElementById('modal-title').textContent = `Case Details: ${activeCaseData['Main Task ID']}`;
 
     let detailsHTML = '';
+    const linkFields = ['Menu link', 'Dish Photos Link'];
     ALL_FIELDS.forEach(field => {
         let displayValue = activeCaseData[field] || '';
+        let finalHtml;
 
-        if (displayValue) {
+        if (linkFields.includes(field) && displayValue) {
+            finalHtml = `<a href="${displayValue}" target="_blank" class="truncate-link">${displayValue}</a>`;
+        } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
             } else if (isDurationField(field)) {
                 const seconds = parseFloat(displayValue) * 86400;
                 displayValue = formatTime(seconds);
             }
+            finalHtml = `<span class="field-value">${displayValue}</span>`;
+        } else {
+            finalHtml = `<span class="field-value"></span>`;
         }
 
-        detailsHTML += `<div class="field"><strong>${field}</strong><span class="field-value">${displayValue}</span></div>`;
+        detailsHTML += `<div class="field"><strong>${field}</strong>${finalHtml}</div>`;
     });
     grid.innerHTML = detailsHTML;
 
@@ -578,22 +615,24 @@ function populateActionButtons(caseData) {
     const container = document.getElementById('case-action-buttons');
     container.innerHTML = ''; // Clear existing buttons
     const caseId = caseData['Main Task ID'];
+    const isPaused = activeCaseData['Pause Start Time'] && !activeCaseData['Paused End Time'];
+    const isEscalated = activeCaseData['Escalated Start Time'] && !activeCaseData['Escalated End Time'];
 
     // --- BUTTON DEFINITIONS ---
     const buttons = [
-        { text: 'Claim Case', condition: !caseData['Useremail'], action: () => handleCaseAction('claimCase', caseId) },
-        { text: 'Pause Case', action: () => handleCaseAction('pauseCase', caseId) },
-        { text: 'Unpause', action: () => handleCaseAction('unpauseCase', caseId) },
-        { text: 'Escalate', action: () => handleCaseAction('escalateCase', caseId) },
-        { text: 'De-Escalate', action: () => handleCaseAction('deEscalateCase', caseId) },
-        { text: 'End Case', action: () => handleCaseAction('endCase', caseId) }
+        { text: 'Claim Case', icon: 'fa-solid fa-hand', className: 'btn-claim', condition: !caseData['Useremail'], action: () => handleCaseAction('claimCase', caseId) },
+        { text: 'Pause Case', icon: 'fa-solid fa-pause', className: 'btn-pause', condition: !isPaused, action: () => handleCaseAction('pauseCase', caseId) },
+        { text: 'Unpause', icon: 'fa-solid fa-play', className: 'btn-secondary', condition: isPaused, action: () => handleCaseAction('unpauseCase', caseId) },
+        { text: 'Escalate', icon: 'fa-solid fa-triangle-exclamation', className: 'btn-escalate', condition: !isEscalated, action: () => handleCaseAction('escalateCase', caseId) },
+        { text: 'De-Escalate', icon: 'fa-solid fa-arrow-down-triangle-square', className: 'btn-secondary', condition: isEscalated, action: () => handleCaseAction('deEscalateCase', caseId) },
+        { text: 'End Case', icon: 'fa-solid fa-flag-checkered', className: 'btn-end', action: () => handleCaseAction('endCase', caseId) }
     ];
 
     buttons.forEach(btn => {
         if (btn.condition !== false) { // Show button if condition is true or undefined
             const buttonEl = document.createElement('button');
-            buttonEl.className = 'btn-secondary'; // Or a different class for actions
-            buttonEl.textContent = btn.text;
+            buttonEl.className = btn.className;
+            buttonEl.innerHTML = `<i class="${btn.icon}"></i> ${btn.text}`;
             buttonEl.onclick = btn.action;
             container.appendChild(buttonEl);
         }
@@ -611,10 +650,9 @@ function populateActionButtons(caseData) {
         document.getElementById('modal-btn-cancel').style.display = 'inline-flex';
         document.getElementById('modal-btn-save').style.display = 'inline-flex';
 
-        grid.querySelectorAll('.field-value').forEach(span => {
-            const header = span.textContent; // In view mode, header is in strong tag, value in span
-            const headerText = span.previousElementSibling.textContent;
-            const value = span.textContent;
+        grid.querySelectorAll('.field-value, .truncate-link').forEach(element => {
+            const headerText = element.previousElementSibling.textContent;
+            const value = activeCaseData[headerText] || '';
             const isTextarea = ['Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Comments', 'Event Summary', 'Escalated Comment', 'SLA Missed Comment'].includes(headerText);
             const inputType = (headerText.toLowerCase().includes('date') || headerText.toLowerCase().includes('time')) ? 'datetime-local' : 'text';
 
@@ -626,14 +664,16 @@ function populateActionButtons(caseData) {
                 inputElement = document.createElement('input');
                 inputElement.type = inputType;
                 if (inputType === 'datetime-local' && value) {
-                    try { inputElement.value = new Date(value).toISOString().substring(0,16); } catch(e) {}
-                } else { inputElement.value = value; }
+                    try { inputElement.value = new Date(value).toISOString().substring(0, 16); } catch(e) {}
+                } else {
+                    inputElement.value = value;
+                }
             }
             inputElement.dataset.header = headerText;
-            if (headerText === 'Main Task Start Date/Time' || headerText === 'Main Task End Date/Time') {
-                inputElement.onchange = handleTimeChange;
+            if (isDateTimeField(headerText)) {
+                inputElement.onchange = handleTimestampChange;
             }
-            span.replaceWith(inputElement);
+            element.replaceWith(inputElement);
         });
         // --- ADD THIS BLOCK TO MAKE LOGS EDITABLE ---
 grid.querySelectorAll('.log-field-value').forEach(span => {
@@ -671,6 +711,9 @@ grid.querySelectorAll('.log-field-value').forEach(span => {
     // Transfer data attributes for saving later
     inputElement.dataset.header = headerText;
     inputElement.dataset.logId = logId;
+    if (isDateTimeField(headerText)) {
+        inputElement.onchange = handleTimestampChange;
+    }
     span.replaceWith(inputElement);
 });
     }
@@ -680,12 +723,30 @@ grid.querySelectorAll('.log-field-value').forEach(span => {
         if (!grid.classList.contains('edit-mode') && !isReset) return;
 
         grid.classList.remove('edit-mode');
-        grid.querySelectorAll('input, textarea').forEach(input => {
-            const span = document.createElement('span');
-            span.className = 'field-value';
-            span.textContent = activeCaseData[input.dataset.header] || '';
-            input.replaceWith(span);
+        // This re-renders the main details grid to correctly restore special fields like links and formatted dates
+        let detailsHTML = '';
+        const linkFields = ['Menu link', 'Dish Photos Link'];
+        ALL_FIELDS.forEach(field => {
+            let displayValue = activeCaseData[field] || '';
+            let finalHtml;
+
+            if (linkFields.includes(field) && displayValue) {
+                finalHtml = `<a href="${displayValue}" target="_blank" class="truncate-link">${displayValue}</a>`;
+            } else if (displayValue) {
+                if (isDateTimeField(field)) {
+                    displayValue = formatDisplayDate(displayValue);
+                } else if (isDurationField(field)) {
+                    const seconds = parseFloat(displayValue) * 86400;
+                    displayValue = formatTime(seconds);
+                }
+                finalHtml = `<span class="field-value">${displayValue}</span>`;
+            } else {
+                finalHtml = `<span class="field-value"></span>`;
+            }
+            detailsHTML += `<div class="field"><strong>${field}</strong>${finalHtml}</div>`;
         });
+        grid.innerHTML = detailsHTML;
+
         document.getElementById('modal-btn-edit').style.display = 'inline-flex';
         document.getElementById('modal-btn-cancel').style.display = 'none';
         document.getElementById('modal-btn-save').style.display = 'none';
@@ -733,26 +794,43 @@ logSections.forEach(gridId => {
         updatedData[input.dataset.header] = value;
     });
 
-    // If the guide was visible, it means times were changed. Recalculate AHT.
+    // If the calculation guide was visible, it means timestamps were changed.
+    // We must recalculate and save the new durations.
     if (document.getElementById('edit-guide-sidebar').classList.contains('visible')) {
-        const startStr = updatedData['Main Task Start Date/Time'];
-        const endStr = updatedData['Main Task End Date/Time'];
-
-        // Only proceed if both dates are present
-        if (startStr && endStr) {
-            const start = new Date(startStr);
-            const end = new Date(endStr);
-            // Use the original stored data for pause/escalation as they are not editable here
-            const pause = parseFloat(activeCaseData['Stored Pause Duration'] || 0);
-            const escalation = parseFloat(activeCaseData['Stored Escalation Duration'] || 0);
-
-            if (end > start) {
-                const newAHTSeconds = ((end - start) / 1000) - (pause * 86400) - (escalation * 86400);
-                // Convert seconds back to Google Sheet's duration format (fraction of a day)
-                // Ensure it doesn't go below zero
-                updatedData['Stored Agent Handling Time'] = newAHTSeconds > 0 ? (newAHTSeconds / 86400) : 0;
+        let totalPauseSeconds = 0;
+        document.querySelectorAll('#pausing-logs-grid .log-record').forEach(log => {
+            const startInput = log.querySelector('input[data-header="Pause Start Time"]');
+            const endInput = log.querySelector('input[data-header="Paused End Time"]');
+            if (startInput && endInput && startInput.value && endInput.value) {
+                const start = new Date(startInput.value);
+                const end = new Date(endInput.value);
+                if (end > start) totalPauseSeconds += (end - start) / 1000;
             }
+        });
+
+        let totalEscalationSeconds = 0;
+        document.querySelectorAll('#escalation-logs-grid .log-record').forEach(log => {
+            const startInput = log.querySelector('input[data-header="Escalated Start Time"]');
+            const endInput = log.querySelector('input[data-header="Escalated End Time"]');
+            if (startInput && endInput && startInput.value && endInput.value) {
+                const start = new Date(startInput.value);
+                const end = new Date(endInput.value);
+                if (end > start) totalEscalationSeconds += (end - start) / 1000;
+            }
+        });
+
+        const mainTaskStart = new Date(updatedData['Main Task Start Date/Time']);
+        const mainTaskEnd = new Date(updatedData['Main Task End Date/Time']);
+        let newAHTSeconds = 0;
+        if (mainTaskEnd > mainTaskStart) {
+            const grossSeconds = (mainTaskEnd - mainTaskStart) / 1000;
+            newAHTSeconds = grossSeconds - totalPauseSeconds - totalEscalationSeconds;
         }
+
+        // Convert seconds to Google Sheet's duration format (fraction of a day)
+        updatedData['Stored Agent Handling Time'] = newAHTSeconds > 0 ? (newAHTSeconds / 86400) : 0;
+        updatedData['Stored Pause Duration'] = totalPauseSeconds > 0 ? (totalPauseSeconds / 86400) : 0;
+        updatedData['Stored Escalation Duration'] = totalEscalationSeconds > 0 ? (totalEscalationSeconds / 86400) : 0;
     }
 // --- ADD THIS BLOCK TO SAVE LOGS ---
 const collectLogUpdates = (containerId, pkName) => {
@@ -802,49 +880,76 @@ cooperationUpdates.forEach((data, logId) => {
 }
 
     // --- EDIT GUIDE LOGIC ---
-    function handleTimeChange() {
+function handleTimestampChange() {
     const guide = document.getElementById('edit-guide-sidebar');
     const guideDetails = document.getElementById('guide-calculation-details');
     const modal = document.getElementById('case-modal');
 
-    const startInput = modal.querySelector(`[data-header="Main Task Start Date/Time"]`);
-    const endInput = modal.querySelector(`[data-header="Main Task End Date/Time"]`);
+    const getDateValue = (header) => {
+        const input = modal.querySelector(`input[data-header="${header}"]`);
+        return input && input.value ? new Date(input.value) : null;
+    };
 
-    if (!startInput || !endInput) return; // Safety check
+    // 1. Calculate Total Pause Duration from all logs
+    let totalPauseSeconds = 0;
+    const pauseLogs = Array.from(modal.querySelectorAll('#pausing-logs-grid .log-record'));
+    pauseLogs.forEach(log => {
+        const startInput = log.querySelector('input[data-header="Pause Start Time"]');
+        const endInput = log.querySelector('input[data-header="Paused End Time"]');
+        if (startInput && endInput && startInput.value && endInput.value) {
+            const start = new Date(startInput.value);
+            const end = new Date(endInput.value);
+            if (end > start) {
+                totalPauseSeconds += (end - start) / 1000;
+            }
+        }
+    });
 
-    const startValue = startInput.value;
-    const endValue = endInput.value;
+    // 2. Calculate Total Escalation Duration from all logs
+    let totalEscalationSeconds = 0;
+    const escalationLogs = Array.from(modal.querySelectorAll('#escalation-logs-grid .log-record'));
+    escalationLogs.forEach(log => {
+        const startInput = log.querySelector('input[data-header="Escalated Start Time"]');
+        const endInput = log.querySelector('input[data-header="Escalated End Time"]');
+        if (startInput && endInput && startInput.value && endInput.value) {
+            const start = new Date(startInput.value);
+            const end = new Date(endInput.value);
+            if (end > start) {
+                totalEscalationSeconds += (end - start) / 1000;
+            }
+        }
+    });
 
-    // Scenario 1: End date is cleared
-    if (!endValue) {
-        guideDetails.innerHTML = '<strong>End Time is empty.</strong><br>This change will not affect other calculations.';
-        guide.classList.add('visible');
-        return;
-    }
+    // 3. Calculate Agent Handling Time
+    const mainTaskStart = getDateValue('Main Task Start Date/Time');
+    const mainTaskEnd = getDateValue('Main Task End Date/Time');
+    let newAHTSeconds = 0;
+    let grossSeconds = 0;
 
-    const start = new Date(startValue);
-    const end = new Date(endValue);
-    // Get original pause/escalation in seconds (they are stored as fractions of a day)
-    const pauseSeconds = (parseFloat(activeCaseData['Stored Pause Duration']) || 0) * 86400;
-    const escalationSeconds = (parseFloat(activeCaseData['Stored Escalation Duration']) || 0) * 86400;
-
-    // Scenario 2: Dates are valid and logical
-    if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start) {
-        const grossSeconds = (end - start) / 1000;
-        const newAHTSeconds = grossSeconds - pauseSeconds - escalationSeconds;
-
-        guideDetails.innerHTML = `
-            <strong>New Est. Handling Time:</strong><br>
-            <span style="font-size: 1.5em; color: var(--primary-accent);">${formatTime(newAHTSeconds)}</span><br><br>
-            (${formatTime(grossSeconds)})<br>
-            - ${formatTime(pauseSeconds)} (Pause)<br>
-            - ${formatTime(escalationSeconds)} (Escalation)
-        `;
-        guide.classList.add('visible');
+    if (mainTaskStart && mainTaskEnd && mainTaskEnd > mainTaskStart) {
+        grossSeconds = (mainTaskEnd - mainTaskStart) / 1000;
+        newAHTSeconds = grossSeconds - totalPauseSeconds - totalEscalationSeconds;
     } else {
-        // Scenario 3: Dates are invalid (e.g., start > end)
         guide.classList.remove('visible');
+        return; // Exit if main dates are invalid
     }
+
+    // 4. Populate and show the sidebar
+    guideDetails.innerHTML = `
+        <p>Changing these times will affect the following stored durations:</p>
+        <strong>New Agent Handling Time:</strong><br>
+        <span style="font-size: 1.5em; color: var(--primary-accent);">${formatTime(newAHTSeconds)}</span><br>
+        <strong>New Pause Duration:</strong><br>
+        <span style="font-size: 1.2em;">${formatTime(totalPauseSeconds)}</span><br>
+        <strong>New Escalation Duration:</strong><br>
+        <span style="font-size: 1.2em;">${formatTime(totalEscalationSeconds)}</span><br><br>
+        <hr>
+        <strong>Calculation:</strong><br>
+        (${formatTime(grossSeconds)}) [Main Task]<br>
+        - ${formatTime(totalPauseSeconds)} [Total Pause]<br>
+        - ${formatTime(totalEscalationSeconds)} [Total Escalation]
+    `;
+    guide.classList.add('visible');
 }
 
 function hideGuide() {
