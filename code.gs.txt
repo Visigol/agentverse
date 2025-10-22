@@ -1816,6 +1816,76 @@ function getAgentAttendanceLog(dateRange) {
  * Gets a performance summary for the agent for the current day.
  * Called by the new agent dashboard to populate scorecards.
  */
+function updateCaseTimestampsFromLogs() {
+  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+  const mainSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+  if (!mainSheet) {
+    Logger.log("updateCaseTimestampsFromLogs: AvailableCases sheet not found.");
+    return;
+  }
+
+  const mainData = mainSheet.getDataRange().getValues();
+  const mainHeaders = mainData.shift();
+  const mainCaseIdIndex = mainHeaders.indexOf('Main Task ID');
+  const pauseStartIndex = mainHeaders.indexOf('Pause Start Time');
+  const pausedEndIndex = mainHeaders.indexOf('Paused End Time');
+  const escalatedStartIndex = mainHeaders.indexOf('Escalated Start Time');
+  const escalatedEndIndex = mainHeaders.indexOf('Escalated End Time');
+
+  const processLogs = (sheetName, relatedIdCol, startCol, endCol) => {
+    const logSheet = ss.getSheetByName(sheetName);
+    if (!logSheet) return {};
+    const logData = logSheet.getDataRange().getValues();
+    const logHeaders = logData.shift();
+    const idIndex = logHeaders.indexOf(relatedIdCol);
+    const startIndex = logHeaders.indexOf(startCol);
+    const endIndex = logHeaders.indexOf(endCol);
+
+    if ([idIndex, startIndex, endIndex].includes(-1)) return {};
+
+    const openLogs = new Map();
+    logData.forEach(row => {
+      const caseId = row[idIndex];
+      const startTime = row[startIndex];
+      const endTime = row[endIndex];
+      if (caseId && startTime && !endTime) {
+        openLogs.set(caseId, startTime);
+      }
+    });
+    return openLogs;
+  };
+
+  const openPauses = processLogs(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
+  const openEscalations = processLogs(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalated Start Time', 'Escalated End Time');
+
+  mainData.forEach((row, i) => {
+    const caseId = row[mainCaseIdIndex];
+    if (!caseId) return;
+
+    // Sync Pauses
+    const sheetPauseStart = row[pauseStartIndex];
+    const logPauseStart = openPauses.get(caseId);
+
+    if (logPauseStart && (!sheetPauseStart || sheetPauseStart.getTime() !== logPauseStart.getTime())) {
+      mainSheet.getRange(i + 2, pauseStartIndex + 1).setValue(logPauseStart);
+      mainSheet.getRange(i + 2, pausedEndIndex + 1).setValue('');
+    } else if (!logPauseStart && sheetPauseStart) {
+      mainSheet.getRange(i + 2, pauseStartIndex + 1).setValue('');
+    }
+
+    // Sync Escalations
+    const sheetEscalatedStart = row[escalatedStartIndex];
+    const logEscalatedStart = openEscalations.get(caseId);
+
+    if (logEscalatedStart && (!sheetEscalatedStart || sheetEscalatedStart.getTime() !== logEscalatedStart.getTime())) {
+      mainSheet.getRange(i + 2, escalatedStartIndex + 1).setValue(logEscalatedStart);
+      mainSheet.getRange(i + 2, escalatedEndIndex + 1).setValue('');
+    } else if (!logEscalatedStart && sheetEscalatedStart) {
+      mainSheet.getRange(i + 2, escalatedStartIndex + 1).setValue('');
+    }
+  });
+}
+
 function getAgentDashboardSummary() {
   try {
     const agentEmail = Session.getActiveUser().getEmail();
@@ -1887,6 +1957,8 @@ function getCasesByStatus(options) {
   try {
     const { status, searchTerm, limit = 20, offset = 0, country } = options;
 
+    updateCaseTimestampsFromLogs();
+
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
     if (!sheet) throw new Error("AvailableCases sheet not found.");
@@ -1951,6 +2023,64 @@ function getCasesByStatus(options) {
   } catch (e) {
     Logger.log("Error in getCasesByStatus: " + e.toString());
     throw new Error("Failed to retrieve cases. " + e.message);
+  }
+}
+
+/**
+ * Searches all cases across all statuses based on a search term.
+ * @param {string} searchTerm The term to search for.
+ * @returns {Array<Object>} A list of case objects that match the search term.
+ */
+function searchAllCases(searchTerm) {
+  try {
+    if (!searchTerm) {
+      return [];
+    }
+
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    if (!sheet) throw new Error("AvailableCases sheet not found.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+
+    let records = data.map(row => {
+      let record = {};
+      headers.forEach((header, i) => { record[header] = row[i]; });
+      return record;
+    });
+
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
+    let filteredRecords = records.filter(record => {
+        return searchableHeaders.some(header =>
+            record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
+        );
+    });
+
+    filteredRecords.sort((a, b) => {
+      const dateA = new Date(a['Menu Request Sent Date'] || 0);
+      const dateB = new Date(b['Menu Request Sent Date'] || 0);
+      return dateB - dateA;
+    });
+
+    const serializableRecords = filteredRecords.map(record => {
+        const newRecord = {};
+        for (const key in record) {
+            if (record[key] instanceof Date) {
+                newRecord[key] = record[key].toISOString();
+            } else {
+                newRecord[key] = record[key];
+            }
+        }
+        return newRecord;
+    });
+
+    return serializableRecords;
+
+  } catch (e) {
+    Logger.log("Error in searchAllCases: " + e.toString());
+    throw new Error("Failed to search cases. " + e.message);
   }
 }
 
