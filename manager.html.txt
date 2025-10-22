@@ -552,17 +552,18 @@
         return;
       }
       button.textContent = "Hide Cases";
-      let tableHtml = '<h4>Case Activity</h4>';
+      let contentHtml = '<h4>Case Activity</h4>';
       if (caseData.length === 0) {
-        tableHtml += '<p>No case activity found for this agent in the selected period.</p>';
+        contentHtml += '<p>No case activity found for this agent in the selected period.</p>';
       } else {
-        tableHtml += `<div class="scrollable-table-container"><table><thead><tr><th>Case ID</th><th>Account Name</th><th>Start Time</th><th>End Time</th><th>Idle Time Before</th><th>Current Status</th></tr></thead><tbody>`;
+        let tableHtml = `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Start Time</th><th>End Time</th><th>Idle Time Before</th><th>Current Status</th></tr></thead><tbody>`;
         caseData.forEach(c => {
           tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${c.startTimeISO ? new Date(c.startTimeISO).toLocaleString() : 'N/A'}</td><td>${c.endTimeISO ? new Date(c.endTimeISO).toLocaleString() : 'N/A'}</td><td>${formatDuration(c.idleTimeBeforeThisCaseSeconds)}</td><td>${c.status || 'N/A'}</td></tr>`;
         });
-        tableHtml += '</tbody></table></div>';
+        tableHtml += '</tbody></table>';
+        contentHtml += `<div class="scrollable-table-container">${tableHtml}</div>`;
       }
-      container.innerHTML = tableHtml;
+      container.innerHTML = contentHtml;
     }
     
     // --- DATA LOADING & EVENT HANDLER FUNCTIONS ---
@@ -899,18 +900,19 @@
         const endDateStr = document.getElementById('dateRangeToggle').checked ? document.getElementById('endDate').value : startDateStr;
         google.script.run
           .withSuccessHandler(caseDetails => {
-            let tableHtml = `<div class="leaderboard-details-container"><h4>Case Details</h4>`;
+            let contentHtml = `<div class="leaderboard-details-container"><h4>Case Details</h4>`;
             if (caseDetails && caseDetails.length > 0) {
-              tableHtml += `<div class="scrollable-table-container"><table><thead><tr><th>Case ID</th><th>Account Name</th><th>Handling Time</th></tr></thead><tbody>`;
+              let tableHtml = `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Handling Time</th></tr></thead><tbody>`;
               caseDetails.forEach(c => {
                 tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${formatDuration(c.handlingTime)}</td></tr>`;
               });
-              tableHtml += `</tbody></table></div>`;
+              tableHtml += `</tbody></table>`;
+              contentHtml += `<div class="scrollable-table-container">${tableHtml}</div>`;
             } else {
-              tableHtml += `<p>No completed cases found for this agent in the selected period.</p>`;
+              contentHtml += `<p>No completed cases found for this agent in the selected period.</p>`;
             }
-            tableHtml += `</div>`;
-            cell.querySelector('.details-container').innerHTML = tableHtml;
+            contentHtml += `</div>`;
+            cell.querySelector('.details-container').innerHTML = contentHtml;
           })
           .withFailureHandler(err => {
             cell.querySelector('.details-container').innerHTML = `<h4 style="color: #f04747;">Error:</h4><p>${err.message}</p>`;
