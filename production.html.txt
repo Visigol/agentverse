@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <title>Manager Dashboard - Production</title>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <style>
+        :root {
+            --background-main: #F0F8F5; --primary-accent: #00B14F; --card-background: #FFFFFF;
+            --text-primary: #111827; --text-secondary: #6B7280; --border-light: #E5E7EB;
+            --shadow-color: rgba(0, 0, 0, 0.05); --red-error: #EF4444;
+        }
+        body {
+            font-family: 'Inter', sans-serif; margin: 0; padding: 0;
+            background-color: var(--background-main); color: var(--text-primary);
+            font-size: 15px; line-height: 1.6;
+        }
+        h1 { margin: 0; font-size: 2.2em; font-weight: 800; color: var(--primary-accent); }
+        h2 { font-size: 1.6em; font-weight: 700; color: var(--text-primary); margin: 0 0 20px 0; }
+        
+        .dashboard-container { padding: 30px; max-width: 1600px; margin: 0 auto; }
+        .header {
+            background-color: var(--card-background);
+            color: var(--text-primary);
+            padding: 25px 30px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .controls-card {
+            padding: 20px; background-color: var(--card-background);
+            border: 1px solid var(--border-light); border-radius: 12px;
+            display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+            margin: 30px 0; box-shadow: 0 4px 8px var(--shadow-color);
+        }
+        .control-group { display: flex; align-items: center; gap: 10px; }
+        .controls-card label { font-weight: 600; color: var(--text-secondary); }
+        .controls-card input[type="date"], .controls-card select {
+            background-color: var(--background-main); color: var(--text-primary);
+            border: 1px solid var(--border-light); border-radius: 8px;
+            padding: 10px 12px; font-size: 1em;
+        }
+        .controls-card button {
+            background-color: var(--primary-accent); color: white; cursor: pointer;
+            border: none; padding: 10px 20px; border-radius: 8px;
+            font-weight: 600; margin-left: auto; font-size: 1.05em;
+        }
+        .controls-card button.secondary {
+    background-color: transparent;
+    color: var(--primary-accent);
+    border: 1px solid var(--primary-accent);
+}
+.controls-card button.secondary:hover {
+    background-color: #e6f7ee; /* A light green for hover */
+}
+        .section-layout {
+            display: flex;
+            align-items: flex-start;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .section-content {
+            flex: 3;
+        }
+        .section-visual {
+            flex: 2;
+            position: sticky;
+            top: 30px;
+        }
+        .card {
+            background-color: var(--card-background); padding: 25px;
+            border-radius: 12px;
+            border: 1px solid var(--border-light); box-shadow: 0 4px 8px var(--shadow-color);
+        }
+        .chart-card {
+            height: 420px;
+        }
+         .filter-grid {
+    display: grid;
+    /* This creates a grid with exactly 3 equal-width columns */
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px; /* Increased gap slightly for better spacing */
+    width: 100%;
+    flex-grow: 1;
+}
+
+/* This targets the visible Choices.js input and makes it fill its grid cell */
+.choices {
+    width: 100%; 
+}
+        @media (max-width: 1200px) {
+            .section-layout {
+                flex-direction: column;
+            }
+            .section-visual {
+                position: static;
+                width: 100%;
+            }
+        }
+        .scorecard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+        }
+        .scorecard { border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; }
+        .scorecard.clickable:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.07); cursor: pointer; }
+        .scorecard-title { font-size: 1em; font-weight: 600; color: var(--text-secondary); margin: 0 0 10px 0; }
+        .scorecard-value { font-size: 2.5em; font-weight: 700; color: var(--text-primary); }
+        .clickable .scorecard-value { color: var(--primary-accent); }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.95em; }
+        th, td { padding: 12px 15px; text-align: left; vertical-align: middle; }
+        th { color: var(--text-primary); font-weight: 700; text-align: left; border-bottom: 1px solid var(--border-light); }
+        td { color: var(--text-primary); border-bottom: 1px solid var(--border-light); text-align: center; }
+        tbody tr:last-child td { border-bottom: none; }
+        tfoot tr:first-child td { border-top: 2px solid var(--text-primary); font-weight: 700; }
+        td.clickable { font-weight: 700; color: var(--primary-accent); cursor:pointer; }
+        #marketCountTable td:first-child, #tatTable td:first-child, #menuComplexityTable td:first-child, #ahtByMonthTable td:first-child, #ahtByRetailerTable td:first-child, #tatBucketTable td:first-child { font-weight: 700; text-align:left; }
+
+        #ahtByMonthTable th, #ahtByRetailerTable th, #tatBucketTable th {
+            text-align: center;
+        }
+        #ahtByMonthTable th:first-child, #ahtByRetailerTable th:first-child, #tatBucketTable th:first-child {
+            text-align: left;
+        }
+
+        .details-container {
+            padding: 20px;
+        }
+        .details-container h4 {
+            color: var(--text-primary);
+            font-weight: 700;
+            margin: 0 0 15px 0;
+            font-size: 1.2em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .details-table-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--border-light);
+            border-radius: 8px;
+        }
+        .details-table-wrapper table {
+            margin-top: 0;
+            border: none;
+            box-shadow: none;
+        }
+        .details-table-wrapper th {
+            background-color: var(--background-main);
+        }
+        .details-table-wrapper td {
+            color: var(--text-secondary);
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        #error-display {
+            color: white; background-color: var(--red-error); padding: 18px 25px; margin-bottom: 25px;
+            border-radius: 12px; font-weight: 600; line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Production Dashboard</h1>
+        <div id="version-info-container">
+            <div>VERSION: <strong id="scriptVersionDisplay">...</strong></div>
+            <div id="versionStatusMessage" style="font-size: 0.9em; margin-top: 3px;"></div>
+            <div id="updateNotificationArea" style="display: none;">
+                <strong>Update Available!</strong>
+                <div id="updateFeaturesDisplay" style="font-size: 0.9em; margin: 4px 0;"></div>
+                <button id="updateButton">Update Now</button>
+            </div>
+            <div id="versionError" class="error-message" style="display:none;"></div>
+        </div>
+    </div>
+
+    <div class="dashboard-container" id="main-container">
+      <div class="controls-card">
+    <div class="control-group">
+        <label for="startDate">Start Date:</label><input type="date" id="startDate">
+    </div>
+    <div class="control-group">
+        <label for="endDate">End Date:</label><input type="date" id="endDate">
+    </div>
+    <div class="control-group">
+        <input type="checkbox" id="dateRangeToggle"><label for="dateRangeToggle">Use Range</label>
+    </div>
+
+    <div class="filter-grid">
+    <div class="control-group">
+        <label for="statusFilter">Status:</label>
+        <select id="statusFilter" multiple></select>
+    </div>
+    <div class="control-group">
+        <label for="marketFilter">Market:</label>
+        <select id="marketFilter" multiple></select>
+    </div>
+    <div class="control-group">
+        <label for="categoryFilter">Category:</label>
+        <select id="categoryFilter" multiple></select>
+    </div>
+    <div class="control-group">
+        <label for="taskTypeFilter">Task Type:</label>
+        <select id="taskTypeFilter" multiple></select>
+    </div>
+    <div class="control-group">
+        <label for="retailerTypeFilter">Retailer Type:</label>
+        <select id="retailerTypeFilter" multiple></select>
+    </div>
+    <div class="control-group">
+        <label for="slaReasonFilter">SLA Missed Reason:</label>
+        <select id="slaReasonFilter" multiple></select>
+    </div>
+</div>
+    <button onclick="loadProductionData()">Load Data</button>
+</div>
+
+        <div class="card">
+            <h2>Task Summary</h2>
+            <div id="scorecard-container" class="scorecard-grid"></div>
+            <div id="scorecard-details"></div>
+        </div>
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>Task Count by Market</h2>
+                    <table id="marketCountTable">
+                        <thead><tr><th>Country</th><th>Cancelled</th><th>Completed</th><th>Escalated</th><th>In Progress</th><th>Not Started</th><th>Task Paused</th></tr></thead>
+                        <tbody id="marketCountBody"></tbody>
+                    </table>
+                    <div id="market-details"></div>
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="marketChart"></div>
+            </div>
+        </div>
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>TAT Adherence by Market</h2>
+                    <table id="tatTable">
+                        <thead><tr><th>Market</th><th>TAT Adhered</th><th>TAT Missed</th><th>Grand Total</th></tr></thead>
+                        <tbody id="tatTableBody"></tbody>
+                    </table>
+                    <div id="tat-details"></div>
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="tatChart"></div>
+            </div>
+        </div>
+        
+        <!-- ===== NEW SECTION START ===== -->
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>TAT Bucket</h2>
+                    <table id="tatBucketTable">
+                        <thead>
+                            <tr>
+                                <th>Country</th>
+                                <th>&lt;24 hours</th>
+                                <th>24-30 hours</th>
+                                <th>30-48 hours</th>
+                                <th>&gt;48 hours</th>
+                                <th>Grand Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tatBucketBody"></tbody>
+                        <tfoot id="tatBucketFoot"></tfoot>
+                    </table>
+                    <div id="tat-bucket-details"></div>
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="tatBucketChart"></div>
+            </div>
+        </div>
+        <!-- ===== NEW SECTION END ===== -->
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>Menu Complexity Analysis</h2>
+                    <table id="menuComplexityTable">
+                        <thead>
+                            <tr>
+                                <th>Country</th>
+                                <th>Avg. AHT</th>
+                                <th>Avg. Dishes</th>
+                                <th>Avg. Photos</th>
+                                <th>Avg. Options</th>
+                                <th>Avg. Option Groups</th>
+                            </tr>
+                        </thead>
+                        <tbody id="menuComplexityBody"></tbody>
+                        <tfoot id="menuComplexityFoot"></tfoot>
+                    </table>
+                    <div id="menu-complexity-details"></div>
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="menuComplexityChart"></div>
+            </div>
+        </div>
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>Average AHT per Market by Month</h2>
+                    <table id="ahtByMonthTable">
+                        <thead id="ahtByMonthHead"></thead>
+                        <tbody id="ahtByMonthBody"></tbody>
+                        <tfoot id="ahtByMonthFoot"></tfoot>
+                    </table>
+                   <div id="aht-by-month-details"></div> 
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="ahtByMonthChart"></div>
+            </div>
+        </div>
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+        <div class="section-layout">
+            <div class="section-content">
+                <div class="card">
+                    <h2>Average AHT by Retailer Provider Type</h2>
+                    <table id="ahtByRetailerTable">
+                        <thead id="ahtByRetailerHead"></thead>
+                        <tbody id="ahtByRetailerBody"></tbody>
+                        <tfoot id="ahtByRetailerFoot"></tfoot>
+                    </table>
+                    <div id="aht-by-retailer-details"></div>
+                </div>
+            </div>
+            <div class="section-visual">
+                <div class="card chart-card" id="ahtByRetailerChart"></div>
+            </div>
+        </div>
+
+
+        <hr style="border:none; border-top: 2px solid var(--primary-accent); opacity: 0.5; margin: 40px 0;">
+
+<div class="section-layout">
+    <div class="section-content">
+        <div class="card">
+            <h2>Average AHT by Category</h2>
+            <table id="ahtByCategoryTable">
+                <thead id="ahtByCategoryHead"></thead>
+                <tbody id="ahtByCategoryBody"></tbody>
+                <tfoot id="ahtByCategoryFoot"></tfoot>
+            </table>
+            <div id="aht-by-category-details"></div>
+        </div>
+    </div>
+    <div class="section-visual">
+        <div class="card chart-card" id="ahtByCategoryChart"></div>
+    </div>
+</div>
+
+    </div>
+
+<script>
+    let marketChartInstance = null;
+    let tatChartInstance = null;
+    let menuComplexityChartInstance = null;
+    let ahtByMonthChartInstance = null;
+    let ahtByRetailerChartInstance = null;
+    let tatBucketChartInstance = null;
+    let ahtByCategoryChartInstance = null; // ADD THIS LINE
+    let choiceInstances = {}; 
+    let currentDrilldownData = []; 
+
+
+function populateFilterDropdowns(options) {
+    // You can add this line for debugging to check the data from the server
+    // console.log("Received filter options:", options); 
+
+    const choiceConfig = {
+        removeItemButton: true,
+        placeholder: true,
+        allowHTML: false,
+    };
+
+    // Helper to initialize a Choices.js dropdown
+    const initializeChoice = (elementId, values, placeholder) => {
+        const select = document.getElementById(elementId);
+        if (!select) return;
+
+        // Clear previous instance if it exists
+        if (choiceInstances[elementId]) {
+            choiceInstances[elementId].destroy();
+        }
+
+        // Create a new Choices instance
+        choiceInstances[elementId] = new Choices(select, { 
+            ...choiceConfig, 
+            placeholderValue: placeholder 
+        });
+        
+        // This is the key part: it maps the array of strings (e.g., ['Portugal', 'Germany'])
+        // into the format Choices.js expects: [{ value: 'Portugal', label: 'Portugal' }, ...]
+        const choices = values.map(value => ({ value: value, label: value }));
+        
+        // Set the choices in the dropdown
+        choiceInstances[elementId].setChoices(choices, 'value', 'label', true);
+    };
+
+    // Initialize all your filters
+    initializeChoice('statusFilter', options.statuses, 'All Statuses');
+    initializeChoice('marketFilter', options.markets, 'All Markets');
+    initializeChoice('categoryFilter', options.categories, 'All Categories');
+    initializeChoice('taskTypeFilter', options.taskTypes, 'All Task Types');
+    initializeChoice('retailerTypeFilter', options.retailerTypes, 'All Retailer Types');
+    initializeChoice('slaReasonFilter', options.slaMissedReasons, 'All SLA Reasons');
+}
+
+
+
+
+
+    // =================================================================================
+    // --- CORE & UTILITY FUNCTIONS ---
+    // =================================================================================
+
+    function loadProductionData() {
+        closeAllDetails();
+        const filters = buildFilters();
+        if (!filters.startDateStr) {
+            alert("Please select a start date.");
+            return;
+        }
+        setLoadingState(true);
+        google.script.run
+            .withSuccessHandler(handleReportResponse)
+            .withFailureHandler(handleError)
+            .getProductionReport(filters);
+    }
+
+    function handleReportResponse(response) {
+        setLoadingState(false);
+        clearError();
+        if (response.error_message) {
+            displayError(response.error_message);
+        } else {
+            displaySummaryData(response.summary);
+            // This is now called here to ensure it runs after data loads successfully
+            fetchVersionInformation(); 
+        }
+    }
+    
+    /**
+     * This function controls the "End Date" picker's enabled/disabled state.
+     */
+    function toggleDateRange() {
+        const endDateInput = document.getElementById('endDate');
+        const useRangeCheckbox = document.getElementById('dateRangeToggle');
+        // The '.disabled' property controls if the element is interactive
+        endDateInput.disabled = !useRangeCheckbox.checked;
+        
+        // If the checkbox is unchecked, sync the end date with the start date
+        if (!useRangeCheckbox.checked) {
+            endDateInput.value = document.getElementById('startDate').value;
+        }
+    }
+    
+    function buildFilters(ds, dm, isTat = false, subFilter = null) {
+    // Helper to get values from a choice instance, returns an empty array if undefined
+    const getChoiceValues = (instanceName) => {
+        return choiceInstances[instanceName] ? choiceInstances[instanceName].getValue(true) : [];
+    };
+
+    return {
+        // Date filters
+        startDateStr: document.getElementById('startDate').value,
+        endDateStr: document.getElementById('dateRangeToggle').checked ? document.getElementById('endDate').value : document.getElementById('startDate').value,
+        
+        // Drilldown context
+        drillDownStatus: ds,
+        drillDownMarket: dm,
+        drillDownTat: isTat ? ds : null,
+        subFilter: subFilter,
+
+        // New dashboard-wide multi-select filters
+        selectedStatus: getChoiceValues('statusFilter'),
+        selectedMarket: getChoiceValues('marketFilter'),
+        selectedCategory: getChoiceValues('categoryFilter'),
+        selectedTaskType: getChoiceValues('taskTypeFilter'),
+        selectedRetailerType: getChoiceValues('retailerTypeFilter'),
+        selectedSlaReason: getChoiceValues('slaReasonFilter')
+    };
+}
+
+    // =================================================================================
+    // --- DISPLAY & RENDERING FUNCTIONS (UNCHANGED) ---
+    // =================================================================================
+
+    function displaySummaryData(summary) {
+        displayScorecards(summary.totalCounts);
+        displayMarketTable(summary.marketCounts);
+        displayTatTable(summary.tatCounts);
+        displayTatBucketTable(summary.tatBucket.marketData, summary.tatBucket.grandTotal);
+        displayMenuComplexityTable(summary.menuComplexity.marketData, summary.menuComplexity.grandTotal);
+        displayAhtByMonth(summary.ahtByMonth.marketData, summary.monthList, summary.ahtByMonth.grandTotal);
+        displayAhtByRetailer(summary.ahtByRetailer.marketData, summary.retailerTypeList, summary.ahtByRetailer.grandTotal);
+        displayAhtByCategory(summary.ahtByCategory.categoryData, summary.categoryList, summary.ahtByCategory.grandTotal);
+        renderMarketChart(summary.marketCounts);
+        renderTatChart(summary.tatCounts);
+        renderTatBucketChart(summary.tatBucket.marketData);
+        renderMenuComplexityChart(summary.menuComplexity.marketData);
+        renderAhtByMonthChart(summary.ahtByMonth.marketData, summary.monthList);
+        renderAhtByRetailerChart(summary.ahtByRetailer.marketData, summary.retailerTypeList);
+        renderAhtByCategoryChart(summary.ahtByCategory.categoryData, summary.categoryList);
+    }
+
+    function displayScorecards(counts) {
+        const container = document.getElementById('scorecard-container');
+        container.innerHTML = '';
+        const statuses = ['Completed', 'In Progress', 'Escalated', 'Not Started', 'Cancelled', 'Task Paused'];
+        statuses.forEach(status => {
+            const count = counts[status] || 0;
+            const scorecard = document.createElement('div');
+            scorecard.className = 'scorecard clickable';
+            scorecard.onclick = () => {
+                if (count > 0) toggleCaseDetails(scorecard, status, 'All');
+            };
+            scorecard.innerHTML = `<h3 class="scorecard-title">${status}</h3><div class="scorecard-value">${count}</div>`;
+            container.appendChild(scorecard);
+        });
+        const totalCard = document.createElement('div');
+        totalCard.className = 'scorecard';
+        totalCard.innerHTML = `<h3 class="scorecard-title">Grand Total</h3><div class="scorecard-value">${counts.GrandTotal || 0}</div>`;
+        container.appendChild(totalCard);
+    }
+
+    function displayMarketTable(marketCounts) {
+        const marketBody = document.getElementById('marketCountBody');
+        marketBody.innerHTML = '';
+        const sortedMarkets = Object.keys(marketCounts).sort();
+        if (sortedMarkets.length === 0) {
+            marketBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--text-secondary);">No market data found.</td></tr>`;
+        } else {
+            sortedMarkets.forEach(country => {
+                const counts = marketCounts[country];
+                const row = marketBody.insertRow();
+                row.innerHTML = `<td>${country}</td><td class="clickable" onclick="if(${counts.Cancelled || 0} > 0) toggleCaseDetails(this, 'Cancelled', '${country}')">${counts.Cancelled || 0}</td><td class="clickable" onclick="if(${counts.Completed || 0} > 0) toggleCaseDetails(this, 'Completed', '${country}')">${counts.Completed || 0}</td><td class="clickable" onclick="if(${counts.Escalated || 0} > 0) toggleCaseDetails(this, 'Escalated', '${country}')">${counts.Escalated || 0}</td><td class="clickable" onclick="if(${counts['In Progress'] || 0} > 0) toggleCaseDetails(this, 'In Progress', '${country}')">${counts['In Progress'] || 0}</td><td class="clickable" onclick="if(${counts['Not Started'] || 0} > 0) toggleCaseDetails(this, 'Not Started', '${country}')">${counts['Not Started'] || 0}</td><td class="clickable" onclick="if(${counts['Task Paused'] || 0} > 0) toggleCaseDetails(this, 'Task Paused', '${country}')">${counts['Task Paused'] || 0}</td>`;
+            });
+        }
+    }
+
+    function displayTatTable(tatCounts) {
+        const tatBody = document.getElementById('tatTableBody');
+        tatBody.innerHTML = '';
+        const sortedMarkets = Object.keys(tatCounts).sort();
+        if (sortedMarkets.length === 0) {
+            tatBody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">No TAT data to display.</td></tr>`;
+            return;
+        }
+        sortedMarkets.forEach(market => {
+            const counts = tatCounts[market];
+            const total = (counts.adhered || 0) + (counts.missed || 0);
+            const row = tatBody.insertRow();
+            row.innerHTML = `<td>${market}</td><td class="clickable" onclick="if(${(counts.adhered || 0)} > 0) toggleCaseDetails(this, 'Adhered', '${market}', true)">${(counts.adhered || 0)}</td><td class="clickable" onclick="if(${(counts.missed || 0)} > 0) toggleCaseDetails(this, 'Missed', '${market}', true)">${(counts.missed || 0)}</td><td>${total}</td>`;
+        });
+    }
+
+    function displayTatBucketTable(bucketData, grandTotal) {
+        const tableBody = document.getElementById('tatBucketBody');
+        const tableFoot = document.getElementById('tatBucketFoot');
+        tableBody.innerHTML = '';
+        tableFoot.innerHTML = '';
+        if (!bucketData || Object.keys(bucketData).length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No TAT bucket data found.</td></tr>`;
+            return;
+        }
+        const sortedMarkets = Object.keys(bucketData).sort();
+        sortedMarkets.forEach(market => {
+            const data = bucketData[market];
+            const row = tableBody.insertRow();
+            row.innerHTML = `<td>${market}</td><td class="clickable" onclick="toggleCaseDetails(this, 'TAT Bucket', '${market}', false, '<24 hours')">${data.under24}</td><td class="clickable" onclick="toggleCaseDetails(this, 'TAT Bucket', '${market}', false, '24-30 hours')">${data.between24and30}</td><td class="clickable" onclick="toggleCaseDetails(this, 'TAT Bucket', '${market}', false, '30-48 hours')">${data.between30and48}</td><td class="clickable" onclick="toggleCaseDetails(this, 'TAT Bucket', '${market}', false, '>48 hours')">${data.over48}</td><td>${data.total}</td>`;
+        });
+        if (grandTotal) {
+            const totalRow = tableFoot.insertRow();
+            totalRow.innerHTML = `<td>Grand Total</td><td>${grandTotal.under24}</td><td>${grandTotal.between24and30}</td><td>${grandTotal.between30and48}</td><td>${grandTotal.over48}</td><td>${grandTotal.total}</td>`;
+        }
+    }
+
+    function displayMenuComplexityTable(complexityData, grandTotal) {
+        const tableBody = document.getElementById('menuComplexityBody');
+        const tableFoot = document.getElementById('menuComplexityFoot');
+        tableBody.innerHTML = '';
+        tableFoot.innerHTML = '';
+        if (!complexityData || Object.keys(complexityData).length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">No complexity data found.</td></tr>`;
+            return;
+        }
+        const sortedMarkets = Object.keys(complexityData).sort();
+        sortedMarkets.forEach(market => {
+            const data = complexityData[market];
+            const row = tableBody.insertRow();
+            row.innerHTML = `<td>${market}</td><td class="clickable" onclick="toggleCaseDetails(this, 'Menu Complexity', '${market}', false, 'AHT')">${data.avgAhtSeconds ? formatTime(data.avgAhtSeconds) : '00:00:00'}</td><td class="clickable" onclick="toggleCaseDetails(this, 'Menu Complexity', '${market}', false, 'Dishes')">${data.avgTotalDishes ? data.avgTotalDishes.toFixed(1) : '0.0'}</td><td class="clickable" onclick="toggleCaseDetails(this, 'Menu Complexity', '${market}', false, 'Photos')">${data.avgMainDishesPhotos ? data.avgMainDishesPhotos.toFixed(1) : '0.0'}</td><td class="clickable" onclick="toggleCaseDetails(this, 'Menu Complexity', '${market}', false, 'Options')">${data.avgTotalOptions ? data.avgTotalOptions.toFixed(1) : '0.0'}</td><td class="clickable" onclick="toggleCaseDetails(this, 'Menu Complexity', '${market}', false, 'Option Groups')">${data.avgTotalOptionGroups ? data.avgTotalOptionGroups.toFixed(1) : '0.0'}</td>`;
+        });
+        if (grandTotal) {
+            const totalRow = tableFoot.insertRow();
+            totalRow.innerHTML = `<td>Grand Total</td><td>${grandTotal.avgAhtSeconds ? formatTime(grandTotal.avgAhtSeconds) : '00:00:00'}</td><td>${grandTotal.avgTotalDishes ? grandTotal.avgTotalDishes.toFixed(1) : '0.0'}</td><td>${grandTotal.avgMainDishesPhotos ? grandTotal.avgMainDishesPhotos.toFixed(1) : '0.0'}</td><td>${grandTotal.avgTotalOptions ? grandTotal.avgTotalOptions.toFixed(1) : '0.0'}</td><td>${grandTotal.avgTotalOptionGroups ? grandTotal.avgTotalOptionGroups.toFixed(1) : '0.0'}</td>`;
+        }
+    }
+
+    function displayAhtByMonth(ahtData, monthList, grandTotal) {
+        const tableHead = document.getElementById('ahtByMonthHead');
+        const tableBody = document.getElementById('ahtByMonthBody');
+        const tableFoot = document.getElementById('ahtByMonthFoot');
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+        tableFoot.innerHTML = '';
+        if (!ahtData || !monthList || monthList.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="1" style="text-align:center; color: var(--text-secondary);">No AHT data found for this period.</td></tr>`;
+            return;
+        }
+        let headerHtml = '<tr><th>Market</th>';
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        monthList.forEach(monthStr => {
+            const [year, month] = monthStr.split('-');
+            headerHtml += `<th>${monthNames[parseInt(month, 10) - 1]} ${year}</th>`;
+        });
+        headerHtml += '</tr>';
+        tableHead.innerHTML = headerHtml;
+        const sortedMarkets = Object.keys(ahtData).sort();
+        sortedMarkets.forEach(market => {
+            const row = tableBody.insertRow();
+            row.insertCell().textContent = market;
+            monthList.forEach(month => {
+                const ahtValue = ahtData[market][month];
+                const cell = row.insertCell();
+                cell.textContent = ahtValue ? formatTime(ahtValue) : 'N/A';
+                if (ahtValue) {
+                    cell.classList.add('clickable');
+                    cell.setAttribute('onclick', `toggleCaseDetails(this, 'AHT by Month', '${market}', false, '${month}')`);
+                }
+            });
+        });
+        if (grandTotal) {
+            const totalRow = tableFoot.insertRow();
+            totalRow.insertCell().textContent = 'Grand Total';
+            monthList.forEach(month => {
+                totalRow.insertCell().textContent = grandTotal[month] ? formatTime(grandTotal[month]) : 'N/A';
+            });
+        }
+    }
+
+    function displayAhtByRetailer(ahtData, retailerTypeList, grandTotal) {
+        const tableHead = document.getElementById('ahtByRetailerHead');
+        const tableBody = document.getElementById('ahtByRetailerBody');
+        const tableFoot = document.getElementById('ahtByRetailerFoot');
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+        tableFoot.innerHTML = '';
+        if (!ahtData || !retailerTypeList || retailerTypeList.length === 0) {
+            tableBody.innerHTML = `<tr><td colspan="1" style="text-align:center; color: var(--text-secondary);">No data found for this period.</td></tr>`;
+            return;
+        }
+        let headerHtml = '<tr><th>Market</th>';
+        retailerTypeList.forEach(retailerType => {
+            headerHtml += `<th>${retailerType}</th>`;
+        });
+        headerHtml += '</tr>';
+        tableHead.innerHTML = headerHtml;
+        const sortedMarkets = Object.keys(ahtData).sort();
+        sortedMarkets.forEach(market => {
+            const row = tableBody.insertRow();
+            row.insertCell().textContent = market;
+            retailerTypeList.forEach(retailerType => {
+                const ahtValue = ahtData[market][retailerType];
+                const cell = row.insertCell();
+                cell.textContent = ahtValue ? formatTime(ahtValue) : 'N/A';
+                if (ahtValue) {
+                    cell.classList.add('clickable');
+                    cell.setAttribute('onclick', `toggleCaseDetails(this, 'AHT by Retailer', '${market}', false, '${retailerType}')`);
+                }
+            });
+        });
+        if (grandTotal) {
+            const totalRow = tableFoot.insertRow();
+            totalRow.insertCell().textContent = 'Grand Total';
+            retailerTypeList.forEach(retailerType => {
+                totalRow.insertCell().textContent = grandTotal[retailerType] ? formatTime(grandTotal[retailerType]) : 'N/A';
+            });
+        }
+    }
+
+    function toggleCaseDetails(clickedElement, status, market, isTatDrilldown = false, subFilter = null) {
+    let detailsContainer;
+    if (clickedElement.classList.contains('scorecard')) {
+        detailsContainer = document.getElementById('scorecard-details');
+    } else if (isTatDrilldown) {
+        detailsContainer = document.getElementById('tat-details');
+    } else if (status.startsWith('TAT Bucket')) {
+        detailsContainer = document.getElementById('tat-bucket-details');
+    } else if (status.startsWith('Menu Complexity')) {
+        detailsContainer = document.getElementById('menu-complexity-details');
+    } else if (status.startsWith('AHT by Month')) {
+        detailsContainer = document.getElementById('aht-by-month-details');
+    } else if (status.startsWith('AHT by Retailer')) {
+        detailsContainer = document.getElementById('aht-by-retailer-details');
+    } else if (status.startsWith('AHT by Category')) {
+        detailsContainer = document.getElementById('aht-by-category-details');
+    } else {
+        detailsContainer = document.getElementById('market-details');
+    }
+    
+    const wasActive = (clickedElement.tagName === 'TD' ? clickedElement.parentElement : clickedElement).classList.contains('active');
+    closeAllDetails();
+    if (wasActive) return;
+
+    const activeElement = clickedElement.tagName === 'TD' ? clickedElement.parentElement : clickedElement;
+    activeElement.classList.add('active');
+    
+    if (detailsContainer) {
+        detailsContainer.style.display = 'block';
+        detailsContainer.innerHTML = `<div class="details-container">Loading details for ${market}...</div>`;
+        const cellForContent = detailsContainer.querySelector('.details-container');
+        const filters = buildFilters(status, market, isTatDrilldown, subFilter);
+        google.script.run
+            .withSuccessHandler(response => displayCaseDetails(cellForContent, response.details, status, market, subFilter))
+            .withFailureHandler(err => {
+                cellForContent.innerHTML = `<div style="color:red;">Error: ${err.message}</div>`;
+            })
+            .getProductionReport(filters);
+    }
+}
+
+    function displayCaseDetails(containerCell, cases, status, market, subFilter) {
+    currentDrilldownData = cases;
+
+    // The title is calculated here
+    let title = `Details for ${status} in ${market === 'All' ? 'all markets' : market}`;
+    if (subFilter) {
+        let friendlySubFilter = subFilter.replace(/_/g, ' ');
+        title = `Details for ${friendlySubFilter} in ${market}`;
+    }
+    
+    let html = ``;
+    let relevantColumns = [];
+                
+    if (!cases || cases.length === 0) {
+        html += `<div style="display: flex; justify-content: space-between; align-items: center;"><h4>${title}</h4><button onclick="closeAllDetails()" style="background-color: var(--primary-accent); color: white; border: none; padding: 5px 12px; border-radius: 6px; font-weight: 600; cursor: pointer;">Close</button></div>`;
+        html += '<p>No specific cases found matching this criteria.</p>';
+    } else {
+        const baseColumns = ['Main Task ID', 'Country', 'Account Name', 'Status'];
+        relevantColumns = baseColumns;
+        if (status.startsWith('Menu Complexity')) {
+            relevantColumns = baseColumns.concat(['Stored Agent Handling Time', 'Total No. of dishes', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Total no. of options', 'Total no. of option Groups']);
+        } else if (status === 'Adhered' || status === 'Missed') {
+            relevantColumns = baseColumns.concat(['Main Task Start Date/Time', 'Main Task End Date/Time']);
+        } else if (status.startsWith('AHT by Retailer')) { 
+            relevantColumns = baseColumns.concat(['Main Task End Date/Time', 'Stored Agent Handling Time', 'Retailer Provider Type']);
+        } else if (status.startsWith('AHT by Category')) { 
+            relevantColumns = baseColumns.concat(['Main Task ID', 'Category', 'Stored Agent Handling Time']);
+        } else if (status.startsWith('TAT Bucket')) {
+            relevantColumns = baseColumns.concat(['Main Task Start Date/Time', 'Main Task End Date/Time']);
+        }
+
+        // --- THIS PART IS MODIFIED ---
+        // The button now includes a data-title attribute to pass the title string.
+        html += `<div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4>${title}</h4>
+                    <div>
+                        <button 
+                            id="download-btn" 
+                            onclick="downloadDrilldownData(this)" 
+                            data-columns='${JSON.stringify(relevantColumns)}'
+                            data-title="${title}"
+                            class="secondary" 
+                            style="margin-right: 10px; background-color: transparent; color: var(--primary-accent); border: 1px solid var(--primary-accent); padding: 5px 12px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                            Download
+                        </button>
+                        <button onclick="closeAllDetails()" style="background-color: var(--primary-accent); color: white; border: none; padding: 5px 12px; border-radius: 6px; font-weight: 600; cursor: pointer;">Close</button>
+                    </div>
+                </div>`;
+        
+        html += `<div class="details-table-wrapper"><table><thead><tr>`;
+        relevantColumns.forEach(col => html += `<th>${col}</th>`);
+        html += `</tr></thead><tbody>`;
+        cases.forEach(c => {
+            html += `<tr>`;
+            relevantColumns.forEach(col => {
+                let value = c[col] || 'N/A';
+                if ((col.toLowerCase().includes('date') || col.toLowerCase().includes('time')) && col !== 'Stored Agent Handling Time' && value !== 'N/A') value = new Date(value).toLocaleString();
+                else if (col === 'Stored Agent Handling Time' && value !== 'N.A' && value !== null && !isNaN(value)) value = formatTime(parseFloat(value) * 86400);
+                html += `<td>${value}</td>`;
+            });
+            html += `</tr>`;
+        });
+        html += '</tbody></table></div>';
+    }
+    containerCell.innerHTML = html;
+}
+
+/**
+ * Handles the download button click.
+ * Builds a dynamic filename and sends it to the server.
+ */
+function downloadDrilldownData(buttonElement) {
+    if (!currentDrilldownData || currentDrilldownData.length === 0) {
+        alert("There is no data to download.");
+        return;
+    }
+
+    const headersToExport = JSON.parse(buttonElement.dataset.columns);
+    const drilldownTitle = buttonElement.dataset.title;
+
+    // --- NEW: Build the dynamic filename ---
+    // 1. Get the date range
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    const useRange = document.getElementById('dateRangeToggle').checked;
+    const datePart = useRange && startDate !== endDate ? `${startDate} to ${endDate}` : startDate;
+
+    // 2. Get active filters
+    const activeFilters = buildFilters();
+    let filterParts = [];
+    if (activeFilters.selectedStatus.length > 0) filterParts.push(`Status (${activeFilters.selectedStatus.join(', ')})`);
+    if (activeFilters.selectedMarket.length > 0) filterParts.push(`Market (${activeFilters.selectedMarket.join(', ')})`);
+    if (activeFilters.selectedCategory.length > 0) filterParts.push(`Category (${activeFilters.selectedCategory.join(', ')})`);
+    if (activeFilters.selectedTaskType.length > 0) filterParts.push(`Task Type (${activeFilters.selectedTaskType.join(', ')})`);
+    if (activeFilters.selectedRetailerType.length > 0) filterParts.push(`Retailer Type (${activeFilters.selectedRetailerType.join(', ')})`);
+    if (activeFilters.selectedSlaReason.length > 0) filterParts.push(`SLA Reason (${activeFilters.selectedSlaReason.join(', ')})`);
+    
+    const filterPart = filterParts.length > 0 ? ` | ${filterParts.join(' | ')}` : '';
+    
+    // 3. Assemble the final name and sanitize it for sheet titles
+    let finalFileName = `${drilldownTitle} (${datePart})${filterPart}`;
+    finalFileName = finalFileName.replace(/[/\\?%*:|"<>]/g, '-'); // Replace invalid characters
+
+    // --- End of filename logic ---
+
+    buttonElement.textContent = 'Downloading...';
+    buttonElement.disabled = true;
+
+    google.script.run
+        .withSuccessHandler(url => {
+            buttonElement.textContent = 'Download';
+            buttonElement.disabled = false;
+            window.open(url, '_blank');
+        })
+        .withFailureHandler(error => {
+            buttonElement.textContent = 'Download';
+            buttonElement.disabled = false;
+            alert("Download failed: " + error.message);
+        })
+        // Send the data, the headers, AND the new filename to the server
+        .createSheetWithData(currentDrilldownData, headersToExport, finalFileName);
+}
+
+
+    function renderMarketChart(marketCounts) { if (marketChartInstance) marketChartInstance.destroy(); const container = document.getElementById('marketChart'); if(!container || Object.keys(marketCounts).length === 0) { container.innerHTML = ''; return; } container.innerHTML = ''; const sortedMarkets = Object.keys(marketCounts).sort(); const statusLabels = ["Completed", "In Progress", "Escalated", "Not Started", "Cancelled", "Task Paused"]; const colors = { "Completed": '#00B14F', "In Progress": '#3B82F6', "Escalated": '#F59E0B', "Not Started": '#6B7280', "Cancelled": '#EF4444', "Task Paused": '#10B981' }; const series = statusLabels.map(status => ({ name: status, data: sortedMarkets.map(market => marketCounts[market][status] || 0) })); const options = { series: series, chart: { type: 'bar', height: '100%', stacked: true, toolbar: { show: false }, fontFamily: 'Inter, sans-serif' }, title: { text: 'Task Volume by Market', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, plotOptions: { bar: { horizontal: true, borderRadius: 6 } }, xaxis: { categories: sortedMarkets, labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } } }, yaxis: { labels: { style: { colors: 'var(--text-secondary)' } } }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, colors: statusLabels.map(status => colors[status]), fill: { opacity: 1 }, grid: { borderColor: 'var(--border-light)', strokeDashArray: 3, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } }, dataLabels: { enabled: false }, tooltip: { y: { formatter: (val) => val + " tasks" } }}; marketChartInstance = new ApexCharts(container, options); marketChartInstance.render(); }
+    function renderTatChart(tatCounts) { if (tatChartInstance) tatChartInstance.destroy(); const container = document.getElementById('tatChart'); if(!container || Object.keys(tatCounts).length === 0) { container.innerHTML = ''; return; } container.innerHTML = ''; const sortedMarkets = Object.keys(tatCounts).sort(); const series = [ { name: 'Adhered', data: sortedMarkets.map(market => tatCounts[market].adhered || 0) }, { name: 'Missed', data: sortedMarkets.map(market => tatCounts[market].missed || 0) } ]; const options = { series: series, chart: { type: 'bar', height: '100%', stacked: true, stackType: '100%', fontFamily: 'Inter, sans-serif', toolbar: { show: false } }, title: { text: 'TAT Adherence % by Market', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, plotOptions: { bar: { horizontal: true, borderRadius: 6 } }, xaxis: { categories: sortedMarkets, labels: { formatter: (val) => `${Math.round(val)}%` }, axisBorder: { show: false }, axisTicks: { show: false } }, yaxis: { labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600, minWidth: 90, maxWidth: 90 } } }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, colors: ['#00B14F', '#EF4444'], grid: { borderColor: 'var(--border-light)', strokeDashArray: 3, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } }, tooltip: { y: { formatter: function (val, { series, seriesIndex, dataPointIndex, w }) { const total = w.globals.seriesTotals[dataPointIndex]; const percentage = total > 0 ? ((val / total) * 100).toFixed(1) : 0; return `${val} cases (${percentage}%)`; } } }}; tatChartInstance = new ApexCharts(container, options); tatChartInstance.render(); }
+    function renderTatBucketChart(bucketData) { if (tatBucketChartInstance) { tatBucketChartInstance.destroy(); } const container = document.getElementById('tatBucketChart'); if (!container || !bucketData || Object.keys(bucketData).length === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding-top: 40px;">No data to display chart.</p>'; return; } container.innerHTML = ''; const sortedMarkets = Object.keys(bucketData).sort(); const series = [ { name: '<24 hours', data: sortedMarkets.map(m => bucketData[m].under24) }, { name: '24-30 hours', data: sortedMarkets.map(m => bucketData[m].between24and30) }, { name: '30-48 hours', data: sortedMarkets.map(m => bucketData[m].between30and48) }, { name: '>48 hours', data: sortedMarkets.map(m => bucketData[m].over48) } ]; const options = { series: series, chart: { type: 'bar', height: '100%', stacked: true, toolbar: { show: false }, fontFamily: 'Inter, sans-serif' }, title: { text: 'TAT Bucket Distribution', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, plotOptions: { bar: { horizontal: true, borderRadius: 6 } }, xaxis: { categories: sortedMarkets, labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } } }, yaxis: { labels: { style: { colors: 'var(--text-secondary)' } } }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, grid: { borderColor: 'var(--border-light)', strokeDashArray: 3, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } }, dataLabels: { enabled: false }, tooltip: { y: { formatter: (val) => val + " tasks" } }}; tatBucketChartInstance = new ApexCharts(container, options); tatBucketChartInstance.render(); }
+    function renderMenuComplexityChart(complexityData) { if (menuComplexityChartInstance) { menuComplexityChartInstance.destroy(); } const container = document.getElementById('menuComplexityChart'); if (!container || !complexityData || Object.keys(complexityData).length === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding-top: 40px;">No data to display chart.</p>'; return; } container.innerHTML = ''; const sortedMarkets = Object.keys(complexityData).sort(); const series = [ { name: 'Avg. Dishes', data: sortedMarkets.map(m => complexityData[m].avgTotalDishes.toFixed(1)) }, { name: 'Avg. Photos', data: sortedMarkets.map(m => complexityData[m].avgMainDishesPhotos.toFixed(1)) }, { name: 'Avg. Options', data: sortedMarkets.map(m => complexityData[m].avgTotalOptions.toFixed(1)) }, { name: 'Avg. Option Groups', data: sortedMarkets.map(m => complexityData[m].avgTotalOptionGroups.toFixed(1)) } ]; const options = { series: series, chart: { type: 'bar', height: '100%', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' }, title: { text: 'Average Menu Complexity', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, plotOptions: { bar: { horizontal: false, columnWidth: '70%', borderRadius: 6 } }, dataLabels: { enabled: false }, stroke: { show: true, width: 2, colors: ['transparent'] }, xaxis: { categories: sortedMarkets, labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } } }, yaxis: { title: { text: 'Average Count', style: { color: 'var(--text-secondary)', fontWeight: 600 } } }, fill: { opacity: 1 }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, grid: { borderColor: 'var(--border-light)', strokeDashArray: 3 }, tooltip: { y: { formatter: (val) => val } }}; menuComplexityChartInstance = new ApexCharts(container, options); menuComplexityChartInstance.render(); }
+    function renderAhtByMonthChart(ahtData, monthList) { if (ahtByMonthChartInstance) { ahtByMonthChartInstance.destroy(); } const container = document.getElementById('ahtByMonthChart'); if (!container || !ahtData || !monthList || monthList.length === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding-top: 40px;">No data to display chart.</p>'; return; } container.innerHTML = ''; const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; const formattedMonths = monthList.map(m => { const [year, month] = m.split('-'); return `${monthNames[parseInt(month, 10) - 1]} ${year}`; }); const sortedMarkets = Object.keys(ahtData).sort(); const series = sortedMarkets.map(market => { return { name: market, data: monthList.map(month => ahtData[market][month] || 0) }; }); const options = { series: series, chart: { type: 'line', height: '100%', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' }, title: { text: 'AHT Trend by Market', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, dataLabels: { enabled: false }, stroke: { curve: 'smooth', width: 3 }, xaxis: { categories: formattedMonths, labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } } }, yaxis: { labels: { formatter: function (val) { return formatTime(val); } } }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, grid: { borderColor: 'var(--border-light)', strokeDashArray: 3 }, tooltip: { y: { formatter: function(val) { return formatTime(val); } } }}; ahtByMonthChartInstance = new ApexCharts(container, options); ahtByMonthChartInstance.render(); }
+    function renderAhtByRetailerChart(ahtData, retailerTypeList) { if (ahtByRetailerChartInstance) { ahtByRetailerChartInstance.destroy(); } const container = document.getElementById('ahtByRetailerChart'); if (!container || !ahtData || !retailerTypeList || retailerTypeList.length === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding-top: 40px;">No data to display chart.</p>'; return; } container.innerHTML = ''; const sortedMarkets = Object.keys(ahtData).sort(); const series = retailerTypeList.map(retailerType => ({ name: retailerType, data: sortedMarkets.map(market => ahtData[market][retailerType] || 0) })); const options = { series: series, chart: { type: 'bar', height: '100%', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' }, title: { text: 'AHT by Retailer Type', align: 'left', style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}, plotOptions: { bar: { horizontal: false, columnWidth: '80%', borderRadius: 6, dataLabels: { position: 'top' } } }, dataLabels: { enabled: true, formatter: (val) => val > 0 ? formatTime(val) : '', offsetY: -20, style: { fontSize: '10px', colors: ["#304758"] } }, xaxis: { categories: sortedMarkets, labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } } }, yaxis: { title: { text: 'Average Handling Time', style: { color: 'var(--text-secondary)', fontWeight: 600 } }, labels: { formatter: (val) => formatTime(val) } }, stroke: { show: true, width: 2, colors: ['transparent'] }, fill: { opacity: 1 }, legend: { position: 'top', horizontalAlign: 'right', fontFamily: 'Inter, sans-serif', fontWeight: 600, labels: { colors: 'var(--text-primary)' } }, grid: { borderColor: 'var(--border-light)', strokeDashArray: 3 }, tooltip: { y: { formatter: (val) => formatTime(val) } }}; ahtByRetailerChartInstance = new ApexCharts(container, options); ahtByRetailerChartInstance.render(); }
+    function displayAhtByCategory(ahtData, categoryList, grandTotal) {
+    const tableHead = document.getElementById('ahtByCategoryHead');
+    const tableBody = document.getElementById('ahtByCategoryBody');
+    const tableFoot = document.getElementById('ahtByCategoryFoot');
+    tableHead.innerHTML = '';
+    tableBody.innerHTML = '';
+    tableFoot.innerHTML = '';
+
+    if (!ahtData || !categoryList || categoryList.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--text-secondary);">No category AHT data found.</td></tr>`;
+        return;
+    }
+
+    // Since this table is simpler, we can define the header directly.
+    tableHead.innerHTML = '<tr><th>Category</th><th style="text-align:center;">Average AHT</th></tr>';
+    
+    categoryList.forEach(category => {
+        const ahtValue = ahtData[category];
+        const row = tableBody.insertRow();
+        
+        let cellHtml = `<td>${category}</td>`;
+
+        if (ahtValue) {
+            // The drill-down call uses 'All' for market, since this data isn't per-market.
+            cellHtml += `<td class="clickable" onclick="toggleCaseDetails(this, 'AHT by Category', 'All', false, '${category}')">${formatTime(ahtValue)}</td>`;
+        } else {
+            cellHtml += `<td style="text-align:center;">N/A</td>`;
+        }
+        row.innerHTML = cellHtml;
+    });
+
+    if (grandTotal && grandTotal.avgAhtSeconds) {
+        const totalRow = tableFoot.insertRow();
+        totalRow.innerHTML = `<td>Grand Total</td><td style="text-align:center;">${formatTime(grandTotal.avgAhtSeconds)}</td>`;
+    }
+}
+
+function renderAhtByCategoryChart(ahtData, categoryList) {
+    if (ahtByCategoryChartInstance) {
+        ahtByCategoryChartInstance.destroy();
+    }
+    const container = document.getElementById('ahtByCategoryChart');
+    if (!container || !ahtData || !categoryList || categoryList.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding-top: 40px;">No data to display chart.</p>';
+        return;
+    }
+    container.innerHTML = '';
+
+    const series = [{
+        name: 'Average AHT',
+        data: categoryList.map(cat => ahtData[cat] || 0)
+    }];
+
+    const options = {
+        series: series,
+        chart: {
+            type: 'bar',
+            height: '100%',
+            toolbar: { show: false },
+            fontFamily: 'Inter, sans-serif'
+        },
+        title: {
+            text: 'AHT by Category',
+            align: 'left',
+            style: { fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }
+        },
+        plotOptions: {
+            bar: {
+                horizontal: false,
+                columnWidth: '60%',
+                borderRadius: 6
+            }
+        },
+        dataLabels: { enabled: false },
+        xaxis: {
+            categories: categoryList,
+            labels: { style: { colors: 'var(--text-secondary)', fontWeight: 600 } }
+        },
+        yaxis: {
+            title: { text: 'Average Handling Time', style: { color: 'var(--text-secondary)', fontWeight: 600 } },
+            labels: { formatter: (val) => formatTime(val) }
+        },
+        fill: { opacity: 1 },
+        grid: { borderColor: 'var(--border-light)', strokeDashArray: 3 },
+        tooltip: {
+            y: { formatter: (val) => formatTime(val) }
+        }
+    };
+
+    ahtByCategoryChartInstance = new ApexCharts(container, options);
+    ahtByCategoryChartInstance.render();
+}
+    
+    function closeAllDetails() {
+    document.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+    document.getElementById('scorecard-details').innerHTML = '';
+    document.getElementById('market-details').innerHTML = '';
+    document.getElementById('tat-details').innerHTML = '';
+    document.getElementById('tat-bucket-details').innerHTML = '';
+    document.getElementById('menu-complexity-details').innerHTML = '';
+    document.getElementById('aht-by-month-details').innerHTML = '';
+    document.getElementById('aht-by-retailer-details').innerHTML = '';
+    document.getElementById('aht-by-category-details').innerHTML = '';
+    
+    // This line clears the stored data when the details view is closed
+    currentDrilldownData = []; 
+}
+
+    function setLoadingState(isLoading) {
+        if (isLoading) {
+            document.getElementById('scorecard-container').innerHTML = `<div class="card" style="text-align:center; color: var(--text-secondary); grid-column: 1 / -1;">Loading...</div>`;
+            document.getElementById('marketCountBody').innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('tatTableBody').innerHTML = `<tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('tatBucketBody').innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('menuComplexityBody').innerHTML = `<tr><td colspan="6" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('ahtByMonthBody').innerHTML = `<tr><td colspan="1" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('ahtByRetailerBody').innerHTML = `<tr><td colspan="1" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`;
+            document.getElementById('ahtByCategoryBody').innerHTML = `<tr><td colspan="2" style="text-align:center; color: var(--text-secondary);">Loading...</td></tr>`; // ADD THIS
+
+        }
+    }
+
+    function displayError(message) {
+        const c = document.getElementById('main-container'),
+            ed = document.createElement('div');
+        ed.id = 'error-display';
+        ed.innerHTML = message + "<br><br>Please check your sheet and reload.";
+        c.prepend(ed);
+    }
+
+    function clearError() {
+        const ee = document.getElementById('error-display');
+        if (ee) ee.remove();
+    }
+
+    function handleError(error) {
+        displayError('An unexpected error occurred: ' + error.message);
+        setLoadingState(false);
+    }
+
+    function formatTime(s) {
+        if (isNaN(s) || !isFinite(s)) s = 0;
+        const p = s < 0 ? "-" : "";
+        s = Math.abs(s);
+        const h = Math.floor(s / 3600),
+            m = Math.floor((s % 3600) / 60),
+            c = Math.floor(s % 60);
+        return `${p}${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(c).padStart(2,"0")}`;
+    }
+
+    function fetchVersionInformation() {
+        google.script.run.withSuccessHandler(handleVersionDetailsResponse).withFailureHandler(handleVersionDetailsError).getVersionDetails();
+    }
+
+    function handleVersionDetailsResponse(versionInfo) { const versionDisplayEl = document.getElementById('scriptVersionDisplay'), statusMsgEl = document.getElementById('versionStatusMessage'), updateNotificationEl = document.getElementById('updateNotificationArea'), updateButtonEl = document.getElementById('updateButton'), featuresDisplayEl = document.getElementById('updateFeaturesDisplay'), versionErrorEl = document.getElementById('versionError'); if (!versionDisplayEl || !statusMsgEl || !updateNotificationEl) return; versionErrorEl.style.display = 'none'; if (versionInfo && versionInfo.error) { versionDisplayEl.textContent = "Error"; updateNotificationEl.style.display = 'none'; versionErrorEl.textContent = versionInfo.error; versionErrorEl.style.display = 'block'; return; } if (versionInfo && versionInfo.runningVersion) { versionDisplayEl.textContent = versionInfo.runningVersion; const running = parseFloat(versionInfo.runningVersion); const latest = parseFloat(versionInfo.latestAdvertisedVersion); if (!isNaN(running) && !isNaN(latest) && versionInfo.latestAdvertisedVersion && versionInfo.updateURL && running < latest) { updateNotificationEl.style.display = 'block'; featuresDisplayEl.textContent = versionInfo.updateFeatures || "No features listed."; updateButtonEl.onclick = () => promptForUpdate(versionInfo.updateURL, versionInfo.updateFeatures); } else { statusMsgEl.textContent = "Up to date."; updateNotificationEl.style.display = 'none'; } } else { versionDisplayEl.textContent = "N/A"; versionErrorEl.textContent = "Could not retrieve version info."; versionErrorEl.style.display = 'block'; } }
+    function handleVersionDetailsError(error) { console.error("Error fetching version details:", error); document.getElementById('scriptVersionDisplay').textContent = "Error"; document.getElementById('versionError').textContent = "Failed to check for updates."; document.getElementById('versionError').style.display = 'block'; }
+    function promptForUpdate(newUrl, features) { if (!newUrl) { alert("Update URL is not configured."); return; } window.open(newUrl, '_blank'); const bookmarkShortcut = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd+D' : 'Ctrl+D'; let alertMessage = "A new version has opened in a new tab.\n\n"; if (features) { alertMessage += "New features:\n- " + features.replace(/,\s*/g, "\n- ") + "\n\n"; } alertMessage += "Please bookmark the new page (try " + bookmarkShortcut + ") and remove your old bookmark."; alert(alertMessage); }
+    
+    // =================================================================================
+    // --- PAGE LOAD INITIALIZATION ---
+    // =================================================================================
+    
+    window.addEventListener('load', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    document.getElementById('endDate').value = today;
+    
+    document.getElementById('dateRangeToggle').addEventListener('change', toggleDateRange);
+    toggleDateRange(); 
+    
+    // --- ADD THIS BLOCK TO POPULATE FILTERS ---
+    google.script.run
+        .withSuccessHandler(populateFilterDropdowns)
+        .withFailureHandler(handleError)
+        .getProductionFilterOptions();
+    // -----------------------------------------
+    
+    // Load initial data for the day
+    loadProductionData();
+});
+</script>
+</body>
+</html>
+

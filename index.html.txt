@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Agent Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* --- THEME & COLOR PALETTE (Manager Style) --- */
+    :root {
+      --background-main: #F0F8F5; /* Soft mint-green */
+      --primary-accent: #00B14F;   /* Vibrant green */
+      --card-background: #FFFFFF;
+      --text-primary: #111827;    /* Dark charcoal */
+      --text-secondary: #6B7280;   /* Muted gray */
+      --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05);
+      --red: #EF4444;
+      --yellow: #F59E0B;
+      --blue: #3B82F6;
+    }
+
+    /* --- BASE & TYPOGRAPHY --- */
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* --- LAYOUT & CONTAINERS --- */
+    .header {
+      background-color: var(--card-background);
+      padding: 25px 30px;
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+    }
+    .header h1 { margin: 0; font-size: 2.2em; font-weight: 800; text-align: center; flex-grow: 1; }
+    .header p { color: var(--text-secondary); margin: 5px 0 0 0; font-size: 1.1em; text-align: right; }
+    .dashboard-container { padding: 30px; max-width: 1400px; margin: 0 auto; }
+    .main-layout { display: grid; grid-template-columns: 1fr 2fr; gap: 30px; align-items: flex-start; margin-top: 30px; }
+    .left-column, .right-column { display: flex; flex-direction: column; gap: 30px; }
+
+    /* --- CARDS & WIDGETS --- */
+    .card { background-color: var(--card-background); border-radius: 12px; border: 1px solid var(--border-light); box-shadow: 0 4px 8px var(--shadow-color); padding: 25px; }
+    .card h2 { font-size: 1.6em; font-weight: 600; margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: 12px; }
+    .card h2 svg { stroke: var(--text-secondary); width: 24px; height: 24px; }
+    
+    /* --- TOP SECTION: STATUS & SCORECARDS --- */
+    .status-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px; }
+    .current-status-display { text-align: center; }
+    .current-status-display .status-title { font-size: 1.1em; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+    .current-status-display .status-text { font-size: 2.5em; font-weight: 700; padding: 10px 25px; border-radius: 30px; background-color: var(--border-light); transition: all 0.3s ease; white-space: nowrap; }
+    .status-text.offline { background-color: var(--border-light); color: var(--text-secondary); }
+    .status-text.working { background-color: #D1FAE5; color: #065F46; }
+    .status-text.break { background-color: #FEF3C7; color: #92400E; }
+    .status-text.meeting { background-color: #DBEAFE; color: #1E40AF; }
+    .scorecard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 20px; flex-grow: 1; }
+    .scorecard { border: 1px solid var(--border-light); border-radius: 12px; padding: 20px; background-color: var(--background-main); }
+    .scorecard-title { display: flex; align-items: center; gap: 8px; font-size: 1em; font-weight: 600; color: var(--text-secondary); margin: 0 0 10px 0; padding: 0; border: none; }
+    .scorecard-title svg { stroke: var(--text-secondary); width: 20px; height: 20px; }
+    .scorecard-value { font-size: 2.5em; font-weight: 700; color: var(--text-primary); }
+
+    /* --- SESSION CONTROL & ACTIVITY --- */
+    .actions button { width: 100%; padding: 14px; font-size: 1.1em; margin-bottom: 12px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+    .timer-group { margin-top: 20px; }
+    .timer-group p { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; padding: 8px 12px; background-color: var(--background-main); border-radius: 8px; }
+    .timer-label { font-weight: 600; color: var(--text-secondary); }
+    .timer-value { font-weight: 600; font-size: 1.2em; font-family: 'Consolas', monospace; }
+
+    /* --- TABLES & FORMS --- */
+    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 15px; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-light); }
+    th { background-color: #F9FAFB; font-weight: 600; color: var(--text-secondary); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background-color: #F9FAFB; }
+    .status-approved { color: var(--primary-accent); font-weight: 600; }
+    .status-pending { color: var(--red); font-weight: 600; }
+    .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap:wrap; }
+    .controls label { font-weight:600; }
+    .controls input[type="date"], .controls input[type="datetime-local"] { padding: 8px; border-radius: 6px; border: 1px solid var(--border-light); font-family: 'Inter', sans-serif; font-size: 14px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-weight: 600; font-size: 0.9em; color: var(--text-secondary); }
+    .form-group textarea { width: 100%; padding: 10px; border: 1px solid var(--border-light); border-radius: 8px; background-color: var(--background-main); color: var(--text-primary); box-sizing: border-box; font-size: 1em; font-family: 'Inter', sans-serif; resize: vertical; min-height: 60px; }
+
+    /* --- BUTTONS --- */
+    button { cursor: pointer; border: none; border-radius: 8px; font-weight: 600; transition: all 0.2s ease; font-family: 'Inter', sans-serif; }
+    button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    button:disabled { background-color: var(--border-light) !important; color: var(--text-secondary) !important; cursor: not-allowed; opacity: 0.7; }
+    .btn-start { background-color: var(--primary-accent); color: white; }
+    .btn-end { background-color: var(--red); color: white; }
+    .btn-break-start { background-color: var(--yellow); color: #92400E; }
+    .btn-meeting-start { background-color: var(--blue); color: white; }
+    .btn-secondary { background-color: var(--border-light); color: var(--text-primary); padding: 8px 16px;}
+    .btn-secondary:hover:not(:disabled) { background-color: #DFE1E4; }
+
+    /* --- UTILITIES --- */
+    .loader { border: 4px solid var(--border-light); border-top: 4px solid var(--primary-accent); border-radius: 50%; width: 22px; height: 22px; animation: spin 1s linear infinite; display: none; margin: 10px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .message-area { text-align: center; min-height: 1.5em; font-size: 1em; margin-top: 20px; font-weight: 500; }
+    .error-message { color: var(--red); }
+    .success-message { color: var(--primary-accent); }
+    
+    /* --- SIDEBAR (FROM ORIGINAL) --- */
+    #sidebar-toggle-btn { position: fixed; top: 20px; left: 20px; z-index: 1001; background-color: var(--card-background); border: 1px solid var(--border-light); color: var(--text-primary); border-radius: 50%; width: 45px; height: 45px; padding: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; }
+    #sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background-color: #F9FAFB; z-index: 1000; transform: translateX(-100%); transition: transform 0.3s ease-in-out; display: flex; flex-direction: column; border-right: 1px solid var(--border-light); }
+    #sidebar.open { transform: translateX(0); }
+    .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-light); }
+    .sidebar-header h3 { margin: 0; font-size: 1.2em; color: var(--text-primary); font-weight:600; }
+    .sidebar-close-btn { background: none; border: none; color: var(--text-secondary); font-size: 2em; line-height: 1; padding: 0; cursor: pointer; margin: 0; }
+    #sidebar-content { padding: 10px; overflow-y: auto; flex-grow: 1; }
+    .sidebar-category-header { color: var(--text-primary); font-weight: 600; margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border-light); font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; position: relative; user-select: none; }
+    .sidebar-category-header:first-of-type { margin-top: 0; }
+    .sidebar-category-header::after { content: '▶'; position: absolute; right: 5px; font-size: 0.7em; transition: transform 0.2s ease-in-out; }
+    .sidebar-category-header.expanded::after { transform: rotate(90deg); }
+    .links-container { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-in-out; }
+    .links-container.expanded { max-height: 500px; }
+    .link-item { display: block; padding: 15px; border-radius: 8px; background-color: var(--card-background); margin-bottom: 10px; text-decoration: none; transition: background-color 0.2s ease; border: 1px solid var(--border-light); }
+    .link-item:hover { background-color: var(--background-main); }
+    .link-item-name { font-weight: 600; color: var(--primary-accent); font-size: 1.1em; margin: 0; }
+    .link-item-desc { font-size: 0.9em; color: var(--text-secondary); margin-top: 5px; }
+    
+    /* --- VERSION INFO CONTAINER (FROM ORIGINAL) --- */
+    #version-info-container { text-align: right; font-size: 0.9em; color: var(--text-secondary); }
+    #updateNotificationArea { margin-top: 5px; padding: 8px; background-color: var(--yellow); color: var(--text-primary); border-radius: 8px; }
+    #updateNotificationArea button { width: 100%; padding: 6px; font-size: 0.9em; background-color: var(--text-primary); color: white; border: none; cursor: pointer; margin-top: 5px; }
+    
+    /* --- NEW MODAL STYLES --- */
+    #correctionModal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.6); }
+    #modalLogDetails { background-color: var(--background-main); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-family: 'Consolas', monospace; }
+
+    /* --- RESPONSIVE ADJUSTMENTS --- */
+    @media (max-width: 1200px) {
+      .main-layout { grid-template-columns: 1fr; }
+      .status-header { flex-direction: column; align-items: stretch; }
+      .header { flex-direction: column; align-items: flex-start; }
+      .header p { text-align: left; margin-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <button id="sidebar-toggle-btn" onclick="toggleSidebar()">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <h3>Important Links</h3>
+      <button class="sidebar-close-btn" onclick="toggleSidebar()">×</button>
+    </div>
+    <div id="sidebar-content"></div>
+  </div>
+
+  <div class="header">
+    <div>
+      <h1>Agent Dashboard</h1>
+      <p id="agentHeaderInfo">
+        <span id="agentEmail">Loading...</span> <span id="agentName"></span>
+      </p>
+    </div>
+    <div id="version-info-container">
+      <div>VERSION: <strong id="scriptVersionDisplay">...</strong></div>
+      <div id="versionStatusMessage" style="font-size: 0.9em; margin-top: 3px;"></div>
+      <div id="updateNotificationArea" style="display: none;">
+          <strong>Update Available!</strong>
+          <div id="updateFeaturesDisplay" style="font-size: 0.9em; margin: 4px 0;"></div>
+          <button id="updateButton">Update Now</button>
+      </div>
+      <div id="versionError" class="error-message" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="dashboard-container">
+    
+    <div class="card status-header">
+      <div class="current-status-display">
+        <div class="status-title">CURRENT STATUS</div>
+        <div id="currentOverallStatus" class="status-text offline">Initializing...</div>
+      </div>
+      <div id="scorecard-grid" class="scorecard-grid">
+          </div>
+    </div>
+
+    <div id="userMessage" class="message-area"></div>
+    <div id="loader" class="loader" style="display: block;"></div>
+
+    <div class="main-layout">
+      <div class="left-column">
+        <div class="card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+            <span>Session Control</span>
+          </h2>
+          <div class="actions">
+            <button id="btnWorkToggle" class="btn-start" onclick="handleWorkToggle()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span>Start Work</span>
+            </button>
+          </div>
+          <div class="timer-group">
+            <p>
+              <span class="timer-label">Session Time:</span>
+              <span class="timer-value" id="workTimerDisplay">00:00:00</span>
+            </p>
+          </div>
+        </div>
+
+        <div id="activity-section" class="card" style="display:none;">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            <span>Activity</span>
+          </h2>
+          <div class="actions">
+             <button id="btnBreakToggle" class="btn-break-start" onclick="handleBreakToggle()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Start Break</span>
+             </button>
+             <button id="btnMeetingToggle" class="btn-meeting-start" onclick="handleMeetingToggle()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                <span>Start Meeting</span>
+             </button>
+          </div>
+           <div class="timer-group">
+             <p><span class="timer-label">Current Break:</span> <span class="timer-value" id="currentBreakTimerDisplay">00:00:00</span></p>
+             <p><span class="timer-label">Total Breaks:</span> <span class="timer-value" id="totalSessionBreakTimeDisplay">00:00:00</span></p>
+             <hr style="border:none; border-top:1px solid var(--border-light); margin: 10px 0;">
+             <p><span class="timer-label">Current Meeting:</span> <span class="timer-value" id="currentMeetingTimerDisplay">00:00:00</span></p>
+             <p><span class="timer-label">Total Meetings:</span> <span class="timer-value" id="totalSessionMeetingTimeDisplay">00:00:00</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-column">
+        <div id="my-case-summary-section" class="card" style="display:none;">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <span>My Case Summary</span>
+          </h2>
+          <div class="controls">
+            <label for="mySummaryDate">Date:</label>
+            <input type="date" id="mySummaryDate">
+            <button class="btn-secondary" onclick="loadMyCaseSummary()">View Summary</button>
+            <div id="mySummaryLoader" class="loader" style="width:18px; height:18px; border-width:3px; margin:0;"></div>
+          </div>
+          <div id="mySummaryMessage" class="message-area" style="margin: -10px 0 10px 0;"></div>
+          <div style="overflow-x:auto;">
+            <table id="myCaseSummaryTable">
+              <thead>
+                <tr>
+                  <th>Case ID</th>
+                  <th>Account Name</th>
+                  <th>Start Time</th>
+                  <th>Finish Time</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="myCaseSummaryBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span>My Pending Requests</span>
+            </h2>
+            <div id="pendingRequestsLoader" class="loader"></div>
+            <div style="overflow-x:auto;">
+              <table id="my-pending-requests-table">
+                <thead>
+                  <tr>
+                    <th>Original Timestamp</th>
+                    <th>Action</th>
+                    <th>Requested Timestamp</th>
+                    <th>Session ID</th>
+                  </tr>
+                </thead>
+                <tbody id="my-pending-requests-body"></tbody>
+              </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                <span>Attendance Log</span>
+            </h2>
+            <div class="controls">
+                <label for="logDateFrom">From:</label>
+                <input type="date" id="logDateFrom">
+                <label for="logDateTo">To:</label>
+                <input type="date" id="logDateTo">
+                <button onclick="loadAttendanceLog()" class="btn-secondary">View Log</button>
+                <div id="attendanceLogLoader" class="loader" style="width:18px; height:18px; border-width:3px; margin:0;"></div>
+            </div>
+            <div id="attendanceLogMessage" class="message-area" style="margin: -10px 0 10px 0;"></div>
+            <div style="overflow-x:auto;">
+              <table id="attendanceLogTable">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Action</th>
+                        <th>Session ID</th>
+                        <th>Edit</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceLogBody"></tbody>
+              </table>
+            </div>
+        </div>
+      </div> </div> </div> <div id="correctionModal" style="display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.6);">
+    <div class="card" style="margin: 10% auto; width: 90%; max-width: 500px;">
+      <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        <span>Request Correction</span>
+      </h2>
+      <p>You are requesting a correction for the log entry:</p>
+      <div id="modalLogDetails" style="background-color: var(--background-main); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-family: 'Consolas', monospace;"></div>
+      
+      <div class="form-group">
+          <label for="modalCorrectedTimestamp">New Corrected Timestamp:</label>
+          <input type="datetime-local" id="modalCorrectedTimestamp">
+      </div>
+      <div class="form-group">
+        <label for="modalCorrectionReason">Reason for Correction:</label>
+        <textarea id="modalCorrectionReason" placeholder="Please provide a clear reason for the requested change..."></textarea>
+      </div>
+      <div style="display:flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+        <button class="btn-secondary" onclick="closeCorrectionModal()">Cancel</button>
+        <button class="btn-start" onclick="submitCorrectionFromLog()">Submit Request</button>
+      </div>
+    </div>
+  </div>
+
+
+<script>
+    // --- GLOBAL STATE & TIMERS ---
+    let currentAgentState = {};
+    let workTimerInterval = null;
+    let currentBreakTimerInterval = null;
+    let currentMeetingTimerInterval = null;
+    let versionUpdateDetails = { url: null, features: null };
+    let logDataForModal = null;
+
+    // --- PAGE INITIALIZATION ---
+    window.addEventListener('load', initializePage);
+
+    function initializePage() {
+        showLoader(true);
+        setUserMessage("Initializing...", "status");
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('mySummaryDate').value = today;
+        document.getElementById('logDateFrom').value = today;
+        document.getElementById('logDateTo').value = today;
+
+        google.script.run
+            .withSuccessHandler(updateUiAfterInitialization)
+            .withFailureHandler(err => {
+                showError(err, false);
+                fetchVersionInformation();
+            })
+            .getInitialAgentState();
+        
+        loadDashboardMetrics();
+        loadPendingRequests();
+        loadImportantLinks();
+        fetchVersionInformation();
+    }
+
+    // --- NEW FEATURES (SCORECARDS, LOGS, MODAL WORKFLOW) ---
+    function loadDashboardMetrics() {
+        const scorecardContainer = document.getElementById('scorecard-grid');
+        scorecardContainer.innerHTML = '<div style="color:var(--text-secondary); grid-column: 1 / -1;">Loading metrics...</div>';
+        google.script.run.withSuccessHandler(updateDashboardMetrics).withFailureHandler(err => {
+            console.error("Could not load dashboard metrics:", err);
+            scorecardContainer.innerHTML = '<div style="color:var(--red); grid-column: 1 / -1;">Could not load metrics.</div>';
+        }).getAgentDashboardSummary();
+    }
+    function updateDashboardMetrics(summary) {
+        if (!summary) return;
+        const scorecardContainer = document.getElementById('scorecard-grid');
+        scorecardContainer.innerHTML = `
+            <div class="scorecard"><h3 class="scorecard-title"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><span>Cases Closed Today</span></h3><div class="scorecard-value">${summary.closedToday ?? '0'}</div></div>
+            <div class="scorecard"><h3 class="scorecard-title"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>Avg. Handling Time</span></h3><div class="scorecard-value">${summary.aht ? formatTime(summary.aht) : '00:00:00'}</div></div>
+            <div class="scorecard"><h3 class="scorecard-title"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><span>Open Escalated</span></h3><div class="scorecard-value">${summary.escalated ?? '0'}</div></div>
+            <div class="scorecard"><h3 class="scorecard-title"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg><span>In Progress</span></h3><div class="scorecard-value">${summary.inProgress ?? '0'}</div></div>
+        `;
+    }
+    function loadAttendanceLog() {
+        const dateFrom = document.getElementById('logDateFrom').value;
+        const dateTo = document.getElementById('logDateTo').value;
+        if (!dateFrom || !dateTo) { return setUserMessage("Please select a date range.", "error", "attendanceLogMessage");}
+        showLoader(true, 'attendanceLogLoader');
+        setUserMessage("Loading log...", "status", "attendanceLogMessage");
+        google.script.run.withSuccessHandler(displayAttendanceLog).withFailureHandler(err => {
+            showError(err);
+            setUserMessage(err.message, "error", "attendanceLogMessage");
+            showLoader(false, 'attendanceLogLoader');
+        }).getAgentAttendanceLog({startDate: dateFrom, endDate: dateTo});
+    }
+    function displayAttendanceLog(logs) {
+    showLoader(false, 'attendanceLogLoader');
+    const tbody = document.getElementById('attendanceLogBody');
+    tbody.innerHTML = '';
+    if (!logs || logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No log entries found.</td></tr>';
+        return setUserMessage("No log entries found.", "status", "attendanceLogMessage");
+    }
+    setUserMessage("Log loaded successfully.", "success", "attendanceLogMessage");
+    logs.forEach(log => {
+        const row = tbody.insertRow();
+        
+        // --- CHANGE IS HERE ---
+        // Now create a Date object and format it for display
+        const displayTimestamp = new Date(log.timestamp).toLocaleString();
+        row.insertCell().textContent = displayTimestamp;
+        
+        row.insertCell().textContent = log.action;
+        row.insertCell().textContent = log.sessionId;
+        const editCell = row.insertCell();
+        const editButton = document.createElement('button');
+        editButton.className = 'btn-secondary';
+        editButton.style.padding = '4px 10px';
+        editButton.textContent = 'Edit';
+        editButton.onclick = function() { openCorrectionModal(log); }; // Pass the full log object with the ISO date
+        editCell.appendChild(editButton);
+    });
+}
+
+// In index.html, also REPLACE this function
+function openCorrectionModal(logData) {
+    logDataForModal = logData; // The timestamp here is the full ISO string
+    
+    // --- CHANGE IS HERE ---
+    const displayTimestamp = new Date(logData.timestamp).toLocaleString();
+    document.getElementById('modalLogDetails').innerHTML = `<strong>Timestamp:</strong> ${displayTimestamp}<br><strong>Action:</strong> ${logData.action}`;
+    
+    const timestampInput = document.getElementById('modalCorrectedTimestamp');
+    // The ISO string is perfect for pre-filling the datetime-local input
+    const localDateTime = logData.timestamp.substring(0, 16);
+    timestampInput.value = localDateTime;
+    
+    document.getElementById('modalCorrectionReason').value = '';
+    document.getElementById('correctionModal').style.display = 'block';
+}
+    function closeCorrectionModal() {
+        document.getElementById('correctionModal').style.display = 'none';
+        logDataForModal = null;
+    }
+    function submitCorrectionFromLog() {
+        const reason = document.getElementById('modalCorrectionReason').value.trim();
+        const newTimestamp = document.getElementById('modalCorrectedTimestamp').value;
+        if (!newTimestamp || !reason) { return alert("Please provide both a new timestamp and a reason."); }
+        if (!logDataForModal) { return alert("Error: No log data to submit."); }
+        setUserMessage("Submitting request...", "status");
+        const formattedTimestamp = newTimestamp.replace('T', ' ') + ':00';
+        google.script.run
+            .withSuccessHandler(function(response) {
+                setUserMessage(response, "success");
+                closeCorrectionModal();
+                loadPendingRequests();
+            })
+            .withFailureHandler(showError)
+            .logCorrectionRequest(logDataForModal, reason, formattedTimestamp);
+    }
+
+    // --- CORE UI & STATE MANAGEMENT ---
+    function updateUiAfterInitialization(stateFromServer) {
+        showLoader(false);
+        if (stateFromServer && typeof stateFromServer === 'object' && !stateFromServer.error) {
+            currentAgentState = stateFromServer;
+            document.getElementById('agentEmail').textContent = currentAgentState.agentEmail || "N/A";
+            document.getElementById('agentName').textContent = currentAgentState.agentName ? `(${currentAgentState.agentName})` : "";
+            updateUiFromState();
+            setUserMessage(stateFromServer.message || "State initialized.", "success");
+            const summarySection = document.getElementById('my-case-summary-section');
+            if (currentAgentState.agentEmail && currentAgentState.agentEmail !== "Unknown") {
+                if (summarySection) summarySection.style.display = 'block';
+                loadMyCaseSummary();
+            } else {
+                if (summarySection) summarySection.style.display = 'none';
+            }
+        } else {
+            const errorMsg = stateFromServer && stateFromServer.error ? stateFromServer.error : "Failed to initialize agent state.";
+            showError(errorMsg, false);
+            currentAgentState = { agentEmail: "Error", isWorking: false, isOnBreak: false, isInMeeting: false };
+            updateUiFromState();
+        }
+    }
+    function handleBackendResponse(newStateFromServer) {
+        showLoader(false);
+        if (newStateFromServer && typeof newStateFromServer === 'object' && !newStateFromServer.error) {
+            currentAgentState = newStateFromServer;
+            updateUiFromState();
+            setUserMessage(newStateFromServer.message || "Action successful!", "success");
+            loadDashboardMetrics();
+        } else {
+            const errorMsg = newStateFromServer && newStateFromServer.error ? newStateFromServer.error : "Unexpected response from server.";
+            showError(errorMsg, true);
+        }
+    }
+    function updateUiFromState() {
+        const { isWorking, isOnBreak, isInMeeting, workSessionActualStartTimeISO,
+            totalCompletedBreakDurationInSessionSeconds, currentBreakStartTimeISO,
+            totalCompletedMeetingDurationInSessionSeconds, currentMeetingStartTimeISO } = currentAgentState;
+
+        const statusDisplay = document.getElementById('currentOverallStatus');
+        const activitySection = document.getElementById('activity-section');
+        const summarySection = document.getElementById('my-case-summary-section');
+        const scorecardGrid = document.getElementById('scorecard-grid');
+        const btnWork = document.getElementById('btnWorkToggle');
+        const btnBreak = document.getElementById('btnBreakToggle');
+        const btnMeeting = document.getElementById('btnMeetingToggle');
+        
+        if (workTimerInterval) clearInterval(workTimerInterval); workTimerInterval = null;
+        if (currentBreakTimerInterval) clearInterval(currentBreakTimerInterval); currentBreakTimerInterval = null;
+        if (currentMeetingTimerInterval) clearInterval(currentMeetingTimerInterval); currentMeetingTimerInterval = null;
+
+        document.getElementById('workTimerDisplay').textContent = formatTime(0);
+        document.getElementById('currentBreakTimerDisplay').textContent = formatTime(0);
+        document.getElementById('totalSessionBreakTimeDisplay').textContent = formatTime(totalCompletedBreakDurationInSessionSeconds || 0);
+        document.getElementById('currentMeetingTimerDisplay').textContent = formatTime(0);
+        document.getElementById('totalSessionMeetingTimeDisplay').textContent = formatTime(totalCompletedMeetingDurationInSessionSeconds || 0);
+
+        statusDisplay.className = 'status-text';
+        if (isWorking) {
+            if (isOnBreak) { statusDisplay.textContent = 'On Break'; statusDisplay.classList.add('break'); } 
+            else if (isInMeeting) { statusDisplay.textContent = 'In Meeting'; statusDisplay.classList.add('meeting'); } 
+            else { statusDisplay.textContent = 'Working'; statusDisplay.classList.add('working'); }
+            
+            activitySection.style.display = 'block';
+            if (summarySection) summarySection.style.display = 'block';
+            if (scorecardGrid) scorecardGrid.style.opacity = 1;
+            btnWork.className = 'actions btn-end';
+            btnWork.querySelector('span').textContent = "End Work";
+            btnBreak.disabled = isInMeeting;
+            btnMeeting.disabled = isOnBreak;
+
+            btnBreak.className = isOnBreak ? 'actions btn-start' : 'actions btn-break-start';
+            btnBreak.querySelector('span').textContent = isOnBreak ? "End Break" : "Start Break";
+            btnMeeting.className = isInMeeting ? 'actions btn-end' : 'actions btn-meeting-start';
+            btnMeeting.querySelector('span').textContent = isInMeeting ? "End Meeting" : "Start Meeting";
+            
+            if (workSessionActualStartTimeISO) { updateGrossWorkTimerDisplay(); workTimerInterval = setInterval(updateGrossWorkTimerDisplay, 1000); }
+            if (isOnBreak && currentBreakStartTimeISO) { updateCurrentBreakTimerDisplay(); currentBreakTimerInterval = setInterval(updateCurrentBreakTimerDisplay, 1000); }
+            if (isInMeeting && currentMeetingStartTimeISO) { updateCurrentMeetingTimerDisplay(); currentMeetingTimerInterval = setInterval(updateCurrentMeetingTimerDisplay, 1000); }
+        } else {
+            statusDisplay.textContent = 'Offline';
+            statusDisplay.classList.add('offline');
+            activitySection.style.display = 'none';
+            if (summarySection) summarySection.style.display = 'none';
+            if (scorecardGrid) scorecardGrid.style.opacity = 0.5;
+            btnWork.className = 'actions btn-start';
+            btnWork.querySelector('span').textContent = "Start Work";
+        }
+    }
+    
+    // --- ALL ORIGINAL FUNCTIONS ---
+    function handleWorkToggle(){const action=currentAgentState.isWorking?"End Work":"Start Work";if(action==="End Work"&&(currentAgentState.isOnBreak||currentAgentState.isInMeeting)&&!confirm("You are currently on break or in a meeting. End work session anyway?"))return;if(action==="End Work"&&!confirm("Are you sure you want to end your work session?"))return;showLoader(!0);setUserMessage("Processing...","status");google.script.run.withSuccessHandler(handleBackendResponse).withFailureHandler(showError).logAgentAction(action)}
+    function handleBreakToggle(){const action=currentAgentState.isOnBreak?"End Break":"Start Break";showLoader(!0);setUserMessage("Processing...","status");google.script.run.withSuccessHandler(handleBackendResponse).withFailureHandler(showError).logAgentAction(action)}
+    function handleMeetingToggle(){const action=currentAgentState.isInMeeting?"End Meeting":"Start Meeting";showLoader(!0);setUserMessage("Processing...","status");google.script.run.withSuccessHandler(handleBackendResponse).withFailureHandler(showError).logAgentAction(action)}
+    function updateGrossWorkTimerDisplay(){const{isWorking:e,workSessionActualStartTimeISO:t}=currentAgentState;if(!e||!t)return;const o=new Date(t),n=Math.max(0,(new Date-o)/1e3);document.getElementById("workTimerDisplay").textContent=formatTime(n)}
+    function updateCurrentBreakTimerDisplay(){const{isOnBreak:e,currentBreakStartTimeISO:t}=currentAgentState;if(!e||!t)return;const o=new Date(t),n=Math.max(0,(new Date-o)/1e3);document.getElementById("currentBreakTimerDisplay").textContent=formatTime(n)}
+    function updateCurrentMeetingTimerDisplay(){const{isInMeeting:e,currentMeetingStartTimeISO:t}=currentAgentState;if(!e||!t)return;const o=new Date(t),n=Math.max(0,(new Date-o)/1e3);document.getElementById("currentMeetingTimerDisplay").textContent=formatTime(n)}
+    function toggleSidebar(){document.getElementById("sidebar").classList.toggle("open")}
+    function loadImportantLinks(){google.script.run.withSuccessHandler(displayImportantLinks).getImportantLinks()}
+    function displayImportantLinks(e){const t=document.getElementById("sidebar-content");if(t.innerHTML="",!e||0===e.length)return void(t.innerHTML='<p style="color:var(--text-secondary); padding:10px;">No links found.</p>');const o=e.reduce(((e,t)=>(e[t.category]||(e[t.category]=[]),e[t.category].push(t),e)),{});for(const n in o){const a=document.createElement("h4");a.className="sidebar-category-header",a.textContent=n;const s=document.createElement("div");s.className="links-container",a.onclick=function(){this.classList.toggle("expanded"),s.classList.toggle("expanded")},o[n].forEach((e=>{const t=document.createElement("a");t.className="link-item",t.href=e.url,t.target="_blank",t.innerHTML=`<div class="link-item-name">${e.name}</div><p class="link-item-desc">${e.description}</p>`,s.appendChild(t)})),t.appendChild(a),t.appendChild(s)}}
+    function loadPendingRequests(){google.script.run.withSuccessHandler(displayPendingRequests).withFailureHandler(showError).getPendingRequests()}
+    function displayPendingRequests(requests){const tbody=document.getElementById("my-pending-requests-body");tbody.innerHTML="";if(!requests||0===requests.length)return void(tbody.innerHTML='<tr><td colspan="4" style="text-align:center;">No pending requests found.</td></tr>');requests.forEach(req=>{const row=tbody.insertRow();row.insertCell().textContent=req.originalTimestamp;row.insertCell().textContent=req.originalAction;row.insertCell().textContent=req.correctedTimestamp;row.insertCell().textContent=req.sessionId})}
+    function showLoader(e,t="loader"){const o=document.getElementById(t);o&&(o.style.display=e?"block":"none")}
+    function setUserMessage(e,t="status",o="userMessage"){const n=document.getElementById(o);n&&(n.textContent=e||"",n.className="message-area","error"===t?n.classList.add("error-message"):"success"===t&&n.classList.add("success-message"),("success"===t||"error"===t)&&e&&setTimeout((()=>{n.textContent===e&&(n.textContent="",n.className="message-area")}),7e3))}
+    function showError(e,t){showLoader(!1,"loader"),showLoader(!1,"mySummaryLoader"),showLoader(!1,"pendingRequestsLoader"),console.error("Error:",e);let o="object"==typeof e&&e.message?e.message:"An unknown error occurred.";setUserMessage("ERROR: "+o,"error"),!0===t&&(setUserMessage("Attempting to re-initialize...","status"),setTimeout(initializePage,3e3))}
+    function formatTime(e){if(isNaN(e)||!isFinite(e)||e<0)e=0;const t=Math.floor(e/3600),o=Math.floor(e%3600/60),n=Math.floor(e%60);return`${String(t).padStart(2,"0")}:${String(o).padStart(2,"0")}:${String(n).padStart(2,"0")}`}
+    function fetchVersionInformation(){google.script.run.withSuccessHandler(handleVersionDetailsResponse).withFailureHandler(handleVersionDetailsError).getVersionDetails()}
+    function handleVersionDetailsResponse(e){const t=document.getElementById("scriptVersionDisplay"),o=document.getElementById("versionStatusMessage"),n=document.getElementById("updateNotificationArea"),a=document.getElementById("updateButton"),s=document.getElementById("updateFeaturesDisplay"),r=document.getElementById("versionError");if(t&&o&&n){if(r.style.display="none",e&&e.error)return t.textContent="Error",n.style.display="none",r.textContent=e.error,void(r.style.display="block");if(e&&e.runningVersion){t.textContent=e.runningVersion;const c=parseFloat(e.runningVersion),i=parseFloat(e.latestAdvertisedVersion);!isNaN(c)&&!isNaN(i)&&e.latestAdvertisedVersion&&e.updateURL&&c<i?(n.style.display="block",s.textContent=e.updateFeatures||"No features listed.",a.onclick=()=>promptForUpdate(e.updateURL,e.updateFeatures)):(o.textContent="Up to date.",n.style.display="none")}else t.textContent="N/A",r.textContent="Could not retrieve version info.",r.style.display="block"}}
+    function handleVersionDetailsError(e){console.error("Error fetching version details:",e),document.getElementById("scriptVersionDisplay").textContent="Error",document.getElementById("versionError").textContent="Failed to check for updates.",document.getElementById("versionError").style.display="block"}
+    function promptForUpdate(e,t){if(!e)return void alert("Update URL is not configured.");window.open(e,"_blank");const o=navigator.platform.toUpperCase().indexOf("MAC")>=0?"Cmd+D":"Ctrl+D";let n="A new version has opened in a new tab.\n\n";t&&(n+=`New features:\n- ${t.replace(/,\s*/g,"\n- ")}\n\n`),n+=`Please bookmark the new page (try ${o}) and remove your old bookmark.`,alert(n)}
+    function loadMyCaseSummary(){if(!currentAgentState||!currentAgentState.agentEmail)return setUserMessage("Agent details not available.","error","mySummaryMessage");const e=document.getElementById("mySummaryDate").value;if(!e)return setUserMessage("Please select a date.","error","mySummaryMessage");showLoader(!0,"mySummaryLoader"),setUserMessage(`Loading summary for ${e}...`,"status","mySummaryMessage"),google.script.run.withSuccessHandler(displayMyCaseSummary).withFailureHandler(handleMyCaseSummaryError).getAgentSummaryFromAvailableCases(currentAgentState.agentEmail,e)}
+    function displayMyCaseSummary(e){showLoader(!1,"mySummaryLoader");const t=document.getElementById("myCaseSummaryBody");if(t.innerHTML="",!e||0===e.length)return t.innerHTML='<tr><td colspan="6" style="text-align:center;">No cases found for you on this date.</td></tr>',setUserMessage("No cases found for this date.","status","mySummaryMessage");setUserMessage("Case summary loaded.","success","mySummaryMessage"),e.forEach((e=>{const o=t.insertRow();o.insertCell().textContent=e.caseId||"N/A",o.insertCell().textContent=e.accountName||"N/A",o.insertCell().textContent=e.startTimeISO?new Date(e.startTimeISO).toLocaleTimeString():"N/A",o.insertCell().textContent=e.finishTimeISO?new Date(e.finishTimeISO).toLocaleTimeString():"N/A",o.insertCell().textContent=null!==e.durationSeconds?formatTime(e.durationSeconds):"N/A",o.insertCell().textContent=e.status||"N/A"}))}
+    function handleMyCaseSummaryError(e){showLoader(!1,"mySummaryLoader");let t=e&&e.message?e.message:"Failed to fetch summary.";setUserMessage(t,"error","mySummaryMessage"),document.getElementById("myCaseSummaryBody").innerHTML='<tr><td colspan="6" style="text-align:center; color:red;">Could not load summary.</td></tr>'}
+</script>
+</body>
+</html>

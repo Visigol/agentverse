@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Case Management</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background-main: #F0F8F5; --primary-accent: #00B14F; --card-background: #FFFFFF;
+      --text-primary: #111827; --text-secondary: #6B7280; --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05); --red-deny: #EF4444; --yellow: #F59E0B; --blue: #3B82F6;
+    }
+    body { font-family: 'Inter', sans-serif; margin: 0; background-color: var(--background-main); color: var(--text-primary); }
+    .header { background-color: var(--card-background); padding: 25px 30px; border-bottom: 1px solid var(--border-light); display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 2.2em; font-weight: 800; }
+    .page-container { padding: 30px; max-width: 100%; box-sizing: border-box; }
+    
+    /* Search Bar */
+    .search-container { display: flex; gap: 15px; margin-bottom: 30px; background-color: var(--card-background); padding: 20px; border-radius: 12px; box-shadow: 0 4px 8px var(--shadow-color); }
+    .search-container input { flex-grow: 1; font-size: 1.1em; padding: 12px; border-radius: 8px; border: 1px solid var(--border-light); }
+    .search-container button { font-size: 1.1em; padding: 12px 25px; border: none; border-radius: 8px; background-color: var(--primary-accent); color: white; cursor: pointer; }
+
+    /* Kanban Board Layout - CORRECTED FOR NO SCROLLING */
+    .kanban-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: start; }
+    .status-column { background-color: #F9FAFB; border-radius: 12px; padding: 15px; border: 1px solid var(--border-light); }
+    .status-column h2 { font-size: 1.2em; font-weight: 700; padding-bottom: 15px; border-bottom: 1px solid var(--border-light); margin: 0 0 15px 0; }
+    .case-container { display: flex; flex-direction: column; gap: 15px; min-height: 200px; }
+    
+    /* Individual Case Card Styling */
+    .case-card { background-color: var(--card-background); border-radius: 8px; box-shadow: 0 2px 4px var(--shadow-color); border: 1px solid var(--border-light); cursor: pointer; transition: box-shadow 0.2s; }
+    .case-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .case-summary { padding: 15px; }
+    .case-summary .field { margin-bottom: 8px; font-size: 0.9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .case-summary .field strong { color: var(--text-primary); }
+    .case-summary .field span { color: var(--text-secondary); }
+    .details-grid .field span.field-value {
+    background-color: #F9FAFB; /* A very light, clean grey */
+    border: 1px solid var(--border-light);
+    padding: 8px 12px;
+    border-radius: 6px;
+    min-height: 21px; /* Helps align with input fields */
+    display: block;   /* Ensures padding and height are applied */
+    white-space: pre-wrap; /* Allows long text and line breaks to wrap */
+    word-break: break-word; /* Prevents long text from overflowing */
+}
+
+
+    /* NEW MODAL STYLES */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background-color: var(--card-background); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 90%; max-width: 1400px; max-height: 90vh; display: flex; overflow: hidden; }
+    .modal-main { flex-grow: 1; padding: 30px; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 20px; margin-bottom: 20px; }
+    .modal-header h2 { margin: 0; font-size: 1.8em; }
+    .close-button { font-size: 2.5em; font-weight: 300; color: var(--text-secondary); background: none; border: none; cursor: pointer; line-height: 1; }
+    .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px 30px; }
+    .details-grid .field { display: flex; flex-direction: column; }
+    .details-grid .field strong { font-size: 0.8em; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; }
+    .details-grid .field span, .details-grid .field input, .details-grid .field textarea { font-size: 1em; color: var(--text-primary); background: none; border: none; padding: 0; width: 100%; font-family: 'Inter', sans-serif; }
+    .details-grid .field input, .details-grid .field textarea { background-color: var(--background-main); border: 1px solid var(--border-light); padding: 8px; border-radius: 6px; }
+    .details-grid .field textarea { resize: vertical; min-height: 60px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-light); }
+    .modal-actions button { font-size: 1em; padding: 10px 20px; border-radius: 8px; border:none; cursor:pointer; font-weight: 600; }
+    .btn-primary { background-color: var(--primary-accent); color: white; }
+    .btn-secondary { background-color: var(--border-light); color: var(--text-primary); }
+    #edit-guide-sidebar { display: none; flex-basis: 350px; background-color: #F9FAFB; padding: 25px; box-sizing: border-box; border-left: 1px solid var(--border-light); overflow-y: auto;}
+    #edit-guide-sidebar.visible { display: block; }
+    #edit-guide-sidebar h3 { margin-top: 0; font-size: 1.4em; color: var(--primary-accent); }
+    #edit-guide-sidebar p { color: var(--text-secondary); line-height: 1.6; }
+    #edit-guide-sidebar .calculation { background-color: white; padding: 15px; border-radius: 8px; margin-top: 20px; font-family: 'Consolas', monospace; border: 1px solid var(--border-light); }
+
+    /* --- STYLES FOR LOG SECTIONS IN MODAL --- */
+.log-section {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-light);
+}
+.log-section h3 {
+    margin: 0 0 15px 0;
+    font-size: 1.3em;
+    color: var(--primary-accent);
+}
+.log-record {
+    padding: 15px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    background-color: #F9FAFB;
+}
+.log-record .details-grid {
+    gap: 10px 25px; /* Tighter gap for log records */
+}
+    .show-more-btn { width: 100%; margin-top: 15px; background: none; border: 1px dashed var(--border-light); color: var(--text-secondary); padding: 10px; font-weight: 600; cursor: pointer; border-radius: 8px; }
+    .loader { border: 4px solid var(--border-light); border-top: 4px solid var(--primary-accent); border-radius: 50%; width: 22px; height: 22px; animation: spin 1s linear infinite; display: none; margin: 20px auto; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    #version-info-container { text-align: right; font-size: 0.9em; color: var(--text-secondary); }
+    .error-message { color: var(--red-deny); font-weight: 600; }
+    #updateNotificationArea { margin-top: 5px; padding: 8px; background-color: var(--yellow); color: var(--text-primary); border-radius: 8px; }
+    #updateNotificationArea button { width: 100%; padding: 6px; font-size: 0.9em; background-color: var(--text-primary); color: white; border: none; cursor: pointer; margin-top: 5px; }
+
+    @media (max-width: 1200px) { .kanban-board { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Case Management</h1>
+    <div id="version-info-container">
+      <div>VERSION: <strong id="scriptVersionDisplay">...</strong></div>
+      <div id="versionStatusMessage" style="font-size: 0.9em; margin-top: 3px;"></div>
+      <div id="updateNotificationArea" style="display: none;">
+          <strong>Update Available!</strong>
+          <div id="updateFeaturesDisplay" style="font-size: 0.9em; margin: 4px 0;"></div>
+          <button id="updateButton">Update Now</button>
+      </div>
+      <div id="versionError" class="error-message" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="page-container">
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search by Main Task ID, Country, Account Name, etc...">
+      <button onclick="handleSearch()">Search</button>
+    </div>
+
+    <div class="kanban-board">
+      <div class="status-column">
+        <h2>Not Started</h2>
+        <div class="case-container" id="cases-not-started"></div>
+        <button class="show-more-btn" onclick="loadCases('Not Started', true)">Show All</button>
+      </div>
+      <div class="status-column">
+        <h2>In Progress</h2>
+        <div class="case-container" id="cases-in-progress"></div>
+        <button class="show-more-btn" onclick="loadCases('In Progress', true)">Show All</button>
+      </div>
+      <div class="status-column">
+        <h2>Completed</h2>
+        <div class="case-container" id="cases-completed"></div>
+        <button class="show-more-btn" onclick="loadCases('Completed', true)">Show All</button>
+      </div>
+      <div class="status-column">
+        <h2>Cancelled</h2>
+        <div class="case-container" id="cases-cancelled"></div>
+        <button class="show-more-btn" onclick="loadCases('Cancelled', true)">Show All</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="case-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-main">
+        <div class="modal-header">
+          <h2 id="modal-title">Case Details</h2>
+          <button class="close-button" onclick="closeCaseModal()">×</button>
+        </div>
+        <div class="details-grid" id="modal-details-grid">
+          </div>
+        <!-- ===== NEW LOG SECTIONS START ===== -->
+<div id="escalation-logs-container" class="log-section" style="display:none;">
+    <h3>Escalation Logs</h3>
+    <div id="escalation-logs-grid"></div>
+</div>
+<div id="pausing-logs-container" class="log-section" style="display:none;">
+    <h3>Pausing Logs</h3>
+    <div id="pausing-logs-grid"></div>
+</div>
+<div id="cooperation-logs-container" class="log-section" style="display:none;">
+    <h3>Cooperation Logs</h3>
+    <div id="cooperation-logs-grid"></div>
+</div>
+<!-- ===== NEW LOG SECTIONS END ===== -->  
+        <div class="modal-actions">
+          <button id="modal-btn-edit" class="btn-secondary" onclick="toggleEditMode()">Edit</button>
+          <button id="modal-btn-cancel" class="btn-secondary" onclick="cancelEdit()" style="display:none;">Cancel</button>
+          <button id="modal-btn-save" class="btn-primary" onclick="saveChanges(this)" style="display:none;">Save</button>
+        </div>
+      </div>
+      <div id="edit-guide-sidebar">
+        <h3>Recalculation Notice</h3>
+        <p>Editing date fields will automatically recalculate the **Stored Agent Handling Time**.</p>
+        <div class="calculation">
+            <p><strong>New Time = (End - Start) - Pause - Escalation</strong></p>
+            <p id="guide-calculation-details"></p>
+        </div>
+        <p>This change will be saved when you click "Save".</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let caseDataStore = {}; // Add this line
+    // --- GLOBAL STATE ---
+    const STATUS_COLUMNS = ['Not Started', 'In Progress', 'Completed', 'Cancelled'];
+    let offsets = {'Not Started': 0, 'In Progress': 0, 'Completed': 0, 'Cancelled': 0};
+    let activeCaseData = null; // To store data for the open modal
+    const ALL_FIELDS = ['Created By', 'Useremail', 'Main Task ID', 'Country', 'Menu Request Sent Date', 'Language', 'Case Title', 'Category', 'Account Name', 'Status', 'Provider Id', 'City', 'Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Menu link', 'Dish Photos Link', 'Photo Coverage', 'Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Task TAT', 'Escalated Comment', 'Task Paused', 'Pause Time', 'Pause End Time', 'TAT Adherance', 'Salesforce Updated', 'Salesforce Updated time', 'Ready for QA', 'Date stamp', 'Task Type', 'Rework Count', 'No of Main dishes(Excluding Extras, drinks, sides etc.)', 'Total No. of dishes', 'Total No. of categories', 'Total no. of options', 'Total no. of option Groups', 'Total no. of tags', 'Total no. of timetables.', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Comments', 'Event Summary', 'Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time', 'Retailer Provider Type', 'Airtable Link', 'Description Coverage', 'Visual and Descriptive Elements', 'Claim Flag', 'SLA Missed Reason', 'SLA Missed Comment', 'Linking Snapshot URL'];
+
+    // --- INITIALIZATION ---
+    window.addEventListener('load', function() {
+        fetchVersionInformation();
+        initializeBoard();
+    });
+
+    function initializeBoard() {
+        const searchTerm = document.getElementById('searchInput').value;
+        STATUS_COLUMNS.forEach(status => {
+            offsets[status] = 0;
+            const container = document.getElementById(`cases-${status.toLowerCase().replace(/ /g, '-')}`);
+            if (container) container.innerHTML = '';
+            loadCases(status);
+        });
+    }
+
+    // --- DATA FETCHING & RENDERING ---
+    function loadCases(status, showAll = false) {
+        const searchTerm = document.getElementById('searchInput').value;
+        const containerId = `cases-${status.toLowerCase().replace(/ /g, '-')}`;
+        const container = document.getElementById(containerId);
+        
+        if (!container) return;
+
+        if (offsets[status] === 0 || showAll) {
+           container.innerHTML = '<div class="loader" style="display:block;"></div>';
+        }
+
+        const options = {
+            status: status,
+            searchTerm: searchTerm,
+            limit: showAll ? 1000 : 20,
+            offset: showAll ? 0 : offsets[status]
+        };
+
+        google.script.run
+            .withSuccessHandler(cases => displayCases(cases, status, showAll))
+            .withFailureHandler(err => {
+                console.error(err);
+                container.innerHTML = '<p class="error-message">Error loading cases.</p>';
+            })
+            .getCasesByStatus(options);
+    }
+
+    function displayCases(cases, status, isShowingAll) {
+    const containerId = `cases-${status.toLowerCase().replace(/ /g, '-')}`;
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (offsets[status] === 0 || isShowingAll) { container.innerHTML = ''; } 
+    else { container.querySelector('.loader')?.remove(); }
+
+    if (!cases || cases.length === 0) {
+        if (offsets[status] === 0) { container.innerHTML = '<p style="text-align:center; color: var(--text-secondary); padding: 10px;">No cases found.</p>'; }
+    } else {
+        cases.forEach(caseData => {
+            // Store the full data object locally
+            caseDataStore[caseData['Main Task ID']] = caseData;
+            container.insertAdjacentHTML('beforeend', createCaseCardHTML(caseData));
+        });
+    }
+
+    offsets[status] = isShowingAll ? cases.length : offsets[status] + cases.length;
+    const showMoreBtn = container.nextElementSibling;
+    if (showMoreBtn) { showMoreBtn.style.display = (!cases || cases.length < 20 || isShowingAll) ? 'none' : 'block'; }
+}
+    
+    // --- HTML TEMPLATING ---
+    function createCaseCardHTML(caseData) {
+    const caseId = caseData['Main Task ID'];
+    return `
+    <div class="case-card" id="case-${caseId}" onclick="openCaseModal('${caseId}')">
+        <div class="case-summary">
+            <div class="field"><strong>Task ID:</strong> <span>${caseId || 'N/A'}</span></div>
+            <div class="field"><strong>Country:</strong> <span>${caseData['Country'] || 'N/A'}</span></div>
+            <div class="field"><strong>Account:</strong> <span>${caseData['Account Name'] || 'N/A'}</span></div>
+            <div class="field"><strong>Category:</strong> <span>${caseData['Category'] || 'N/A'}</span></div>
+        </div>
+    </div>`;
+}
+
+/**
+ * Main handler to display all fetched logs.
+ */
+function displayCaseLogs(logs) {
+    if (logs.error) {
+        console.error("Error fetching logs:", logs.error);
+        return;
+    }
+
+    const renderLogSection = (containerId, gridId, logArray, title, pkName) => {
+        const container = document.getElementById(containerId);
+        const grid = document.getElementById(gridId);
+        if (logArray && logArray.length > 0) {
+            let allLogsHtml = '';
+            logArray.forEach(log => {
+                const logId = log[pkName];
+                let logHtml = `<div class="log-record" data-log-id="${logId}"><div class="details-grid">`;
+                for (const header in log) {
+                    // Use the same formatting helpers as the main modal
+                    let displayValue = log[header] || '';
+                    if (displayValue && isDateTimeField(header)) {
+                        displayValue = formatDisplayDate(displayValue);
+                    } else if (displayValue && isDurationField(header)) {
+                        displayValue = formatTime(parseFloat(displayValue) * 86400);
+                    }
+                    logHtml += `<div class="field"><strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
+                }
+                logHtml += `</div></div>`;
+                allLogsHtml += logHtml;
+            });
+            grid.innerHTML = allLogsHtml;
+            container.style.display = 'block';
+        }
+    };
+
+    renderLogSection('escalation-logs-container', 'escalation-logs-grid', logs.escalationLogs, 'Escalation Logs', 'Log ID');
+    renderLogSection('pausing-logs-container', 'pausing-logs-grid', logs.pausingLogs, 'Pausing Logs', 'ID');
+    renderLogSection('cooperation-logs-container', 'cooperation-logs-grid', logs.cooperationLogs, 'Cooperation Logs', 'Log ID');
+}
+
+/**
+ * Helper function to find the original log record from the locally stored data.
+ */
+function getOriginalLog(logId, logType) {
+    if (!activeCaseData || !activeCaseData[logType]) return null;
+    const pkName = (logType === 'pausingLogs') ? 'ID' : 'Log ID';
+    return activeCaseData[logType].find(log => String(log[pkName]) === String(logId));
+}
+
+    // --- MODAL & EDITING WORKFLOW ---
+    function openCaseModal(caseId) {
+    activeCaseData = caseDataStore[caseId];
+    if (!activeCaseData) { alert('Error: Could not find case data.'); return; }
+
+    const grid = document.getElementById('modal-details-grid');
+    document.getElementById('modal-title').textContent = `Case Details: ${activeCaseData['Main Task ID']}`;
+
+    let detailsHTML = '';
+    ALL_FIELDS.forEach(field => {
+        let displayValue = activeCaseData[field] || '';
+
+        // --- NEW DISPLAY FORMATTING LOGIC ---
+        if (displayValue) { // Only format if there's a value
+            if (isDateTimeField(field)) {
+                displayValue = formatDisplayDate(displayValue);
+            } else if (isDurationField(field)) {
+                // Convert fraction of day to seconds for formatTime function
+                const seconds = parseFloat(displayValue) * 86400;
+                displayValue = formatTime(seconds);
+            }
+        }
+        // --- END NEW LOGIC ---
+
+        detailsHTML += `<div class="field"><strong>${field}</strong><span class="field-value">${displayValue}</span></div>`;
+    });
+    grid.innerHTML = detailsHTML;
+
+    cancelEdit(true);
+    // Clear and hide previous logs
+document.getElementById('escalation-logs-container').style.display = 'none';
+document.getElementById('pausing-logs-container').style.display = 'none';
+document.getElementById('cooperation-logs-container').style.display = 'none';
+document.getElementById('escalation-logs-grid').innerHTML = '';
+document.getElementById('pausing-logs-grid').innerHTML = '';
+document.getElementById('cooperation-logs-grid').innerHTML = '';
+
+// Fetch the logs for this case
+google.script.run
+    .withSuccessHandler(displayCaseLogs)
+    .withFailureHandler(err => console.error('Could not load logs:', err))
+    .getLogsForCase(caseId);
+    document.getElementById('case-modal').style.display = 'flex';
+}
+    function closeCaseModal() {
+        document.getElementById('case-modal').style.display = 'none';
+        hideGuide();
+        activeCaseData = null;
+    }
+    function toggleEditMode() {
+        const grid = document.getElementById('modal-details-grid');
+        grid.classList.add('edit-mode');
+        document.getElementById('modal-btn-edit').style.display = 'none';
+        document.getElementById('modal-btn-cancel').style.display = 'inline-flex';
+        document.getElementById('modal-btn-save').style.display = 'inline-flex';
+
+        grid.querySelectorAll('.field-value').forEach(span => {
+            const header = span.textContent; // In view mode, header is in strong tag, value in span
+            const headerText = span.previousElementSibling.textContent;
+            const value = span.textContent;
+            const isTextarea = ['Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Comments', 'Event Summary', 'Escalated Comment', 'SLA Missed Comment'].includes(headerText);
+            const inputType = (headerText.toLowerCase().includes('date') || headerText.toLowerCase().includes('time')) ? 'datetime-local' : 'text';
+
+            let inputElement;
+            if (isTextarea) {
+                inputElement = document.createElement('textarea');
+                inputElement.textContent = value;
+            } else {
+                inputElement = document.createElement('input');
+                inputElement.type = inputType;
+                if (inputType === 'datetime-local' && value) {
+                    try { inputElement.value = new Date(value).toISOString().substring(0,16); } catch(e) {}
+                } else { inputElement.value = value; }
+            }
+            inputElement.dataset.header = headerText;
+            if (headerText === 'Main Task Start Date/Time' || headerText === 'Main Task End Date/Time') {
+                inputElement.onchange = handleTimeChange;
+            }
+            span.replaceWith(inputElement);
+        });
+        // --- ADD THIS BLOCK TO MAKE LOGS EDITABLE ---
+grid.querySelectorAll('.log-field-value').forEach(span => {
+    const headerText = span.dataset.header;
+    const logId = span.dataset.logId;
+    const value = span.textContent;
+
+    // Determine input type
+    const isTextarea = ['Cooperation Notes', 'Escalated Comment'].includes(headerText);
+    const isDateTime = isDateTimeField(headerText);
+    const inputType = isDateTime ? 'datetime-local' : 'text';
+
+    let inputElement;
+    if (isTextarea) {
+        inputElement = document.createElement('textarea');
+        inputElement.textContent = value;
+    } else {
+        inputElement = document.createElement('input');
+        inputElement.type = inputType;
+        // Re-fetch original ISO string for datetime-local inputs for accuracy
+        if (isDateTime && activeCaseData) {
+            let originalLog;
+            if(span.closest('#escalation-logs-container')) originalLog = getOriginalLog(logId, 'escalationLogs');
+            if(span.closest('#pausing-logs-container')) originalLog = getOriginalLog(logId, 'pausingLogs');
+            if(span.closest('#cooperation-logs-container')) originalLog = getOriginalLog(logId, 'cooperationLogs');
+
+            const originalValue = originalLog ? originalLog[headerText] : '';
+            if (originalValue) {
+                try { inputElement.value = new Date(originalValue).toISOString().substring(0,16); } catch(e) {}
+            }
+        } else {
+            inputElement.value = value;
+        }
+    }
+    // Transfer data attributes for saving later
+    inputElement.dataset.header = headerText;
+    inputElement.dataset.logId = logId;
+    span.replaceWith(inputElement);
+});
+    }
+    function cancelEdit(isReset = false) {
+        hideGuide();
+        const grid = document.getElementById('modal-details-grid');
+        if (!grid.classList.contains('edit-mode') && !isReset) return;
+
+        grid.classList.remove('edit-mode');
+        grid.querySelectorAll('input, textarea').forEach(input => {
+            const span = document.createElement('span');
+            span.className = 'field-value';
+            span.textContent = activeCaseData[input.dataset.header] || '';
+            input.replaceWith(span);
+        });
+        document.getElementById('modal-btn-edit').style.display = 'inline-flex';
+        document.getElementById('modal-btn-cancel').style.display = 'none';
+        document.getElementById('modal-btn-save').style.display = 'none';
+
+        // --- ADD THIS BLOCK TO CANCEL LOG EDITS ---
+// Revert log fields
+const logSections = ['escalation-logs-grid', 'pausing-logs-grid', 'cooperation-logs-grid'];
+logSections.forEach(gridId => {
+    document.getElementById(gridId).querySelectorAll('input, textarea').forEach(input => {
+        const logId = input.dataset.logId;
+        const header = input.dataset.header;
+        
+        let originalLog;
+        if(gridId.includes('escalation')) originalLog = getOriginalLog(logId, 'escalationLogs');
+        if(gridId.includes('pausing')) originalLog = getOriginalLog(logId, 'pausingLogs');
+        if(gridId.includes('cooperation')) originalLog = getOriginalLog(logId, 'cooperationLogs');
+        
+        const span = document.createElement('span');
+        span.className = 'log-field-value';
+        span.dataset.header = header;
+        span.dataset.logId = logId;
+
+        let displayValue = originalLog ? (originalLog[header] || '') : '';
+        if (displayValue && isDateTimeField(header)) displayValue = formatDisplayDate(displayValue);
+        else if(displayValue && isDurationField(header)) displayValue = formatTime(parseFloat(displayValue) * 86400);
+
+        span.textContent = displayValue;
+        input.replaceWith(span);
+    });
+});
+    }
+    function saveChanges(saveButton) {
+    saveButton.textContent = 'Saving...';
+    saveButton.disabled = true; // Prevent multiple clicks
+    const caseId = activeCaseData['Main Task ID'];
+    const updatedData = {};
+    const modal = document.getElementById('case-modal');
+
+    modal.querySelectorAll('input, textarea').forEach(input => {
+        let value = input.value;
+        // IMPORTANT: Convert datetime-local string to full ISO 8601 string for server
+        if (input.type === 'datetime-local' && value) {
+            value = new Date(value).toISOString();
+        }
+        updatedData[input.dataset.header] = value;
+    });
+
+    // If the guide was visible, it means times were changed. Recalculate AHT.
+    if (document.getElementById('edit-guide-sidebar').classList.contains('visible')) {
+        const startStr = updatedData['Main Task Start Date/Time'];
+        const endStr = updatedData['Main Task End Date/Time'];
+
+        // Only proceed if both dates are present
+        if (startStr && endStr) {
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+            // Use the original stored data for pause/escalation as they are not editable here
+            const pause = parseFloat(activeCaseData['Stored Pause Duration'] || 0);
+            const escalation = parseFloat(activeCaseData['Stored Escalation Duration'] || 0);
+
+            if (end > start) {
+                const newAHTSeconds = ((end - start) / 1000) - (pause * 86400) - (escalation * 86400);
+                // Convert seconds back to Google Sheet's duration format (fraction of a day)
+                // Ensure it doesn't go below zero
+                updatedData['Stored Agent Handling Time'] = newAHTSeconds > 0 ? (newAHTSeconds / 86400) : 0;
+            }
+        }
+    }
+// --- ADD THIS BLOCK TO SAVE LOGS ---
+const collectLogUpdates = (containerId, pkName) => {
+    const updates = new Map();
+    document.querySelectorAll(`#${containerId} input, #${containerId} textarea`).forEach(input => {
+        const logId = input.dataset.logId;
+        const header = input.dataset.header;
+        let value = input.value;
+        if (input.type === 'datetime-local' && value) {
+            value = new Date(value).toISOString();
+        }
+        if (!updates.has(logId)) {
+            updates.set(logId, {});
+        }
+        updates.get(logId)[header] = value;
+    });
+    return updates;
+};
+
+const escalationUpdates = collectLogUpdates('escalation-logs-grid', 'Log ID');
+const pausingUpdates = collectLogUpdates('pausing-logs-grid', 'ID');
+const cooperationUpdates = collectLogUpdates('cooperation-logs-grid', 'Log ID');
+
+escalationUpdates.forEach((data, logId) => {
+    google.script.run.updateLogData(logId, 'Escalation Logs', 'Log ID', data);
+});
+pausingUpdates.forEach((data, logId) => {
+    google.script.run.updateLogData(logId, 'Pausing Logs', 'ID', data);
+});
+cooperationUpdates.forEach((data, logId) => {
+    google.script.run.updateLogData(logId, 'Cooperation Logs', 'Log ID', data);
+});
+// --- END OF BLOCK ---
+
+    google.script.run
+        .withSuccessHandler(response => {
+            alert(response);
+            closeCaseModal();
+            initializeBoard();
+        })
+        .withFailureHandler(err => {
+            alert('Error: ' + err.message);
+            saveButton.textContent = 'Save'; // Restore button text on failure
+            saveButton.disabled = false;
+        })
+        .updateCaseData(caseId, updatedData);
+}
+    
+    // --- EDIT GUIDE LOGIC ---
+    function handleTimeChange() {
+    const guide = document.getElementById('edit-guide-sidebar');
+    const guideDetails = document.getElementById('guide-calculation-details');
+    const modal = document.getElementById('case-modal');
+
+    const startInput = modal.querySelector(`[data-header="Main Task Start Date/Time"]`);
+    const endInput = modal.querySelector(`[data-header="Main Task End Date/Time"]`);
+
+    if (!startInput || !endInput) return; // Safety check
+
+    const startValue = startInput.value;
+    const endValue = endInput.value;
+
+    // Scenario 1: End date is cleared
+    if (!endValue) {
+        guideDetails.innerHTML = '<strong>End Time is empty.</strong><br>This change will not affect other calculations.';
+        guide.classList.add('visible');
+        return;
+    }
+
+    const start = new Date(startValue);
+    const end = new Date(endValue);
+    // Get original pause/escalation in seconds (they are stored as fractions of a day)
+    const pauseSeconds = (parseFloat(activeCaseData['Stored Pause Duration']) || 0) * 86400;
+    const escalationSeconds = (parseFloat(activeCaseData['Stored Escalation Duration']) || 0) * 86400;
+
+    // Scenario 2: Dates are valid and logical
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start) {
+        const grossSeconds = (end - start) / 1000;
+        const newAHTSeconds = grossSeconds - pauseSeconds - escalationSeconds;
+
+        guideDetails.innerHTML = `
+            <strong>New Est. Handling Time:</strong><br>
+            <span style="font-size: 1.5em; color: var(--primary-accent);">${formatTime(newAHTSeconds)}</span><br><br>
+            (${formatTime(grossSeconds)})<br>
+            - ${formatTime(pauseSeconds)} (Pause)<br>
+            - ${formatTime(escalationSeconds)} (Escalation)
+        `;
+        guide.classList.add('visible');
+    } else {
+        // Scenario 3: Dates are invalid (e.g., start > end)
+        guide.classList.remove('visible');
+    }
+}
+
+function hideGuide() {
+    document.getElementById('edit-guide-sidebar').classList.remove('visible');
+}
+    
+    // --- UTILITIES & VERSION CHECKER ---
+    function handleSearch(){initializeBoard()}
+    function escape(str){return(str+"").replace(/[\\"']/g,"\\$&").replace(/\u0000/g,"\\0")}
+    function formatTime(s) {
+    if (isNaN(s) || !isFinite(s)) s = 0;
+    const prefix = s < 0 ? "-" : "";
+    s = Math.abs(s);
+    const hours = Math.floor(s / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const seconds = Math.floor(s % 60);
+    return `${prefix}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+    function fetchVersionInformation(){google.script.run.withSuccessHandler(handleVersionDetailsResponse).withFailureHandler(handleVersionDetailsError).getVersionDetails()}
+    function handleVersionDetailsResponse(e){const t=document.getElementById("scriptVersionDisplay"),o=document.getElementById("versionStatusMessage"),n=document.getElementById("updateNotificationArea"),a=document.getElementById("updateButton"),s=document.getElementById("updateFeaturesDisplay"),r=document.getElementById("versionError");if(t&&o&&n){if(r.style.display="none",e&&e.error)return t.textContent="Error",n.style.display="none",r.textContent=e.error,void(r.style.display="block");if(e&&e.runningVersion){t.textContent=e.runningVersion;const c=parseFloat(e.runningVersion),i=parseFloat(e.latestAdvertisedVersion);!isNaN(c)&&!isNaN(i)&&e.latestAdvertisedVersion&&e.updateURL&&c<i?(n.style.display="block",s.textContent=e.updateFeatures||"No features listed.",a.onclick=()=>promptForUpdate(e.updateURL,e.updateFeatures)):(o.textContent="Up to date.",n.style.display="none")}else t.textContent="N/A",r.textContent="Could not retrieve version info.",r.style.display="block"}}
+    function handleVersionDetailsError(e){console.error("Error fetching version details:",e),document.getElementById("scriptVersionDisplay").textContent="Error",document.getElementById("versionError").textContent="Failed to check for updates.",document.getElementById("versionError").style.display="block"}
+    function promptForUpdate(e,t){if(!e)return void alert("Update URL is not configured.");window.open(e,"_blank");const o=navigator.platform.toUpperCase().indexOf("MAC")>=0?"Cmd+D":"Ctrl+D";let n="A new version has opened in a new tab.\n\n";t&&(n+=`New features:\n- ${t.replace(/,\s*/g,"\n- ")}\n\n`),n+=`Please bookmark the new page (try ${o}) and remove your old bookmark.`,alert(n)}
+
+    // --- ADD THESE HELPER FUNCTIONS ---
+function isDateTimeField(fieldName) {
+    const lower = fieldName.toLowerCase();
+    return lower.includes('date') || lower.includes('time');
+}
+
+function isDurationField(fieldName) {
+    return fieldName.toLowerCase().includes('duration') || fieldName === 'Stored Agent Handling Time';
+}
+
+function formatDisplayDate(isoString) {
+    if (!isoString) return '';
+    try {
+        // Use options that produce a format like "8/29/2025, 5:01:40 PM"
+        return new Date(isoString).toLocaleString([], {
+            year: 'numeric', month: 'numeric', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false
+        }).replace(',', '');
+    } catch (e) {
+        return isoString; // Fallback if date is invalid
+    }
+}
+</script>
+</body>
+</html>

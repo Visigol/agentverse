@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Manager Dashboard - Agent Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* 1. Overall Theme & Color Palette */
+    :root {
+      --background-main: #F0F8F5; /* Very light, soft mint-green */
+      --primary-accent: #00B14F; /* Vibrant, fresh green */
+      --card-background: #FFFFFF; /* Clean white for cards */
+      --text-primary: #111827; /* Dark charcoal/off-black */
+      --text-secondary: #6B7280; /* Muted gray */
+      --border-light: #E5E7EB; /* Very light gray for borders */
+      --red-deny: #EF4444; /* A modern, clear red */
+      --shadow-color: rgba(0, 0, 0, 0.05);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+      font-size: 15px;
+    }
+
+    .manager-container {
+      padding: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background-color: var(--card-background);
+      color: var(--text-primary);
+      padding: 25px 30px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+      text-align: center;
+      flex-grow: 1;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 2.2em;
+      font-weight: 800;
+      color: var(--text-primary); /* Dark text for header */
+    }
+    .header p {
+      color: var(--text-secondary);
+      margin: 5px 0 0 0;
+    }
+
+    h2 {
+      font-size: 1.6em;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 40px;
+      margin-bottom: 20px;
+    }
+
+
+    /* --- SIDEBAR STYLES --- */
+    #sidebar-toggle-btn { position: fixed; top: 20px; left: 20px; z-index: 1001; background-color: var(--card-background); border: 1px solid var(--border-light); color: var(--text-primary); border-radius: 50%; width: 45px; height: 45px; padding: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; }
+    #sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background-color: #F9FAFB; z-index: 1000; transform: translateX(-100%); transition: transform 0.3s ease-in-out; display: flex; flex-direction: column; border-right: 1px solid var(--border-light); }
+    #sidebar.open { transform: translateX(0); }
+    .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-light); }
+    .sidebar-header h3 { margin: 0; font-size: 1.2em; color: var(--text-primary); font-weight:600; }
+    .sidebar-close-btn { background: none; border: none; color: var(--text-secondary); font-size: 2em; line-height: 1; padding: 0; cursor: pointer; margin: 0; }
+    #sidebar-content { padding: 10px; overflow-y: auto; flex-grow: 1; }
+    .sidebar-category-header { color: var(--text-primary); font-weight: 600; margin-top: 20px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid var(--border-light); font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; position: relative; user-select: none; }
+    .sidebar-category-header:first-of-type { margin-top: 0; }
+    .sidebar-category-header::after { content: '▶'; position: absolute; right: 5px; font-size: 0.7em; transition: transform 0.2s ease-in-out; }
+    .sidebar-category-header.expanded::after { transform: rotate(90deg); }
+    .links-container { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-in-out; }
+    .links-container.expanded { max-height: 500px; }
+    .link-item { display: block; padding: 15px; border-radius: 8px; background-color: var(--card-background); margin-bottom: 10px; text-decoration: none; transition: background-color 0.2s ease; border: 1px solid var(--border-light); }
+    .link-item:hover { background-color: var(--background-main); }
+    .link-item-name { font-weight: 600; color: var(--primary-accent); font-size: 1.1em; margin: 0; }
+    .link-item-desc { font-size: 0.9em; color: var(--text-secondary); margin-top: 5px; }
+
+    /* Tab Navigation */
+    .nav-tabs {
+      background-color: var(--card-background);
+      border-bottom: 1px solid var(--border-light);
+      padding: 0 30px;
+      display: flex;
+      gap: 10px;
+    }
+    .nav-tabs button {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      padding: 18px 25px;
+      font-size: 1.1em;
+      cursor: pointer;
+      font-weight: 600;
+      border-bottom: 3px solid transparent; /* Placeholder for active state */
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .nav-tabs button.active {
+      color: var(--primary-accent);
+      border-bottom-color: var(--primary-accent);
+    }
+    .nav-tabs button:not(.active):hover {
+      color: var(--text-primary);
+    }
+
+
+    .top-section-wrapper {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      gap: 30px;
+      flex-wrap: wrap;
+    }
+
+    /* Controls Card */
+    .controls {
+      padding: 20px;
+      background-color: var(--card-background);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+      flex-grow: 1;
+      min-width: 300px;
+      box-shadow: 0 4px 8px var(--shadow-color);
+    }
+    .control-group { display: flex; align-items: center; gap: 8px; }
+    .controls label { font-weight: 600; white-space: nowrap; color: var(--text-secondary); }
+    .controls input[type="date"], .controls select {
+      background-color: var(--background-main); color: var(--text-primary); border: 1px solid var(--border-light);
+      border-radius: 8px; padding: 10px 12px; font-size: 1em;
+    }
+    .controls button {
+      background-color: var(--primary-accent); color: white; cursor: pointer; transition: background-color 0.2s;
+      border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600;
+    }
+    .controls button:hover { background-color: #008f3f; }
+    .date-range-toggle { display: flex; align-items: center; gap: 5px; }
+
+    /* Active Agents Card */
+    .active-agents-box {
+      background-color: var(--card-background);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      flex: 0 0 300px; /* Fixed width */
+      box-shadow: 0 4px 8px var(--shadow-color);
+    }
+    .active-agents-box h3 {
+      margin-top: 0; margin-bottom: 15px; font-size: 1.2em; color: var(--text-primary);
+      border-bottom: 1px solid var(--border-light); padding-bottom: 10px;
+      display: flex; align-items: center; gap: 10px; font-weight: 700;
+    }
+    .active-agents-box h3 svg { stroke: var(--primary-accent); }
+    .active-agents-box ul { list-style-type: none; padding: 0; margin: 0; }
+    .active-agents-box li {
+      padding: 8px 5px; font-size: 1em; color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-light);
+    }
+    .active-agents-box li:last-child { border-bottom: none; }
+    .active-agents-box strong { color: var(--text-primary); }
+
+    /* Table Styling */
+    table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      margin-top: 15px; background-color: var(--card-background);
+      border-radius: 12px; overflow: hidden; border: 1px solid var(--border-light);
+      font-size: 0.95em; box-shadow: 0 4px 8px var(--shadow-color);
+    }
+    th, td { border: none; padding: 12px 15px; text-align: left; vertical-align: middle; }
+    th {
+      background-color: var(--background-main); color: var(--text-primary); font-weight: 700;
+      text-align: left; border-bottom: 1px solid var(--border-light);
+    }
+    td { border-bottom: 1px solid var(--border-light); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:not(.details-row):hover { background-color: #F9FAFB; }
+
+    .agent-name-cell { font-weight: 600; color: var(--text-primary); }
+    
+    .btn-view-cases, .btn-action {
+      font-size: 0.9em;
+      padding: 6px 14px;
+      cursor: pointer;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      transition: background-color 0.2s, transform 0.1s;
+      font-weight: 600;
+      min-width: 135px;
+      justify-content: center;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .btn-view-cases { background-color: var(--text-secondary); }
+    .btn-view-cases:hover { background-color: var(--text-primary); transform: translateY(-1px); }
+    
+    /* Approval Buttons */
+    .btn-approve { background-color: var(--primary-accent); }
+    .btn-approve:hover { background-color: #008f3f; }
+    .btn-deny { background-color: var(--red-deny); }
+    .btn-deny:hover { background-color: #d03c3c; }
+
+    /* Details Row */
+    .details-row > td {
+      background-color: var(--background-main) !important; padding: 0 !important;
+      border: 1px solid var(--primary-accent) !important;
+    }
+    .details-container { padding: 20px; }
+    .details-container h4 { color: var(--text-primary); font-weight: 700; margin-top: 0; margin-bottom: 15px; }
+    .details-container table { box-shadow: none; border: 1px solid var(--border-light); }
+    .details-container th { background-color: #F9FAFB; }
+
+    .loader {
+      border: 4px solid var(--border-light); border-top: 4px solid var(--primary-accent);
+      border-radius: 50%; width: 18px; height: 18px;
+      animation: spin 0.8s linear infinite; display: none; margin: 0 0 0 10px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .message-area { text-align: center; margin: 15px 0; min-height: 20px; font-weight: 600; }
+    .error-message { color: var(--red-deny); }
+    .success-message { color: var(--primary-accent); }
+    .status-message { color: var(--text-secondary); }
+    
+    #leaderboardBody > tr { cursor: pointer; }
+
+    /* --- VERSION INFO CONTAINER --- */
+    #version-info-container { 
+      text-align: right; 
+      font-size: 0.9em; 
+      color: var(--text-secondary); 
+    }
+    #updateNotificationArea { 
+      margin-top: 5px; 
+      padding: 8px; 
+      background-color: var(--yellow); 
+      color: var(--text-primary); 
+      border-radius: 8px; 
+      border: 1px solid var(--border-light);
+    }
+    #updateNotificationArea button { 
+      width: 100%; 
+      padding: 6px; 
+      font-size: 0.9em; 
+      background-color: var(--text-primary); 
+      color: white; 
+      border: none; 
+      cursor: pointer; 
+      margin-top: 5px; 
+      border-radius: 6px;
+    }
+
+    /* --- NEW: Styles for Collapsible Sections --- */
+    .collapsible-header {
+      cursor: pointer;
+      position: relative;
+      user-select: none; /* Prevents text selection on click */
+      padding-left: 25px; /* Make space for the arrow */
+      /* Ensure it lines up with other h2 tags if they are not collapsible */
+      margin-left: -25px; 
+    }
+    .collapsible-header::before {
+      content: '▶'; /* Collapsed state arrow */
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%) rotate(0deg);
+      transition: transform 0.2s ease-in-out;
+      font-size: 0.8em;
+      color: var(--text-secondary);
+    }
+    .collapsible-header.expanded::before {
+      transform: translateY(-50%) rotate(90deg); /* Expanded state arrow */
+      color: var(--primary-accent);
+    }
+    .collapsible-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .collapsible-content.expanded {
+      /* A large value to accommodate any content size */
+      max-height: 3000px; 
+      transition: max-height 0.5s ease-in;
+    }
+  </style>
+</head>
+<body>
+
+  
+<button id="sidebar-toggle-btn" onclick="toggleSidebar()">
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+</button>
+<div id="sidebar">
+  <div class="sidebar-header">
+    <h3>Important Links</h3>
+    <button class="sidebar-close-btn" onclick="toggleSidebar()">×</button>
+  </div>
+  <div id="sidebar-content"></div>
+</div>
+
+  <div class="header">
+    <h1>Manager Dashboard</h1>
+    <p>Agent Productivity and Attendance Overview</p>
+  </div>
+<div id="version-info-container">
+  <div>VERSION: <strong id="scriptVersionDisplay">...</strong></div>
+  <div id="versionStatusMessage" style="font-size: 0.9em; margin-top: 3px;"></div>
+  <div id="updateNotificationArea" style="display: none;">
+      <strong>Update Available!</strong>
+      <div id="updateFeaturesDisplay" style="font-size: 0.9em; margin: 4px 0;"></div>
+      <button id="updateButton">Update Now</button>
+  </div>
+  <div id="versionError" class="error-message" style="display:none;"></div>
+</div>
+  <div class="nav-tabs">
+    <button class="active">Homepage</button>
+    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=production', '_blank')">Production</button>
+    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
+  </div>
+
+  <div class="manager-container">
+    <div class="top-section-wrapper">
+      <div class="controls">
+        <div class="control-group">
+          <label for="startDate">Start:</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="control-group">
+          <label for="endDate">End:</label>
+          <input type="date" id="endDate">
+        </div>
+        <div class="date-range-toggle">
+          <input type="checkbox" id="dateRangeToggle" onchange="toggleDateRange()">
+          <label for="dateRangeToggle">Use Range</label>
+        </div>
+        <button onclick="loadManagerData()">Load Data</button>
+        <div id="loader" class="loader"></div>
+      </div>
+      <div class="active-agents-box" id="activeAgentsBox">
+        <h3>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          Active Agents
+        </h3>
+        <ul id="activeAgentsList">
+          <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="userMessage" class="message-area"></div>
+
+    <h2 class="collapsible-header">Agent Summary <span id="summaryDateDisplay" style="font-size:0.7em; font-weight: 400; color:var(--text-secondary);"></span></h2>
+    <div class="collapsible-content">
+      <table id="agentSummaryTable">
+        <thead>
+          <tr>
+            <th>Agent Name</th>
+            <th>Total Work Time</th>
+            <th>Total Break Time</th>
+            <th>Total Meeting Time</th>
+            <th>Cases Handled</th>
+          </tr>
+        </thead>
+        <tbody id="agentSummaryBody"></tbody>
+      </table>
+    </div>
+
+    <div class="approval-section">
+      <h2 class="collapsible-header">Attendance Correction Requests</h2>
+      <div class="collapsible-content">
+        <div id="approvalMessage" class="message-area"></div>
+        <table id="approvalRequestsTable">
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Original Timestamp</th>
+              <th>Original Action</th>
+              <th>Session ID</th>
+              <th>Requested Timestamp</th>
+              <th>Reason</th>
+              <th style="text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="approvalRequestsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="leaderboard-section">
+      <h2 class="collapsible-header">Agent Leaderboard</h2>
+      <div class="collapsible-content">
+        <table id="leaderboardTable">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Agent Name</th>
+              <th>Total Cases Completed</th>
+              <th>Average Handling Time</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </div>
+    
+    <div class="leaderboard-section">
+      <h2 class="collapsible-header">Agent Attendance Log</h2>
+      <div class="collapsible-content">
+        <div class="controls">
+          <div class="control-group">
+            <label for="agentLogSelector">Select Agent:</label>
+            <select id="agentLogSelector"></select>
+          </div>
+          <div class="control-group">
+            <label for="logDateFrom">From:</label>
+            <input type="date" id="logDateFrom">
+          </div>
+          <div class="control-group">
+            <label for="logDateTo">To:</label>
+            <input type="date" id="logDateTo">
+          </div>
+          <button onclick="loadManagerAgentLog()">View Log</button>
+          <div id="attendanceLogLoaderManager" class="loader"></div>
+        </div>
+        <div id="attendanceLogMessageManager" class="message-area" style="margin-top:0;"></div>
+        <table id="attendanceLogTable">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Action</th>
+              <th>Session ID</th>
+            </tr>
+          </thead>
+          <tbody id="managerLogTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+    // --- UTILITY AND HELPER FUNCTIONS ---
+    function toggleDateRange() {
+      const endDateInput = document.getElementById('endDate');
+      const isRange = document.getElementById('dateRangeToggle').checked;
+      endDateInput.disabled = !isRange;
+      if (!isRange) { endDateInput.value = document.getElementById('startDate').value; }
+    }
+    function showLoader(show) { document.getElementById('loader').style.display = show ? 'inline-block' : 'none'; }
+    function setUserMessage(message, type = "status", areaId = 'userMessage') {
+      const msgEl = document.getElementById(areaId);
+      msgEl.textContent = message;
+      msgEl.className = 'message-area';
+      if (type === "error") msgEl.classList.add('error-message');
+      else if (type === "success") msgEl.classList.add('success-message');
+    }
+    function formatDuration(value) {
+      if (value === null || value === undefined || value === "N/A" || value === "") return "N/A";
+      const totalSeconds = Number(value);
+      if (isNaN(totalSeconds) || totalSeconds < 0) return "00:00:00";
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = Math.floor(totalSeconds % 60);
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    function escapeSingleQuotes(str) { return String(str || '').replace(/'/g, "\\'"); }
+    function showError(error) {
+      showLoader(false);
+      const errorMessage = (error && error.message) ? error.message : "An unknown error occurred.";
+      setUserMessage("Error: " + errorMessage, "error");
+    }
+    function showErrorInDetailsRow(error, containerId, button){
+      if (button) button.textContent = "Error";
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const errorMessage = (error && error.message) ? error.message : "An unknown error occurred.";
+      container.innerHTML = `<h4 style="color: #f04747;">Error loading cases:</h4><p>${errorMessage}</p>`;
+    }
+
+    // --- NEW: Function to set up collapsible sections ---
+    function setupCollapsibleSections() {
+      document.querySelectorAll('.collapsible-header').forEach(header => {
+        // Get the content block that is the *next* element
+        const content = header.nextElementSibling;
+        
+        // Check if content exists
+        if (content && content.classList.contains('collapsible-content')) {
+          
+          // Set all sections to be expanded by default
+          header.classList.add('expanded');
+          content.classList.add('expanded');
+          
+          // Add the click event listener
+          header.addEventListener('click', () => {
+            header.classList.toggle('expanded');
+            content.classList.toggle('expanded');
+          });
+        }
+      });
+    }
+
+    // --- DATA DISPLAY FUNCTIONS ---
+    function displayActiveAgents(activeAgents) {
+      const activeAgentsList = document.getElementById('activeAgentsList');
+      activeAgentsList.innerHTML = '';
+      if (activeAgents && activeAgents.length > 0) {
+        activeAgents.forEach(agent => {
+          const listItem = document.createElement('li');
+          listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail})`;
+          activeAgentsList.appendChild(listItem);
+        });
+      } else {
+        activeAgentsList.innerHTML = '<li style="color:var(--text-secondary); font-style:italic;">No agents currently active.</li>';
+      }
+    }
+    function displayAttendanceSummary(attendanceData) {
+      showLoader(false);
+      const tbody = document.getElementById('agentSummaryBody');
+      tbody.innerHTML = '';
+      if (!attendanceData || attendanceData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">No agent attendance data found.</td></tr>';
+        return setUserMessage("No attendance data found.", "status");
+      }
+      setUserMessage("Attendance summary loaded. Click 'View Cases' for details.", "success");
+      attendanceData.forEach(agent => {
+        const row = tbody.insertRow();
+        const agentDisplayName = agent.agentName || agent.agentEmail;
+        row.insertCell().innerHTML = `<span class="agent-name-cell">${agentDisplayName}</span>`;
+        row.insertCell().textContent = formatDuration(agent.totalWorkDurationSeconds);
+        row.insertCell().textContent = formatDuration(agent.totalBreakDurationSeconds);
+        row.insertCell().textContent = formatDuration(agent.totalMeetingDurationSeconds);
+        row.insertCell().innerHTML = `<button class="btn-view-cases" onclick="toggleAgentCases(this, '${escapeSingleQuotes(agent.agentEmail)}', '${escapeSingleQuotes(agentDisplayName)}')">View Cases</button>`;
+      });
+    }
+    function displayAgentCaseDetails(caseData, containerId, button) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      if (!caseData) {
+        container.innerHTML = `<h4 style="color: #f04747;">Error:</h4><p>Received invalid data.</p>`;
+        button.textContent = "Error";
+        return;
+      }
+      button.textContent = "Hide Cases";
+      let tableHtml = '<h4>Case Activity</h4>';
+      if (caseData.length === 0) {
+        tableHtml += '<p>No case activity found for this agent in the selected period.</p>';
+      } else {
+        tableHtml += `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Start Time</th><th>End Time</th><th>Idle Time Before</th><th>Current Status</th></tr></thead><tbody>`;
+        caseData.forEach(c => {
+          tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${c.startTimeISO ? new Date(c.startTimeISO).toLocaleString() : 'N/A'}</td><td>${c.endTimeISO ? new Date(c.endTimeISO).toLocaleString() : 'N/A'}</td><td>${formatDuration(c.idleTimeBeforeThisCaseSeconds)}</td><td>${c.status || 'N/A'}</td></tr>`;
+        });
+        tableHtml += '</tbody></table>';
+      }
+      container.innerHTML = tableHtml;
+    }
+    
+    // --- DATA LOADING & EVENT HANDLER FUNCTIONS ---
+    function loadActiveAgents() { google.script.run.withSuccessHandler(displayActiveAgents).getActiveAgentStatuses(); }
+    function loadManagerData() {
+      showLoader(true);
+      setUserMessage("Loading attendance summary...", "status");
+      document.getElementById('agentSummaryBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Loading...</td></tr>';
+      const startDateStr = document.getElementById('startDate').value;
+      const useRange = document.getElementById('dateRangeToggle').checked;
+      const endDateStr = useRange ? document.getElementById('endDate').value : startDateStr;
+      if (!startDateStr) return showError({ message: "Please select a start date." });
+      const startDisplay = new Date(startDateStr + "T12:00:00Z").toLocaleDateString(undefined, { timeZone: 'UTC' });
+      const endDisplay = new Date(endDateStr + "T12:00:00Z").toLocaleDateString(undefined, { timeZone: 'UTC' });
+      document.getElementById('summaryDateDisplay').textContent = (startDateStr === endDateStr) ? `for ${startDisplay}` : `from ${startDisplay} to ${endDisplay}`;
+      
+      google.script.run.withSuccessHandler(displayAttendanceSummary).withFailureHandler(showError).getManagerAttendanceSummary(startDateStr, endDateStr);
+      loadLeaderboardData(startDateStr, endDateStr); 
+    }
+    function toggleAgentCases(button, agentEmail, agentName) {
+      const clickedRow = button.parentElement.parentElement;
+      const detailsRowId = `details-row-for-${agentEmail.replace(/[^a-zA-Z0-9]/g, "")}`;
+      const existingDetailsRow = document.getElementById(detailsRowId);
+      document.querySelectorAll('.details-row').forEach(row => { if (row.id !== detailsRowId) row.remove(); });
+      document.querySelectorAll('.btn-view-cases').forEach(btn => { if (btn !== button && btn.textContent !== "View Cases") btn.textContent = "View Cases"; });
+      if (existingDetailsRow) {
+        existingDetailsRow.remove();
+        button.textContent = "View Cases";
+      } else {
+        button.textContent = "Loading...";
+        const newRow = clickedRow.insertAdjacentElement('afterend', document.createElement('tr'));
+        newRow.id = detailsRowId;
+        newRow.className = 'details-row';
+        const cell = newRow.insertCell(0);
+        cell.colSpan = 5;
+        const containerId = `details-container-for-${agentEmail.replace(/[^a-zA-Z0-9]/g, "")}`;
+        cell.innerHTML = `<div class="details-container" id="${containerId}"><h4>Loading cases for ${agentName}...</h4></div>`;
+        const startDateStr = document.getElementById('startDate').value;
+        const endDateStr = document.getElementById('dateRangeToggle').checked ? document.getElementById('endDate').value : startDateStr;
+        google.script.run.withSuccessHandler(caseData => displayAgentCaseDetails(caseData, containerId, button)).withFailureHandler(err => showErrorInDetailsRow(err, containerId, button)).getAgentCasesForDateRange(agentEmail, startDateStr, endDateStr);
+      }
+    }
+
+    // --- NEW FUNCTIONS FOR AGENT LOG DROPDOWN ---
+    function loadAllAgentsForDropdown() {
+      google.script.run.withSuccessHandler(displayAgentDropdown).getAllAgents();
+    }
+
+    function displayAgentDropdown(agents) {
+      const selector = document.getElementById('agentLogSelector');
+      selector.innerHTML = ''; // Clear existing options
+      if (!agents || agents.length === 0) {
+        selector.innerHTML = '<option disabled selected>No agents found</option>';
+        return;
+      }
+      agents.forEach(agent => {
+        const option = document.createElement('option');
+        option.value = agent.email;
+        // Display name and email for clarity
+        option.textContent = `${agent.name} (${agent.email})`; 
+        selector.appendChild(option);
+      });
+    }
+      
+    // --- VERSION INFO FUNCTIONS ---
+    function fetchVersionInformation() {
+      google.script.run
+        .withSuccessHandler(handleVersionDetailsResponse)
+        .withFailureHandler(handleVersionDetailsError)
+        .getVersionDetails();
+    }
+
+    function handleVersionDetailsResponse(versionInfo) {
+      const versionDisplayEl = document.getElementById('scriptVersionDisplay');
+      const statusMsgEl = document.getElementById('versionStatusMessage');
+      const updateNotificationEl = document.getElementById('updateNotificationArea');
+      const updateButtonEl = document.getElementById('updateButton');
+      const featuresDisplayEl = document.getElementById('updateFeaturesDisplay');
+      const versionErrorEl = document.getElementById('versionError');
+      if (!versionDisplayEl || !statusMsgEl || !updateNotificationEl) return;
+      
+      versionErrorEl.style.display = 'none';
+      if (versionInfo && versionInfo.error) {
+        versionDisplayEl.textContent = "Error";
+        updateNotificationEl.style.display = 'none';
+        versionErrorEl.textContent = versionInfo.error;
+        versionErrorEl.style.display = 'block';
+        return;
+      }
+      if (versionInfo && versionInfo.runningVersion) {
+        versionDisplayEl.textContent = versionInfo.runningVersion;
+        const running = parseFloat(versionInfo.runningVersion);
+        const latest = parseFloat(versionInfo.latestAdvertisedVersion);
+        if (!isNaN(running) && !isNaN(latest) && versionInfo.latestAdvertisedVersion && versionInfo.updateURL && running < latest) {
+          updateNotificationEl.style.display = 'block';
+          featuresDisplayEl.textContent = versionInfo.updateFeatures || "No features listed.";
+          updateButtonEl.onclick = () => promptForUpdate(versionInfo.updateURL, versionInfo.updateFeatures);
+        } else {
+          statusMsgEl.textContent = "Up to date.";
+          updateNotificationEl.style.display = 'none';
+        }
+      } else {
+        versionDisplayEl.textContent = "N/A";
+        versionErrorEl.textContent = "Could not retrieve version info.";
+        versionErrorEl.style.display = 'block';
+      }
+    }
+
+    function handleVersionDetailsError(error) {
+      console.error("Error fetching version details:", error);
+      document.getElementById('scriptVersionDisplay').textContent = "Error";
+      document.getElementById('versionError').textContent = "Failed to check for updates.";
+      document.getElementById('versionError').style.display = 'block';
+    }
+
+    function promptForUpdate(newUrl, features) {
+      if (!newUrl) { alert("Update URL is not configured."); return; }
+      window.open(newUrl, '_blank');
+      const bookmarkShortcut = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'Cmd+D' : 'Ctrl+D';
+      let alertMessage = "A new version has opened in a new tab.\n\n";
+      if (features) { alertMessage += "New features:\n- " + features.replace(/,\s*/g, "\n- ") + "\n\n"; }
+      alertMessage += "Please bookmark the new page (try " + bookmarkShortcut + ") and remove your old bookmark.";
+      alert(alertMessage);
+    }
+
+
+    // --- SIDEBAR FUNCTIONS ---
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+    }
+    function loadManagerImportantLinks() {
+      google.script.run.withSuccessHandler(displayManagerImportantLinks).getManagerImportantLinks();
+    }
+    function displayManagerImportantLinks(links) {
+      const content = document.getElementById('sidebar-content');
+      content.innerHTML = '';
+      if (!links || links.length === 0) {
+        content.innerHTML = '<p style="color:var(--text-secondary); padding:10px;">No links found.</p>';
+        return;
+      }
+      const groupedLinks = links.reduce((acc, link) => {
+        if (!acc[link.category]) { acc[link.category] = []; }
+        acc[link.category].push(link);
+        return acc;
+      }, {});
+
+      for (const category in groupedLinks) {
+        const header = document.createElement('h4');
+        header.className = 'sidebar-category-header';
+        header.textContent = category;
+        const linksContainer = document.createElement('div');
+        linksContainer.className = 'links-container';
+        header.onclick = function() {
+          this.classList.toggle('expanded');
+          linksContainer.classList.toggle('expanded');
+        };
+        groupedLinks[category].forEach(link => {
+          const linkElement = document.createElement('a');
+          linkElement.className = 'link-item';
+          linkElement.href = link.url;
+          linkElement.target = '_blank';
+          linkElement.innerHTML = `<div class="link-item-name">${link.name}</div><p class="link-item-desc">${link.description}</p>`;
+          linksContainer.appendChild(linkElement);
+        });
+        content.appendChild(header);
+        content.appendChild(linksContainer);
+      }
+    }
+
+    // --- APPROVAL WORKFLOW ---
+    function loadApprovalRequests() {
+      const tbody = document.getElementById('approvalRequestsBody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Loading requests...</td></tr>';
+      google.script.run
+        .withSuccessHandler(displayApprovalRequests)
+        .withFailureHandler(err => {
+          showError(err);
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--red-deny);">Could not load requests.</td></tr>';
+        })
+        .getPendingApprovalRequests();
+    }
+    function displayApprovalRequests(requests) {
+      const tbody = document.getElementById('approvalRequestsBody');
+      tbody.innerHTML = '';
+      if (!requests || requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">No pending requests.</td></tr>';
+        return;
+      }
+      requests.forEach(req => {
+        const row = tbody.insertRow();
+        row.id = `request-row-${req.rowNumber}`;
+        const displayOrigTimestamp = req.originalTimestamp ? new Date(req.originalTimestamp).toLocaleString() : 'N/A';
+        const displayReqTimestamp = req.requestedTimestamp ? new Date(req.requestedTimestamp).toLocaleString() : 'N/A';
+        
+        row.insertCell().textContent = req.agent;
+        row.insertCell().textContent = displayOrigTimestamp;
+        row.insertCell().textContent = req.originalAction;
+        row.insertCell().textContent = req.sessionId;
+        row.insertCell().textContent = displayReqTimestamp;
+        row.insertCell().textContent = req.reason;
+        const actionCell = row.insertCell();
+        actionCell.style.textAlign = 'right';
+        actionCell.innerHTML = `
+          <button class="btn-action btn-approve" onclick="handleApproveAction(${req.rowNumber})">Approve & Apply</button>
+          <button class="btn-action btn-deny" onclick="handleDenyAction(${req.rowNumber})">Deny</button>
+        `;
+      });
+    }
+    function handleApproveAction(rowNumber) {
+      const row = document.getElementById(`request-row-${rowNumber}`);
+      if(row) row.cells[6].innerHTML = `<span>Applying...</span>`;
+      google.script.run
+        .withSuccessHandler(response => {
+          setUserMessage(response, "success", 'approvalMessage');
+          if (row) row.remove();
+          if (document.getElementById('approvalRequestsBody').rows.length === 0) {
+            displayApprovalRequests([]);
+          }
+        })
+        .withFailureHandler(err => {
+          showError(err);
+          loadApprovalRequests();
+        })
+        .applyCorrection(rowNumber);
+    }
+    function handleDenyAction(rowNumber) {
+      const row = document.getElementById(`request-row-${rowNumber}`);
+      if(row) row.cells[6].innerHTML = `<span>Denying...</span>`;
+      google.script.run
+        .withSuccessHandler(response => {
+          setUserMessage(response, "success", 'approvalMessage');
+          if (row) row.remove();
+            if (document.getElementById('approvalRequestsBody').rows.length === 0) {
+              displayApprovalRequests([]);
+          }
+        })
+        .withFailureHandler(err => {
+          showError(err);
+          loadApprovalRequests();
+        })
+        .updateRequestStatus(rowNumber, 'Denied');
+    }
+
+    // --- NEW MANAGER ATTENDANCE LOG FUNCTIONS ---
+    function loadManagerAgentLog() {
+      const agentEmail = document.getElementById('agentLogSelector').value;
+      const dateFrom = document.getElementById('logDateFrom').value;
+      const dateTo = document.getElementById('logDateTo').value;
+
+      if (!agentEmail) {
+        return setUserMessage("Please select an agent.", "error", "attendanceLogMessageManager");
+      }
+      if (!dateFrom || !dateTo) {
+        return setUserMessage("Please select both a 'From' and 'To' date.", "error", "attendanceLogMessageManager");
+      }
+
+      const loader = document.getElementById('attendanceLogLoaderManager');
+      if (loader) loader.style.display = 'inline-block';
+      setUserMessage("Loading log for selected agent...", "status", "attendanceLogMessageManager");
+
+      google.script.run
+        .withSuccessHandler(displayManagerAgentLog)
+        .withFailureHandler(err => {
+          showError(err);
+          setUserMessage(err.message, "error", "attendanceLogMessageManager");
+          if (loader) loader.style.display = 'none';
+        })
+        .getLogForSelectedAgent(agentEmail, {startDate: dateFrom, endDate: dateTo});
+    }
+
+    function displayManagerAgentLog(logs) {
+      const loader = document.getElementById('attendanceLogLoaderManager');
+      if (loader) loader.style.display = 'none';
+      
+      const tbody = document.getElementById('managerLogTableBody');
+      tbody.innerHTML = '';
+
+      if (!logs || logs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No log entries found for this agent in the selected period.</td></tr>';
+        return setUserMessage("No log entries found.", "status", "attendanceLogMessageManager");
+      }
+
+      setUserMessage("Log loaded successfully.", "success", "attendanceLogMessageManager");
+      logs.forEach(log => {
+        const row = tbody.insertRow();
+        // Format the ISO date string for friendly display
+        row.insertCell().textContent = new Date(log.timestamp).toLocaleString();
+        row.insertCell().textContent = log.action;
+        row.insertCell().textContent = log.sessionId;
+      });
+    }
+
+    // --- LEADERBOARD FUNCTIONS ---
+    function loadLeaderboardData(startDateStr, endDateStr) {
+      document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Loading leaderboard...</td></tr>';
+      google.script.run
+        .withSuccessHandler(displayLeaderboard)
+        .withFailureHandler(err => {
+          showError(err);
+          document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--red-deny);">Could not load leaderboard data.</td></tr>';
+        })
+        .getLeaderboardData(startDateStr, endDateStr);
+    }
+    function displayLeaderboard(leaderboardData) {
+      const tbody = document.getElementById('leaderboardBody');
+      tbody.innerHTML = '';
+      if (!leaderboardData || leaderboardData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">No data available for the selected period.</td></tr>';
+        return;
+      }
+      leaderboardData.forEach(agent => {
+        const row = tbody.insertRow();
+        row.setAttribute('onclick', `toggleLeaderboardDetails(this, '${escapeSingleQuotes(agent.agentName)}')`);
+        row.insertCell().textContent = agent.rank;
+        row.insertCell().innerHTML = `<span class="agent-name-cell">${agent.agentName}</span>`;
+        row.insertCell().textContent = agent.totalCases;
+        row.insertCell().textContent = formatDuration(agent.avgHandlingTime);
+      });
+    }
+    function toggleLeaderboardDetails(clickedRow, agentEmail) {
+      const detailsRowId = `leaderboard-details-for-${agentEmail.replace(/[^a-zA-Z0-9]/g, "")}`;
+      const existingDetailsRow = document.getElementById(detailsRowId);
+      document.querySelectorAll('.details-row').forEach(row => { if (row.id !== detailsRowId) row.remove(); });
+      if (existingDetailsRow) {
+        existingDetailsRow.remove();
+      } else {
+        const newRow = clickedRow.insertAdjacentElement('afterend', document.createElement('tr'));
+        newRow.id = detailsRowId;
+        newRow.className = 'details-row';
+        const cell = newRow.insertCell(0);
+        cell.colSpan = 4;
+        cell.innerHTML = `<div class="details-container"><h4>Loading case details for ${agentEmail}...</h4></div>`;
+        const startDateStr = document.getElementById('startDate').value;
+        const endDateStr = document.getElementById('dateRangeToggle').checked ? document.getElementById('endDate').value : startDateStr;
+        google.script.run
+          .withSuccessHandler(caseDetails => {
+            let tableHtml = `<div class="leaderboard-details-container"><h4>Case Details</h4>`;
+            if (caseDetails && caseDetails.length > 0) {
+              tableHtml += `<table><thead><tr><th>Case ID</th><th>Account Name</th><th>Handling Time</th></tr></thead><tbody>`;
+              caseDetails.forEach(c => {
+                tableHtml += `<tr><td>${c.caseId || 'N/A'}</td><td>${c.accountName || 'N/A'}</td><td>${formatDuration(c.handlingTime)}</td></tr>`;
+              });
+              tableHtml += `</tbody></table>`;
+            } else {
+              tableHtml += `<p>No completed cases found for this agent in the selected period.</p>`;
+            }
+            tableHtml += `</div>`;
+            cell.querySelector('.details-container').innerHTML = tableHtml;
+          })
+          .withFailureHandler(err => {
+            cell.querySelector('.details-container').innerHTML = `<h4 style="color: #f04747;">Error:</h4><p>${err.message}</p>`;
+          })
+          .getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr);
+      }
+    }
+
+    // --- INITIALIZATION ---
+    function initializePage() {
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('startDate').value = today;
+      document.getElementById('endDate').value = today;
+      toggleDateRange();
+      loadActiveAgents();
+      document.getElementById('agentSummaryBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
+      loadApprovalRequests();
+      document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
+      
+      loadManagerImportantLinks();
+      loadAllAgentsForDropdown();
+      fetchVersionInformation();
+
+      // --- NEW: Call the setup function on page load ---
+      setupCollapsibleSections();
+    }
+    window.addEventListener('load', initializePage);
+
+</script>
+</body>
+</html>
