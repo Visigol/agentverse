@@ -219,6 +219,10 @@
     <h3>Cooperation Logs</h3>
     <div id="cooperation-logs-grid"></div>
 </div>
+<div id="cooperation-logs-container" class="log-section" style="display:none;">
+    <h3>Cooperation Logs</h3>
+    <div id="cooperation-logs-grid"></div>
+</div>
 <!-- ===== NEW LOG SECTIONS END ===== -->
         <div class="modal-actions">
           <div id="case-action-buttons" style="margin-right: auto;">
@@ -766,7 +770,7 @@ function populateActionButtons(caseData) {
             element.replaceWith(inputElement);
         });
         // --- ADD THIS BLOCK TO MAKE LOGS EDITABLE ---
-grid.querySelectorAll('.log-field-value').forEach(span => {
+document.getElementById('case-modal').querySelectorAll('.log-field-value').forEach(span => {
     const headerText = span.dataset.header;
     const logId = span.dataset.logId;
     const value = span.textContent;
