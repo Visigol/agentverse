@@ -1743,6 +1743,17 @@ function searchAllCases(searchTerm) {
 }
 
 function getCasesByStatus(options) {
+  // --- LOCK SERVICE START ---
+  const lock = LockService.getScriptLock();
+  // Wait a maximum of 30 seconds for the lock to be available.
+  try {
+    lock.waitLock(30000);
+  } catch (e) {
+    Logger.log('Could not acquire lock after 30 seconds.');
+    throw new Error('The server is busy. Please try again in a moment.');
+  }
+  // --- LOCK SERVICE END ---
+
   try {
     const { status, searchTerm, limit = 20, offset = 0, country, filter } = options;
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
@@ -1759,68 +1770,54 @@ function getCasesByStatus(options) {
     // --- END ---
 
     const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
-    let records = data.map(row => {
+    const userEmail = (filter === 'my') ? Session.getActiveUser().getEmail() : null;
+    const lowerCaseSearchTerm = searchTerm ? searchTerm.toLowerCase() : null;
+    const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
+
+    const records = data.map(row => {
       let record = {};
       headers.forEach((header, i) => {
         if (!ignoredHeaders.includes(header)) {
           record[header] = row[i];
         }
       });
-
-      // --- REAL-TIME DATA MERGE ---
       const caseId = record[caseIdHeader];
       if (caseId) {
         if (openPauses.has(caseId)) {
           record['Pause Start Time'] = openPauses.get(caseId);
-          record['Paused End Time'] = ''; // Match frontend property
+          record['Paused End Time'] = '';
         }
         if (openEscalations.has(caseId)) {
           record['Escalated Start Time'] = openEscalations.get(caseId);
           record['Escalated End Time'] = '';
         }
       }
-      // --- END ---
       return record;
     });
 
-    let filteredRecords = records;
-    if (status !== 'All') {
-      filteredRecords = records.filter(record => {
+    const filteredRecords = records.filter(record => {
+      // Status filter
+      if (status !== 'All') {
         const hasOpenPause = record['Pause Start Time'] && !record['Paused End Time'];
         const hasOpenEscalation = record['Escalated Start Time'] && !record['Escalated End Time'];
-
         let effectiveStatus = record.Status;
-        if (hasOpenPause) {
-          effectiveStatus = 'Task Paused';
-        } else if (hasOpenEscalation) {
-          effectiveStatus = 'Escalated';
-        }
-
-        return effectiveStatus === status;
-      });
-    }
-
-    if (country) {
-      filteredRecords = filteredRecords.filter(record => record.Country === country);
-    }
-
-    if (filter === 'my') {
-      const userEmail = Session.getActiveUser().getEmail();
-      if (userEmail) {
-        filteredRecords = filteredRecords.filter(record => record.Useremail && record.Useremail.toLowerCase() === userEmail.toLowerCase());
+        if (hasOpenPause) effectiveStatus = 'Task Paused';
+        else if (hasOpenEscalation) effectiveStatus = 'Escalated';
+        if (effectiveStatus !== status) return false;
       }
-    }
-
-    if (searchTerm) {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        // EXPANDED SEARCH: Added more relevant fields for a comprehensive search.
-        const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
-        filteredRecords = filteredRecords.filter(record => {
-            return searchableHeaders.some(header =>
-                record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
-            );
-        });
-    }
+      // Country filter
+      if (country && record.Country !== country) return false;
+      // My cases filter
+      if (userEmail && (!record.Useremail || record.Useremail.toLowerCase() !== userEmail.toLowerCase())) return false;
+      // Search term filter
+      if (lowerCaseSearchTerm) {
+        const found = searchableHeaders.some(header =>
+          record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
+        );
+        if (!found) return false;
+      }
+      return true; // If all filters pass
+    });
 
     filteredRecords.sort((a, b) => {
       const dateA = new Date(a['Menu Request Sent Date'] || 0);
@@ -1831,15 +1828,15 @@ function getCasesByStatus(options) {
     const paginatedRecords = filteredRecords.slice(offset, offset + limit);
 
     const serializableRecords = paginatedRecords.map(record => {
-        const newRecord = {};
-        for (const key in record) {
-            if (record[key] instanceof Date) {
-                newRecord[key] = record[key].toISOString();
-            } else {
-                newRecord[key] = record[key];
-            }
+      const newRecord = {};
+      for (const key in record) {
+        if (record[key] instanceof Date) {
+          newRecord[key] = record[key].toISOString();
+        } else {
+          newRecord[key] = record[key];
         }
-        return newRecord;
+      }
+      return newRecord;
     });
 
     return serializableRecords;
@@ -1847,6 +1844,8 @@ function getCasesByStatus(options) {
   } catch (e) {
     Logger.log("Error in getCasesByStatus: " + e.toString());
     throw new Error("Failed to retrieve cases. " + e.message);
+  } finally {
+      lock.releaseLock();
   }
 }
 
@@ -2163,6 +2162,58 @@ function updateCaseField(caseId, fieldName, value) {
     }
 }
 
+function createNewLogEntry(sheetName, logData) {
+    try {
+        if (!sheetName || !logData) {
+            throw new Error("Sheet name or log data is missing.");
+        }
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+
+        const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+        const newRow = headers.map(header => logData[header] || null);
+
+        sheet.appendRow(newRow);
+        return `New log entry created in ${sheetName}.`;
+    } catch (e) {
+        Logger.log(`Error in createNewLogEntry: ${e.toString()}`);
+        throw new Error(`Failed to create log entry. ${e.message}`);
+    }
+}
+
+function endOpenLogEntry(sheetName, caseId, endColName) {
+    try {
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(sheetName);
+        if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+
+        const data = sheet.getDataRange().getValues();
+        const headers = data.shift();
+        const idIndex = headers.indexOf("Related Case ID");
+        const endIndex = headers.indexOf(endColName);
+
+        if (idIndex === -1 || endIndex === -1) {
+            throw new Error(`Required columns not found in "${sheetName}".`);
+        }
+
+        // Iterate backwards to find the most recent open log for the case
+        for (let i = data.length - 1; i >= 0; i--) {
+            const row = data[i];
+            if (String(row[idIndex]).trim() === String(caseId).trim() && !row[endIndex]) {
+                sheet.getRange(i + 2, endIndex + 1).setValue(new Date());
+                return `Log entry for case ${caseId} in ${sheetName} has been closed.`;
+            }
+        }
+        throw new Error(`No open log entry found for case ${caseId} in ${sheetName}.`);
+
+    } catch (e) {
+        Logger.log(`Error in endOpenLogEntry: ${e.toString()}`);
+        throw new Error(`Failed to end log entry. ${e.message}`);
+    }
+}
+
+
 function claimCase(caseId) {
     const userEmail = Session.getActiveUser().getEmail();
     updateCaseStatus(caseId, 'In Progress');
@@ -2171,22 +2222,32 @@ function claimCase(caseId) {
 
 function pauseCase(caseId) {
     updateCaseStatus(caseId, 'Task Paused');
-    return updateCaseField(caseId, 'Pause Start Time', new Date());
+    const logData = {
+        'Related Case ID': caseId,
+        'Pause Start Time': new Date()
+    };
+    return createNewLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, logData);
 }
 
 function unpauseCase(caseId) {
     updateCaseStatus(caseId, 'In Progress');
-    return updateCaseField(caseId, 'Pause End Time', new Date());
+    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time');
 }
 
 function escalateCase(caseId) {
     updateCaseStatus(caseId, 'Escalated');
-    return updateCaseField(caseId, 'Escalated Start Time', new Date());
+    const userEmail = Session.getActiveUser().getEmail();
+    const logData = {
+        'Related Case ID': caseId,
+        'Escalation Start Time': new Date(),
+        'User Email': userEmail
+    };
+    return createNewLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, logData);
 }
 
 function deEscalateCase(caseId) {
     updateCaseStatus(caseId, 'In Progress');
-    return updateCaseField(caseId, 'Escalated End Time', new Date());
+    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalated End Time');
 }
 
 function endCase(caseId) {
