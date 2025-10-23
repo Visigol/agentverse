@@ -345,7 +345,6 @@
           <label for="dateRangeToggle">Use Range</label>
         </div>
         <button onclick="loadManagerData()">Load Data</button>
-        <button onclick="refreshCache()" style="background-color: #f59e0b;">Refresh Live Data</button>
         <div id="loader" class="loader"></div>
       </div>
       <div class="active-agents-box" id="activeAgentsBox">
@@ -480,18 +479,6 @@
       showLoader(false);
       const errorMessage = (error && error.message) ? error.message : "An unknown error occurred.";
       setUserMessage("Error: " + errorMessage, "error");
-    }
-
-    function refreshCache() {
-      showLoader(true);
-      setUserMessage("Clearing the live data cache...", "status");
-      google.script.run
-        .withSuccessHandler(response => {
-          showLoader(false);
-          setUserMessage(response, "success");
-        })
-        .withFailureHandler(showError)
-        .manuallyInvalidateCache();
     }
     function showErrorInDetailsRow(error, containerId, button){
       if (button) button.textContent = "Error";
