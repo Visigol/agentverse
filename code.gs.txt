@@ -1745,14 +1745,18 @@ function searchAllCases(searchTerm) {
 function getCasesByStatus(options) {
   const { status, searchTerm, limit = 20, offset = 0, country, filter } = options;
   const cache = CacheService.getScriptCache();
-  const CACHE_KEY_MANIFEST = 'main_tasks_manifest';
+
+  // --- Versioned Caching Logic ---
+  const versionKey = 'cache_version';
+  let currentVersion = cache.get(versionKey) || '1';
+  const CACHE_KEY_MANIFEST = `v${currentVersion}_main_tasks_manifest`;
   const CACHE_EXPIRATION = 300; // 5 minutes
 
   let rawData;
   const manifestJSON = cache.get(CACHE_KEY_MANIFEST);
 
   if (manifestJSON) {
-    Logger.log("Cache HIT for manifest.");
+    Logger.log("Cache HIT for manifest: " + CACHE_KEY_MANIFEST);
     const manifest = JSON.parse(manifestJSON);
     const chunkKeys = manifest.keys;
     const cachedChunks = cache.getAll(chunkKeys);
@@ -1772,18 +1776,22 @@ function getCasesByStatus(options) {
   }
 
   if (!rawData) {
-    Logger.log("Cache MISS. Acquiring lock to fetch from sheet.");
+    Logger.log("Cache MISS for manifest: " + CACHE_KEY_MANIFEST + ". Acquiring lock.");
     const lock = LockService.getScriptLock();
     try {
       lock.waitLock(30000); // Wait up to 30 seconds.
-      // Double check if another process populated the cache while we waited
-      const manifestAfterLock = cache.get(CACHE_KEY_MANIFEST);
+      // Re-check version and cache inside the lock
+      currentVersion = cache.get(versionKey) || '1';
+      const manifestAfterLockKey = `v${currentVersion}_main_tasks_manifest`;
+      const manifestAfterLock = cache.get(manifestAfterLockKey);
+
       if (manifestAfterLock) {
-         Logger.log("Cache HIT after waiting for lock.");
-         // This is a simplified re-read for brevity. The full reassembly logic is above.
-         rawData = JSON.parse(cache.get(JSON.parse(manifestAfterLock).keys[0]));
+         Logger.log("Cache HIT for manifest after waiting for lock: " + manifestAfterLockKey);
+         const manifest = JSON.parse(manifestAfterLock);
+         // Simplified reassembly for brevity. Full assembly is above.
+         rawData = JSON.parse(cache.get(manifest.keys[0]));
       } else {
-        Logger.log("Fetching from spreadsheet.");
+        Logger.log("Fetching from spreadsheet for version: " + currentVersion);
         const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
         const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
         const data = sheet.getDataRange().getValues();
@@ -1792,24 +1800,22 @@ function getCasesByStatus(options) {
         rawData = { headers: headers, data: data };
 
         const rawDataString = JSON.stringify(rawData);
-        const CHUNK_SIZE = 90000; // 90KB, safely under the 100KB limit
+        const CHUNK_SIZE = 90000; // 90KB
         const numChunks = Math.ceil(rawDataString.length / CHUNK_SIZE);
         const chunks = {};
         const chunkKeys = [];
 
         for (let i = 0; i < numChunks; i++) {
-          const key = `main_tasks_chunk_${i}`;
+          const key = `v${currentVersion}_main_tasks_chunk_${i}`;
           chunkKeys.push(key);
-          const start = i * CHUNK_SIZE;
-          const end = start + CHUNK_SIZE;
-          chunks[key] = rawDataString.substring(start, end);
+          chunks[key] = rawDataString.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
         }
 
         const newManifest = { keys: chunkKeys, timestamp: new Date().getTime() };
-        chunks[CACHE_KEY_MANIFEST] = JSON.stringify(newManifest);
+        chunks[manifestAfterLockKey] = JSON.stringify(newManifest);
 
         cache.putAll(chunks, CACHE_EXPIRATION);
-        Logger.log(`Populated cache with ${numChunks} chunks.`);
+        Logger.log(`Populated cache for version ${currentVersion} with ${numChunks} chunks.`);
       }
     } catch (e) {
       Logger.log("Lock timeout or error during fetch: " + e.toString());
@@ -1929,6 +1935,7 @@ function updateCaseData(caseId, updatedData) {
       }
     }
 
+    invalidateCasesCache();
     return `Case ${caseId} updated successfully.`;
 
   } catch (e) {
@@ -2051,6 +2058,7 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
       }
     }
 
+    invalidateCasesCache();
     return `Log ${logId} in ${sheetName} updated successfully.`;
 
   } catch (e) {
@@ -2067,6 +2075,25 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
  * @param {string} fileName The desired name for the new spreadsheet.
  * @returns {string} The URL of the newly created spreadsheet.
  */
+function invalidateCasesCache() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const versionKey = 'cache_version';
+    let currentVersion = cache.get(versionKey);
+    if (!currentVersion) {
+      currentVersion = 1;
+    } else {
+      currentVersion = parseInt(currentVersion, 10) + 1;
+    }
+    // Set a long expiration for the version itself.
+    cache.put(versionKey, currentVersion.toString(), 21600); // 6 hours
+    Logger.log('Cache invalidated. New version: ' + currentVersion);
+    return currentVersion;
+  } catch (e) {
+    Logger.log('Could not invalidate cache: ' + e.toString());
+  }
+}
+
 function createSheetWithData(data, headers, fileName) {
   if (!data || !Array.isArray(data) || data.length === 0) {
     throw new Error("No data provided to create the sheet.");
@@ -2201,6 +2228,7 @@ function createNewLogEntry(sheetName, logData) {
         const newRow = headers.map(header => logData[header] || null);
 
         sheet.appendRow(newRow);
+        invalidateCasesCache();
         return `New log entry created in ${sheetName}.`;
     } catch (e) {
         Logger.log(`Error in createNewLogEntry: ${e.toString()}`);
@@ -2228,6 +2256,7 @@ function endOpenLogEntry(sheetName, caseId, endColName, relatedIdColName) {
             const row = data[i];
             if (String(row[idIndex]).trim() === String(caseId).trim() && !row[endIndex]) {
                 sheet.getRange(i + 2, endIndex + 1).setValue(new Date());
+                invalidateCasesCache();
                 return `Log entry for case ${caseId} in ${sheetName} has been closed.`;
             }
         }
@@ -2242,12 +2271,11 @@ function endOpenLogEntry(sheetName, caseId, endColName, relatedIdColName) {
 
 function claimCase(caseId) {
     const userEmail = Session.getActiveUser().getEmail();
-    updateCaseStatus(caseId, 'In Progress');
-    return updateCaseField(caseId, 'Useremail', userEmail);
+    updateCaseField(caseId, 'Useremail', userEmail);
+    return updateCaseStatus(caseId, 'In Progress');
 }
 
 function pauseCase(caseId) {
-    updateCaseStatus(caseId, 'Task Paused');
     const userEmail = Session.getActiveUser().getEmail();
     const logData = {
         'ID': `${caseId}_${new Date().getTime()}`,
@@ -2255,16 +2283,16 @@ function pauseCase(caseId) {
         'Pause Start Time': new Date(),
         'User Email': userEmail
     };
-    return createNewLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, logData);
+    createNewLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, logData);
+    return updateCaseStatus(caseId, 'Task Paused');
 }
 
 function unpauseCase(caseId) {
-    updateCaseStatus(caseId, 'In Progress');
-    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time', 'Related Case ID');
+    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time', 'Related Case ID');
+    return updateCaseStatus(caseId, 'In Progress');
 }
 
 function escalateCase(caseId) {
-    updateCaseStatus(caseId, 'Escalated');
     const userEmail = Session.getActiveUser().getEmail();
     const logData = {
         'Log ID': `${caseId}_${new Date().getTime()}`,
@@ -2272,7 +2300,8 @@ function escalateCase(caseId) {
         'Escalation Start Time': new Date(),
         'User Email': userEmail
     };
-    return createNewLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, logData);
+    createNewLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, logData);
+    return updateCaseStatus(caseId, 'Escalated');
 }
 
 function deEscalateCase(caseId) {
@@ -2283,8 +2312,8 @@ function deEscalateCase(caseId) {
 }
 
 function endCase(caseId) {
-    updateCaseStatus(caseId, 'Completed');
-    return updateCaseField(caseId, 'Main Task End Date/Time', new Date());
+    updateCaseField(caseId, 'Main Task End Date/Time', new Date());
+    return updateCaseStatus(caseId, 'Completed');
 }
 
 /**
@@ -2296,6 +2325,21 @@ function endCase(caseId) {
  * @param {string} endCol The name of the end time column.
  * @returns {Map<string, Date>} A map where keys are case IDs and values are start times.
  */
+/**
+ * An installable trigger function that runs whenever the spreadsheet is changed.
+ * This is the key to invalidating the cache when a user makes a direct manual edit
+ * in the Google Sheet, ensuring the web app reflects the change.
+ * @param {Object} e The event object from the onChange trigger.
+ */
+function onSheetChange(e) {
+  // e.changeType can be 'EDIT', 'INSERT_ROW', 'REMOVE_ROW', etc.
+  // For any change, we invalidate the cache.
+  if (e.changeType) {
+    Logger.log(`Spreadsheet changed (type: ${e.changeType}). Invalidating cache.`);
+    invalidateCasesCache();
+  }
+}
+
 function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
   const openLogs = new Map();
   const logSheet = ss.getSheetByName(sheetName);
