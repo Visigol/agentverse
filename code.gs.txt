@@ -1745,48 +1745,61 @@ function searchAllCases(searchTerm) {
 function getCasesByStatus(options) {
   try {
     const { status, searchTerm, limit = 20, offset = 0, country, filter } = options;
-    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
+    const cache = CacheService.getScriptCache();
+    const cacheKey = 'all_processed_cases_data';
+    let records;
 
-    const data = sheet.getDataRange().getValues();
-    const headers = data.shift();
-    const caseIdHeader = 'Main Task ID';
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      records = JSON.parse(cachedData);
+    } else {
+      const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+      const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+      if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
-    // --- REAL-TIME LOG FETCHING ---
-    const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
-    const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
-    // --- END ---
+      const data = sheet.getDataRange().getValues();
+      const headers = data.shift();
+      const caseIdHeader = 'Main Task ID';
 
-    const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
-    let records = data.map(row => {
-      let record = {};
-      headers.forEach((header, i) => {
-        if (!ignoredHeaders.includes(header)) {
-          record[header] = row[i];
+      const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
+      const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalation End Time');
+
+      const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
+      records = data.map(row => {
+        let record = {};
+        headers.forEach((header, i) => {
+          if (!ignoredHeaders.includes(header)) {
+            record[header] = row[i];
+          }
+        });
+
+        const caseId = record[caseIdHeader];
+        if (caseId) {
+          if (openPauses.has(caseId)) {
+            record['Pause Start Time'] = openPauses.get(caseId);
+            record['Pause End Time'] = '';
+          }
+          if (openEscalations.has(caseId)) {
+            record['Escalated Start Time'] = openEscalations.get(caseId);
+            record['Escalated End Time'] = '';
+          }
         }
+        return record;
       });
+      cache.put(cacheKey, JSON.stringify(records), 180); // Cache for 3 minutes
+    }
 
-      // --- REAL-TIME DATA MERGE ---
-      const caseId = record[caseIdHeader];
-      if (caseId) {
-        if (openPauses.has(caseId)) {
-          record['Pause Start Time'] = openPauses.get(caseId);
-          record['Paused End Time'] = ''; // Match frontend property
-        }
-        if (openEscalations.has(caseId)) {
-          record['Escalated Start Time'] = openEscalations.get(caseId);
-          record['Escalated End Time'] = '';
-        }
+    // Convert date strings back to Date objects for sorting
+    records.forEach(record => {
+      if (record['Menu Request Sent Date']) {
+        record['Menu Request Sent Date'] = new Date(record['Menu Request Sent Date']);
       }
-      // --- END ---
-      return record;
     });
 
     let filteredRecords = records;
     if (status !== 'All') {
       filteredRecords = records.filter(record => {
-        const hasOpenPause = record['Pause Start Time'] && !record['Paused End Time'];
+        const hasOpenPause = record['Pause Start Time'] && !record['Pause End Time'];
         const hasOpenEscalation = record['Escalated Start Time'] && !record['Escalated End Time'];
 
         let effectiveStatus = record.Status;
@@ -1813,7 +1826,6 @@ function getCasesByStatus(options) {
 
     if (searchTerm) {
         const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        // EXPANDED SEARCH: Added more relevant fields for a comprehensive search.
         const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
         filteredRecords = filteredRecords.filter(record => {
             return searchableHeaders.some(header =>
