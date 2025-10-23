@@ -168,7 +168,7 @@
     <div class="search-container">
       <input type="text" id="searchInput" placeholder="Search by Main Task ID, Country, Account Name, etc...">
       <button onclick="handleSearch()">Search</button>
-      <button onclick="refreshCache()" style="background-color: #f59e0b;">Refresh Live Data</button>
+      <button onclick="refreshCache(event)" style="background-color: #f59e0b;">Refresh Live Data</button>
     </div>
 
     <div id="search-results-container" class="table-section" style="display: none;">
@@ -1087,7 +1087,7 @@ function hideGuide() {
         initializeBoard();
     }
 
-    function refreshCache() {
+    function refreshCache(event) {
       const btn = event.target;
       btn.textContent = "Refreshing...";
       btn.disabled = true;
