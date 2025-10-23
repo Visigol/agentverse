@@ -2075,6 +2075,16 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
  * @param {string} fileName The desired name for the new spreadsheet.
  * @returns {string} The URL of the newly created spreadsheet.
  */
+function manuallyInvalidateCache() {
+  try {
+    invalidateCasesCache();
+    return "Cache has been successfully cleared. All users will see fresh data on their next page load.";
+  } catch (e) {
+    Logger.log('Manual cache invalidation failed: ' + e.toString());
+    throw new Error("Failed to clear the cache. " + e.message);
+  }
+}
+
 function invalidateCasesCache() {
   try {
     const cache = CacheService.getScriptCache();
@@ -2325,21 +2335,6 @@ function endCase(caseId) {
  * @param {string} endCol The name of the end time column.
  * @returns {Map<string, Date>} A map where keys are case IDs and values are start times.
  */
-/**
- * An installable trigger function that runs whenever the spreadsheet is changed.
- * This is the key to invalidating the cache when a user makes a direct manual edit
- * in the Google Sheet, ensuring the web app reflects the change.
- * @param {Object} e The event object from the onChange trigger.
- */
-function onSheetChange(e) {
-  // e.changeType can be 'EDIT', 'INSERT_ROW', 'REMOVE_ROW', etc.
-  // For any change, we invalidate the cache.
-  if (e.changeType) {
-    Logger.log(`Spreadsheet changed (type: ${e.changeType}). Invalidating cache.`);
-    invalidateCasesCache();
-  }
-}
-
 function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
   const openLogs = new Map();
   const logSheet = ss.getSheetByName(sheetName);
