@@ -138,6 +138,10 @@
     #updateNotificationArea { margin-top: 5px; padding: 8px; background-color: var(--yellow); color: var(--text-primary); border-radius: 8px; }
     #updateNotificationArea button { width: 100%; padding: 6px; font-size: 0.9em; background-color: var(--text-primary); color: white; border: none; cursor: pointer; margin-top: 5px; }
 
+    /* Tab Styles */
+    .tabs { display: flex; border-bottom: 2px solid var(--border-light); margin-bottom: 20px; }
+    .tab { padding: 10px 20px; cursor: pointer; font-size: 1.1em; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--primary-accent); border-bottom-color: var(--primary-accent); }
   </style>
 </head>
 <body>
@@ -157,6 +161,10 @@
   </div>
 
   <div class="page-container">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('all')">All Tasks</div>
+      <div class="tab" onclick="switchTab('my')">My Cases</div>
+    </div>
     <div class="search-container">
       <input type="text" id="searchInput" placeholder="Search by Main Task ID, Country, Account Name, etc...">
       <button onclick="handleSearch()">Search</button>
@@ -171,11 +179,11 @@
             <table id="search-results-table">
                 <thead>
                     <tr>
-                        <th>SLA Status</th>
-                        <th>Menu Request Sent Date</th>
-                        <th>Task ID</th>
-                        <th>Country</th>
-                        <th>Account Name</th>
+                        <th onclick="sortTable('search-results', 0)">SLA Status <span class="sort-icon"></span></th>
+                        <th onclick="sortTable('search-results', 1)">Menu Request Sent Date <span class="sort-icon"></span></th>
+                        <th onclick="sortTable('search-results', 2)">Task ID <span class="sort-icon"></span></th>
+                        <th onclick="sortTable('search-results', 3)">Country <span class="sort-icon"></span></th>
+                        <th onclick="sortTable('search-results', 4)">Account Name <span class="sort-icon"></span></th>
                     </tr>
                 </thead>
                 <tbody id="search-results-body">
@@ -211,10 +219,6 @@
     <h3>Cooperation Logs</h3>
     <div id="cooperation-logs-grid"></div>
 </div>
-<div id="cooperation-logs-container" class="log-section" style="display:none;">
-    <h3>Cooperation Logs</h3>
-    <div id="cooperation-logs-grid"></div>
-</div>
 <!-- ===== NEW LOG SECTIONS END ===== -->
         <div class="modal-actions">
           <div id="case-action-buttons" style="margin-right: auto;">
@@ -242,6 +246,7 @@
     let caseDataStoreByStatus = {};
     // --- GLOBAL STATE ---
     const STATUS_SECTIONS = ['Not Started', 'In Progress', 'Task Paused', 'Escalated', 'Completed', 'Cancelled'];
+    let currentTab = 'all';
     let offsets = {};
     STATUS_SECTIONS.forEach(s => offsets[s] = 0);
     let activeCaseData = null; // To store data for the open modal
@@ -290,6 +295,13 @@
     }
 
     // --- DATA FETCHING & RENDERING ---
+    function switchTab(tabName) {
+        currentTab = tabName;
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add('active');
+        initializeBoard();
+    }
+
     function loadCases(status, showAll = false) {
         const searchTerm = document.getElementById('searchInput').value;
         const tableBodyId = `table-body-${status.toLowerCase().replace(/ /g, '-')}`;
@@ -314,7 +326,8 @@
             status: status,
             searchTerm: searchTerm,
             limit: showAll ? 1000 : 20,
-            offset: showAll ? 0 : offsets[status]
+            offset: showAll ? 0 : offsets[status],
+            filter: currentTab
         };
 
         google.script.run
@@ -483,39 +496,82 @@
         }
     }
 
-    function sortTable(statusId, columnIndex) {
-        const statusWithSpaces = statusId.replace(/-/g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
-        const tableBody = document.getElementById(`table-body-${statusId}`);
-        const allCasesForStatus = caseDataStoreByStatus[statusWithSpaces];
-        if (!allCasesForStatus || allCasesForStatus.length < 2) return;
+    function sortTable(tableId, columnIndex) {
+        const isSearch = tableId === 'search-results';
+        const tableBody = document.getElementById(isSearch ? 'search-results-body' : `table-body-${tableId}`);
+        const headers = tableBody.closest('table').querySelectorAll('th');
+        const header = headers[columnIndex];
 
-        const sortDirection = tableBody.dataset.sortDirection === 'asc' ? 'desc' : 'asc';
-        const headers = tableBody.parentElement.querySelectorAll('th');
-        headers.forEach(th => th.querySelector('.sort-icon').textContent = '');
-        headers[columnIndex].querySelector('.sort-icon').textContent = sortDirection === 'asc' ? '▲' : '▼';
+        const currentDirection = header.dataset.sortDirection || 'desc';
+        const newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
+        const dir = newDirection === 'asc' ? 1 : -1;
 
-        tableBody.dataset.sortDirection = sortDirection;
-        const dir = sortDirection === 'asc' ? 1 : -1;
+        headers.forEach(h => {
+            h.querySelector('.sort-icon').textContent = '';
+            h.dataset.sortDirection = '';
+        });
 
-        allCasesForStatus.sort((a, b) => {
+        header.dataset.sortDirection = newDirection;
+        header.querySelector('.sort-icon').textContent = newDirection === 'asc' ? '▲' : '▼';
+
+        let dataToSort;
+        if (isSearch) {
+            dataToSort = (caseDataStore.searchResults || []).slice(); // Use a copy
+        } else {
+            const status = tableId.replace(/-/g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+            dataToSort = (caseDataStoreByStatus[status] || []).slice(); // Use a copy
+        }
+
+        if (!dataToSort || dataToSort.length < 2) return;
+
+        dataToSort.sort((a, b) => {
             let aValue, bValue;
             switch (columnIndex) {
                 case 0: // SLA Status
                     const order = ['🔥', '🔴', '🟠', '🟡', '🟢', '❓'];
-                    const slaA = calculateSlaStatus(a).icon;
-                    const slaB = calculateSlaStatus(b).icon;
-                    return (order.indexOf(slaA) - order.indexOf(slaB)) * dir;
+                    aValue = order.indexOf(calculateSlaStatus(a).icon);
+                    bValue = order.indexOf(calculateSlaStatus(b).icon);
+                    break;
                 case 1: // Date
                     aValue = new Date(a['Menu Request Sent Date'] || 0);
                     bValue = new Date(b['Menu Request Sent Date'] || 0);
-                    return (aValue - bValue) * dir;
-                case 2: aValue = a['Main Task ID'] || ''; bValue = b['Main Task ID'] || ''; return aValue.localeCompare(bValue) * dir;
-                case 3: aValue = a['Country'] || ''; bValue = b['Country'] || ''; return aValue.localeCompare(bValue) * dir;
-                case 4: aValue = a['Account Name'] || ''; bValue = b['Account Name'] || ''; return aValue.localeCompare(bValue) * dir;
+                    break;
+                case 2:
+                    aValue = a['Main Task ID'] || '';
+                    bValue = b['Main Task ID'] || '';
+                    return aValue.localeCompare(bValue) * dir;
+                case 3:
+                    aValue = a['Country'] || '';
+                    bValue = b['Country'] || '';
+                    return aValue.localeCompare(bValue) * dir;
+                case 4:
+                    aValue = a['Account Name'] || '';
+                    bValue = b['Account Name'] || '';
+                    return aValue.localeCompare(bValue) * dir;
                 default: return 0;
             }
+            return (aValue < bValue ? -1 : aValue > bValue ? 1 : 0) * dir;
         });
-        renderTable(statusWithSpaces);
+
+        let newHtml = '';
+        if (isSearch) {
+             dataToSort.forEach(caseData => newHtml += createTableRowHTML(caseData));
+        } else {
+            const casesByCountry = dataToSort.reduce((acc, caseData) => {
+                const country = caseData['Country'] || 'Unspecified';
+                if (!acc[country]) acc[country] = [];
+                acc[country].push(caseData);
+                return acc;
+            }, {});
+            const sortedCountries = Object.keys(casesByCountry).sort();
+            sortedCountries.forEach(country => {
+                newHtml += `<tr class="group-header"><td colspan="5">${country}</td></tr>`;
+                casesByCountry[country].forEach(caseData => {
+                    newHtml += createTableRowHTML(caseData);
+                });
+            });
+        }
+        tableBody.innerHTML = newHtml;
     }
 
 /**

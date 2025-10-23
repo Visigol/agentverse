@@ -27,7 +27,7 @@ const CONFIG = {
   PRODUCTION: {
     ID: '1AaJmBfDpZnk0J1A4WbInEPuspUyae5jXm42SyQIaJn8',
     SHEETS: {
-      AVAILABLE_CASES: "Main Taks",
+      AVAILABLE_CASES: "Main Tasks",
       // --- ADDITIONS START ---
       // Add the names of the log sheets as they will appear in your TARGET spreadsheet.
       ESCALATION_LOGS: "Escalation Logs",
@@ -1744,7 +1744,7 @@ function searchAllCases(searchTerm) {
 
 function getCasesByStatus(options) {
   try {
-    const { status, searchTerm, limit = 20, offset = 0, country } = options;
+    const { status, searchTerm, limit = 20, offset = 0, country, filter } = options;
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
     if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
@@ -1802,6 +1802,13 @@ function getCasesByStatus(options) {
 
     if (country) {
       filteredRecords = filteredRecords.filter(record => record.Country === country);
+    }
+
+    if (filter === 'my') {
+      const userEmail = Session.getActiveUser().getEmail();
+      if (userEmail) {
+        filteredRecords = filteredRecords.filter(record => record.Useremail && record.Useremail.toLowerCase() === userEmail.toLowerCase());
+      }
     }
 
     if (searchTerm) {
