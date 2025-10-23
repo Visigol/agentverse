@@ -1827,8 +1827,8 @@ function getCasesByStatus(options) {
 
   // --- Start processing with the (now populated) rawData ---
   const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID); // Needed for logs
-  const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Paused End Time');
-  const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
+  const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
+  const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalation End Time');
 
   const headers = rawData.headers;
   const caseIdHeader = 'Main Task ID';
@@ -2298,7 +2298,7 @@ function pauseCase(caseId) {
 }
 
 function unpauseCase(caseId) {
-    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time', 'Related Case ID');
+    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Pause End Time', 'Related Case ID');
     return updateCaseStatus(caseId, 'In Progress');
 }
 
