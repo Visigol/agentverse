@@ -167,207 +167,13 @@ function logCorrectionRequest(originalLogData, reason, newTimestampStr) {
 }
 
 // =================================================================================
-// --- NEW ADVANCED SYNC FUNCTION (PULL PROCESS) ---
-// This function replaces the old syncAvailableCases().
-// You can run this manually from the script editor or set it on a time-based trigger.
+// --- DATA & HELPER FUNCTIONS ---
 // =================================================================================
+
 /**
- * A corrected, intelligent sync function that pulls data from multiple source sheets
- * to their designated target sheets, handling different source/target names.
+ * Fetches important links for the main agent dashboard.
+ * @returns {Array<Object>} An array of link objects.
  */
-function syncAllDataSources() {
-  const sourceSpreadsheet = SpreadsheetApp.openById(CONFIG.SOURCE_DATA.ID);
-  const targetSpreadsheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-
-  const syncMap = [
-    { sourceName: "Main Tasks",       targetName: "AvailableCases" },
-    { sourceName: "Escalation Logs",  targetName: "Escalation Logs" },
-    { sourceName: "Cooperation Logs", targetName: "Cooperation Logs" },
-    { sourceName: "Pausing Logs",     targetName: "Pausing Logs" }
-  ];
-
-  syncMap.forEach(map => {
-    const sourceSheetName = map.sourceName;
-    const targetSheetName = map.targetName;
-
-    try {
-      Logger.log(`Starting sync for: ${sourceSheetName} -> ${targetSheetName}`);
-
-      const sourceSheet = sourceSpreadsheet.getSheetByName(sourceSheetName);
-      let targetSheet = targetSpreadsheet.getSheetByName(targetSheetName);
-
-      if (!sourceSheet) {
-        Logger.log(`Source sheet "${sourceSheetName}" not found. Skipping.`);
-        return;
-      }
-
-      if (!targetSheet) {
-        targetSheet = targetSpreadsheet.insertSheet(targetSheetName);
-        Logger.log(`Target sheet "${targetSheetName}" was not found and has been created.`);
-      }
-
-      const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
-      const primaryKeyColumnName = CONFIG.SOURCE_DATA.PRIMARY_KEYS[sourceSheetName];
-
-      if (!primaryKeyColumnName) {
-        Logger.log(`Primary key for "${sourceSheetName}" not defined in CONFIG. Skipping.`);
-        return;
-      }
-      const primaryKeyIndex = sourceHeaders.indexOf(primaryKeyColumnName);
-      if (primaryKeyIndex === -1) {
-        Logger.log(`Primary key "${primaryKeyColumnName}" not found in source sheet "${sourceSheetName}". Skipping.`);
-        return;
-      }
-
-      const sourceData = sourceSheet.getLastRow() > 1 ? sourceSheet.getRange(2, 1, sourceSheet.getLastRow() - 1, sourceSheet.getLastColumn()).getValues() : [];
-
-      targetSheet.getRange(1, 1, 1, sourceHeaders.length).setValues([sourceHeaders]);
-      const targetData = targetSheet.getLastRow() > 1 ? targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, targetSheet.getLastColumn()).getValues() : [];
-
-      // --- THE FIX IS HERE: Convert the primary key to a trimmed string for reliable matching. ---
-      const sourceMap = new Map(sourceData.map(row => [String(row[primaryKeyIndex]).trim(), row]));
-      const targetMap = new Map(targetData.map(row => [String(row[primaryKeyIndex]).trim(), {rowData: row, rowIndex: targetData.indexOf(row) + 2}]));
-
-      const rowsToUpdate = [];
-      const rowsToAdd = [];
-
-      for (const [key, sourceRow] of sourceMap.entries()) {
-        if (targetMap.has(key)) {
-          const targetRowInfo = targetMap.get(key);
-          // Compare stringified versions of the entire row to detect any changes
-          if (JSON.stringify(sourceRow) !== JSON.stringify(targetRowInfo.rowData)) {
-            rowsToUpdate.push({rowIndex: targetRowInfo.rowIndex, data: sourceRow});
-          }
-        } else {
-          rowsToAdd.push(sourceRow);
-        }
-      }
-
-      if (rowsToUpdate.length > 0) {
-        rowsToUpdate.forEach(update => {
-          targetSheet.getRange(update.rowIndex, 1, 1, update.data.length).setValues([update.data]);
-        });
-        Logger.log(`Updated ${rowsToUpdate.length} rows in "${targetSheetName}".`);
-      }
-
-      if (rowsToAdd.length > 0) {
-        targetSheet.getRange(targetSheet.getLastRow() + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
-        Logger.log(`Added ${rowsToAdd.length} new rows to "${targetSheetName}".`);
-      }
-
-      if (rowsToUpdate.length === 0 && rowsToAdd.length === 0) {
-        Logger.log(`No changes detected for "${targetSheetName}". Sheet is already up to date.`);
-      }
-
-      Logger.log(`Sync completed for: ${sourceSheetName}`);
-
-    } catch(e) {
-      Logger.log(`Error syncing sheet "${sourceSheetName}": ${e.toString()}`);
-    }
-  });
-}
-
-// =================================================================================
-// --- NEW `onEdit` FUNCTION (PUSH PROCESS) ---
-// This function must be installed as a trigger. It writes changes from the
-// target sheet back to the source sheet.
-// =================================================================================
-function onEditSpecial(e) {
-  try {
-    const editedRange = e.range;
-    const targetSheet = editedRange.getSheet();
-    const sheetName = targetSheet.getName();
-
-    // Check if the edited sheet is one we are syncing
-    const primaryKeyColumnName = CONFIG.SOURCE_DATA.PRIMARY_KEYS[sheetName];
-    if (!primaryKeyColumnName) {
-      // Not a sheet we need to sync, so we do nothing.
-      return;
-    }
-
-    // Get info about the edit
-    const editedRow = editedRange.getRow();
-    const editedCol = editedRange.getColumn();
-    const newValue = e.value;
-
-    // Don't sync header edits
-    if (editedRow === 1) return;
-
-    // Get headers from the target sheet to find the Primary Key and the edited column name
-    const headers = targetSheet.getRange(1, 1, 1, targetSheet.getLastColumn()).getValues()[0];
-    const primaryKeyIndex = headers.indexOf(primaryKeyColumnName);
-    const editedHeader = headers[editedCol - 1];
-
-    // Get the ID of the edited row
-    const rowId = targetSheet.getRange(editedRow, primaryKeyIndex + 1).getValue();
-    if (!rowId) return; // No ID, cannot sync back
-
-    // --- Write the change back to the source ---
-    const sourceSpreadsheet = SpreadsheetApp.openById(CONFIG.SOURCE_DATA.ID);
-    const sourceSheet = sourceSpreadsheet.getSheetByName(sheetName);
-    if (!sourceSheet) return;
-
-    const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
-    const sourcePrimaryKeyIndex = sourceHeaders.indexOf(primaryKeyColumnName);
-    const sourceEditedColIndex = sourceHeaders.indexOf(editedHeader);
-
-    if (sourcePrimaryKeyIndex === -1 || sourceEditedColIndex === -1) return; // Column mapping failed
-
-    // Find the corresponding row in the source data
-    const sourceIds = sourceSheet.getRange(2, sourcePrimaryKeyIndex + 1, sourceSheet.getLastRow() - 1, 1).getValues().flat();
-    const sourceRowIndex = sourceIds.indexOf(rowId);
-
-    if (sourceRowIndex !== -1) {
-      // Found the row, update the specific cell
-      const sourceRowToUpdate = sourceRowIndex + 2; // +1 for 0-index, +1 for header
-      sourceSheet.getRange(sourceRowToUpdate, sourceEditedColIndex + 1).setValue(newValue);
-      Logger.log(`Wrote back edit from "${sheetName}" (ID: ${rowId}, Col: ${editedHeader}) to source.`);
-    }
-  } catch (e) {
-    // Log the error but don't bother the user, as onEdit runs in the background.
-    Logger.log(`Error in onEditSpecial trigger: ${e.toString()}`);
-  }
-}
-
-// =================================================================================
-// --- NEW PROTECTION FUNCTION ---
-// Run this once manually after the first sync to lock ID columns.
-// =================================================================================
-function applyProtections() {
-  const targetSpreadsheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-
-  Object.entries(CONFIG.SOURCE_DATA.PRIMARY_KEYS).forEach(([sheetName, keyColumnName]) => {
-    const sheet = targetSpreadsheet.getSheetByName(sheetName);
-    if (sheet) {
-      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-      const colIndex = headers.indexOf(keyColumnName);
-
-      if (colIndex !== -1) {
-        const rangeToProtect = sheet.getRange(2, colIndex + 1, sheet.getMaxRows());
-        const protection = rangeToProtect.protect().setDescription(`Protected ${keyColumnName}`);
-
-        // This ensures you (the owner) and other editors can still edit, but warns them.
-        const me = Session.getEffectiveUser();
-        protection.addEditor(me);
-        protection.removeEditors(protection.getEditors());
-        if (protection.canDomainEdit()) {
-          protection.setDomainEdit(false);
-        }
-        protection.setWarningOnly(true); // Warns on edit instead of blocking completely
-        Logger.log(`Applied protection with warning to column "${keyColumnName}" in sheet "${sheetName}".`);
-      }
-    }
-  });
-}
-
-
-// =================================================================================
-// --- END OF SINC FUNCTIONS ---
-// Run this once manually after the first sync to lock ID columns.
-// =================================================================================
-
-
-
 function getImportantLinks() {
   Logger.log("--- Starting getImportantLinks ---");
   try {
@@ -1816,75 +1622,6 @@ function getAgentAttendanceLog(dateRange) {
  * Gets a performance summary for the agent for the current day.
  * Called by the new agent dashboard to populate scorecards.
  */
-function updateCaseTimestampsFromLogs() {
-  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-  const mainSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-  if (!mainSheet) {
-    Logger.log("updateCaseTimestampsFromLogs: AvailableCases sheet not found.");
-    return;
-  }
-
-  const mainRange = mainSheet.getDataRange();
-  const mainData = mainRange.getValues();
-  const mainHeaders = mainData.shift();
-  const mainCaseIdIndex = mainHeaders.indexOf('Main Task ID');
-  const pauseStartIndex = mainHeaders.indexOf('Pause Start Time');
-  const pausedEndIndex = mainHeaders.indexOf('Pause End Time');
-  const escalatedStartIndex = mainHeaders.indexOf('Escalated Start Time');
-  const escalatedEndIndex = mainHeaders.indexOf('Escalated End Time');
-
-  const processLogs = (sheetName, relatedIdCol, startCol, endCol) => {
-    const logSheet = ss.getSheetByName(sheetName);
-    if (!logSheet) return new Map();
-    const logData = logSheet.getDataRange().getValues();
-    logData.shift();
-    const openLogs = new Map();
-    const idIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(relatedIdCol);
-    const startIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(startCol);
-    const endIndex = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0].indexOf(endCol);
-
-    if ([idIndex, startIndex, endIndex].includes(-1)) return new Map();
-
-    logData.forEach(row => {
-      const caseId = row[idIndex];
-      const startTime = row[startIndex];
-      const endTime = row[endIndex];
-      if (caseId && startTime && !endTime) {
-        openLogs.set(String(caseId).trim(), startTime);
-      }
-    });
-    return openLogs;
-  };
-
-  const openPauses = processLogs(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
-  const openEscalations = processLogs(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalated Start Time', 'Escalated End Time');
-
-  let changesMade = false;
-  mainData.forEach(row => {
-    const caseId = String(row[mainCaseIdIndex]).trim();
-    if (!caseId) return;
-
-    const currentPauseStart = openPauses.get(caseId) || '';
-    if (row[pauseStartIndex] !== currentPauseStart) {
-      row[pauseStartIndex] = currentPauseStart;
-      row[pausedEndIndex] = '';
-      changesMade = true;
-    }
-
-    const currentEscalationStart = openEscalations.get(caseId) || '';
-    if (row[escalatedStartIndex] !== currentEscalationStart) {
-      row[escalatedStartIndex] = currentEscalationStart;
-      row[escalatedEndIndex] = '';
-      changesMade = true;
-    }
-  });
-
-  if (changesMade) {
-    mainSheet.getRange(2, 1, mainData.length, mainHeaders.length).setValues(mainData);
-    Logger.log("updateCaseTimestampsFromLogs: Batch update complete.");
-  }
-}
-
 function getAgentDashboardSummary() {
   try {
     const agentEmail = Session.getActiveUser().getEmail();
@@ -1952,9 +1689,11 @@ function getAgentDashboardSummary() {
  * Fetches, filters, sorts, and paginates cases for the Case Management page.
  * Includes a smarter, targeted search.
  */
-function getCasesByStatus(options) {
+function searchAllCases(searchTerm) {
   try {
-    const { status, searchTerm, limit = 20, offset = 0, country } = options;
+    if (!searchTerm) {
+      return [];
+    }
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
@@ -1966,6 +1705,78 @@ function getCasesByStatus(options) {
     let records = data.map(row => {
       let record = {};
       headers.forEach((header, i) => { record[header] = row[i]; });
+      return record;
+    });
+
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
+    let filteredRecords = records.filter(record => {
+        return searchableHeaders.some(header =>
+            record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
+        );
+    });
+
+    filteredRecords.sort((a, b) => {
+      const dateA = new Date(a['Menu Request Sent Date'] || 0);
+      const dateB = new Date(b['Menu Request Sent Date'] || 0);
+      return dateB - dateA;
+    });
+
+    const serializableRecords = filteredRecords.map(record => {
+        const newRecord = {};
+        for (const key in record) {
+            if (record[key] instanceof Date) {
+                newRecord[key] = record[key].toISOString();
+            } else {
+                newRecord[key] = record[key];
+            }
+        }
+        return newRecord;
+    });
+
+    return serializableRecords;
+
+  } catch (e) {
+    Logger.log("Error in searchAllCases: " + e.toString());
+    throw new Error("Failed to search cases. " + e.message);
+  }
+}
+
+function getCasesByStatus(options) {
+  try {
+    const { status, searchTerm, limit = 20, offset = 0, country } = options;
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    if (!sheet) throw new Error("AvailableCases sheet not found.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+    const caseIdHeader = 'Main Task ID';
+    const caseIdIndex = headers.indexOf(caseIdHeader);
+
+    // --- REAL-TIME LOG FETCHING ---
+    const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
+    const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalated Start Time', 'Escalated End Time');
+    // --- END ---
+
+    let records = data.map(row => {
+      let record = {};
+      headers.forEach((header, i) => { record[header] = row[i]; });
+
+      // --- REAL-TIME DATA MERGE ---
+      const caseId = record[caseIdHeader];
+      if (caseId) {
+        if (openPauses.has(caseId)) {
+          record['Pause Start Time'] = openPauses.get(caseId);
+          record['Pause End Time'] = ''; // Ensure end time is cleared
+        }
+        if (openEscalations.has(caseId)) {
+          record['Escalated Start Time'] = openEscalations.get(caseId);
+          record['Escalated End Time'] = ''; // Ensure end time is cleared
+        }
+      }
+      // --- END ---
+
       return record;
     });
 
@@ -2020,64 +1831,6 @@ function getCasesByStatus(options) {
   } catch (e) {
     Logger.log("Error in getCasesByStatus: " + e.toString());
     throw new Error("Failed to retrieve cases. " + e.message);
-  }
-}
-
-/**
- * Searches all cases across all statuses based on a search term.
- * @param {string} searchTerm The term to search for.
- * @returns {Array<Object>} A list of case objects that match the search term.
- */
-function searchAllCases(searchTerm) {
-  try {
-    if (!searchTerm) {
-      return [];
-    }
-
-    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error("AvailableCases sheet not found.");
-
-    const data = sheet.getDataRange().getValues();
-    const headers = data.shift();
-
-    let records = data.map(row => {
-      let record = {};
-      headers.forEach((header, i) => { record[header] = row[i]; });
-      return record;
-    });
-
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
-    let filteredRecords = records.filter(record => {
-        return searchableHeaders.some(header =>
-            record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
-        );
-    });
-
-    filteredRecords.sort((a, b) => {
-      const dateA = new Date(a['Menu Request Sent Date'] || 0);
-      const dateB = new Date(b['Menu Request Sent Date'] || 0);
-      return dateB - dateA;
-    });
-
-    const serializableRecords = filteredRecords.map(record => {
-        const newRecord = {};
-        for (const key in record) {
-            if (record[key] instanceof Date) {
-                newRecord[key] = record[key].toISOString();
-            } else {
-                newRecord[key] = record[key];
-            }
-        }
-        return newRecord;
-    });
-
-    return serializableRecords;
-
-  } catch (e) {
-    Logger.log("Error in searchAllCases: " + e.toString());
-    throw new Error("Failed to search cases. " + e.message);
   }
 }
 
@@ -2390,87 +2143,39 @@ function endCase(caseId) {
 }
 
 /**
- * Creates a custom menu in the spreadsheet UI to run admin tasks.
- * This is a simple trigger that runs automatically when the spreadsheet is opened.
+ * A reusable helper function to get a map of open logs from a specified log sheet.
+ * @param {Spreadsheet} ss The spreadsheet object.
+ * @param {string} sheetName The name of the log sheet.
+ * @param {string} relatedIdCol The name of the column containing the related case ID.
+ * @param {string} startCol The name of the start time column.
+ * @param {string} endCol The name of the end time column.
+ * @returns {Map<string, Date>} A map where keys are case IDs and values are start times.
  */
-function onOpen() {
-  SpreadsheetApp.getUi()
-      .createMenu('Admin')
-      .addItem('Install Data Sync Trigger', 'installSyncTrigger')
-      .addToUi();
-}
-
-/**
- * Installs a time-based trigger to run the sync function automatically.
- * This function is idempotent and safe to run multiple times. It only affects its own trigger.
- */
-function installSyncTrigger() {
-  const functionNameToTrigger = 'updateCaseTimestampsFromLogs';
-
-  // Delete any existing triggers for this function to avoid duplicates.
-  ScriptApp.getProjectTriggers().forEach(trigger => {
-    if (trigger.getHandlerFunction() === functionNameToTrigger) {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  });
-
-  // Creates a new trigger that runs every 15 minutes.
-  ScriptApp.newTrigger(functionNameToTrigger)
-      .timeBased()
-      .everyMinutes(15)
-      .create();
-
-  // Use an alert to give the user immediate feedback that the operation was successful.
-  SpreadsheetApp.getUi().alert('Trigger Installed', `The automatic data sync for '${functionNameToTrigger}' has been installed successfully. It will run approximately every 15 minutes.`, SpreadsheetApp.getUi().ButtonSet.OK);
-}
-
-/**
- * A utility function for developers to manually check which pauses the system considers "open".
- * To use: Open the Apps Script editor, select "debug_findOpenPauses" from the function list, and click "Run".
- * The results will be visible in the "Execution log" (View > Logs).
- */
-function debug_findOpenPauses() {
-  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-  const logSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS);
-
+function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
+  const openLogs = new Map();
+  const logSheet = ss.getSheetByName(sheetName);
   if (!logSheet) {
-    Logger.log("DEBUG: 'Pausing Logs' sheet not found.");
-    return;
+    Logger.log(`Warning: Log sheet "${sheetName}" not found.`);
+    return openLogs;
   }
-
   const logData = logSheet.getDataRange().getValues();
-  const headers = logData.shift(); // Get headers
-
-  const relatedIdCol = 'Related Case ID';
-  const startCol = 'Pause Start Time';
-  const endCol = 'Pause End Time';
-
+  const headers = logData.shift();
   const idIndex = headers.indexOf(relatedIdCol);
   const startIndex = headers.indexOf(startCol);
   const endIndex = headers.indexOf(endCol);
 
   if ([idIndex, startIndex, endIndex].includes(-1)) {
-    Logger.log(`DEBUG: One or more required columns not found in 'Pausing Logs'.
-      - Found '${relatedIdCol}': ${idIndex !== -1}
-      - Found '${startCol}': ${startIndex !== -1}
-      - Found '${endCol}': ${endIndex !== -1}`);
-    return;
+    Logger.log(`Warning: Required columns not found in "${sheetName}".`);
+    return openLogs;
   }
 
-  Logger.log("DEBUG: Starting search for open pauses in 'Pausing Logs'...");
-  let openPausesCount = 0;
-
-  logData.forEach((row, i) => {
+  logData.forEach(row => {
     const caseId = row[idIndex];
     const startTime = row[startIndex];
     const endTime = row[endIndex];
-
-    // The condition for an "open" pause is having a start time but NO end time.
     if (caseId && startTime && !endTime) {
-      Logger.log(`DEBUG: Found open pause. Row ${i + 2}: Case ID='${caseId}', Start Time='${startTime}'`);
-      openPausesCount++;
+      openLogs.set(String(caseId).trim(), startTime);
     }
   });
-
-  Logger.log(`DEBUG: Search complete. Found ${openPausesCount} total open pause(s).`);
+  return openLogs;
 }
