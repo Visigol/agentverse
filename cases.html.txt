@@ -241,7 +241,7 @@
     let offsets = {};
     STATUS_SECTIONS.forEach(s => offsets[s] = 0);
     let activeCaseData = null; // To store data for the open modal
-    const ALL_FIELDS = ['Created By', 'Useremail', 'Main Task ID', 'Country', 'Menu Request Sent Date', 'Language', 'Case Title', 'Category', 'Account Name', 'Status', 'Provider Id', 'City', 'Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Menu link', 'Dish Photos Link', 'Photo Coverage', 'Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Task TAT', 'Escalated Comment', 'Task Paused', 'Pause Start Time', 'Paused End Time', 'TAT Adherance', 'Salesforce Updated', 'Salesforce Updated time', 'Ready for QA', 'Date stamp', 'Task Type', 'Rework Count', 'No of Main dishes(Excluding Extras, drinks, sides etc.)', 'Total No. of dishes', 'Total No. of categories', 'Total no. of options', 'Total no. of option Groups', 'Total no. of tags', 'Total no. of timetables.', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Comments', 'Event Summary', 'Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time', 'Retailer Provider Type', 'Airtable Link', 'Description Coverage', 'Visual and Descriptive Elements', 'Claim Flag', 'SLA Missed Reason', 'SLA Missed Comment', 'Linking Snapshot URL'];
+    const ALL_FIELDS = ['Created By', 'Useremail', 'Main Task ID', 'Country', 'Menu Request Sent Date', 'Language', 'Case Title', 'Category', 'Account Name', 'Status', 'Provider Id', 'City', 'Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Menu link', 'Dish Photos Link', 'Photo Coverage', 'Main Task Start Date/Time', 'Main Task End Date/Time', 'Task TAT', 'Escalated Comment', 'Task Paused', 'TAT Adherance', 'Salesforce Updated', 'Salesforce Updated time', 'Ready for QA', 'Date stamp', 'Task Type', 'Rework Count', 'No of Main dishes(Excluding Extras, drinks, sides etc.)', 'Total No. of dishes', 'Total No. of categories', 'Total no. of options', 'Total no. of option Groups', 'Total no. of tags', 'Total no. of timetables.', 'No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)', 'Comments', 'Event Summary', 'Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time', 'Retailer Provider Type', 'Airtable Link', 'Description Coverage', 'Visual and Descriptive Elements', 'Claim Flag', 'SLA Missed Reason', 'SLA Missed Comment', 'Linking Snapshot URL'];
 
     // --- INITIALIZATION ---
     window.addEventListener('load', function() {
@@ -546,6 +546,8 @@ function displayCaseLogs(logs) {
             });
             grid.innerHTML = allLogsHtml;
             container.style.display = 'block';
+        } else {
+            container.style.display = 'none';
         }
     };
 
@@ -643,7 +645,7 @@ function populateActionButtons(caseData) {
     const container = document.getElementById('case-action-buttons');
     container.innerHTML = ''; // Clear existing buttons
     const caseId = caseData['Main Task ID'];
-    const isPaused = activeCaseData['Pause Start Time'] && !activeCaseData['Paused End Time'];
+    const isPaused = activeCaseData['Pause Start Time'] && !activeCaseData['Pause End Time'];
     const isEscalated = activeCaseData['Escalated Start Time'] && !activeCaseData['Escalated End Time'];
 
     // --- BUTTON DEFINITIONS ---
@@ -1051,11 +1053,14 @@ function isDurationField(fieldName) {
 function formatDisplayDate(isoString) {
     if (!isoString) return '';
     try {
-        // Use options that produce a format like "8/29/2025, 5:01:40 PM"
-        return new Date(isoString).toLocaleString([], {
-            year: 'numeric', month: 'numeric', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: false
-        }).replace(',', '');
+        const date = new Date(isoString);
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${month}-${day}-${year} ${hours}:${minutes}:${seconds}`;
     } catch (e) {
         return isoString; // Fallback if date is invalid
     }

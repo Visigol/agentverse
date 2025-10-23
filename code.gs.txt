@@ -25,9 +25,9 @@ const CONFIG = {
   },
   // Spreadsheet containing the main production/case data (THE TARGET)
   PRODUCTION: {
-    ID: '1XztX1qPVVQb7yRfD-YgPkMlYfRnQsDnENGM5zCfq2EQ',
+    ID: '1AaJmBfDpZnk0J1A4WbInEPuspUyae5jXm42SyQIaJn8',
     SHEETS: {
-      AVAILABLE_CASES: "AvailableCases",
+      AVAILABLE_CASES: "Main Taks",
       // --- ADDITIONS START ---
       // Add the names of the log sheets as they will appear in your TARGET spreadsheet.
       ESCALATION_LOGS: "Escalation Logs",
@@ -1752,43 +1752,52 @@ function getCasesByStatus(options) {
     const data = sheet.getDataRange().getValues();
     const headers = data.shift();
     const caseIdHeader = 'Main Task ID';
-    const caseIdIndex = headers.indexOf(caseIdHeader);
 
     // --- REAL-TIME LOG FETCHING ---
     const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
-    const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalated Start Time', 'Escalated End Time');
+    const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
     // --- END ---
 
+    const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
     let records = data.map(row => {
       let record = {};
-      headers.forEach((header, i) => { record[header] = row[i]; });
+      headers.forEach((header, i) => {
+        if (!ignoredHeaders.includes(header)) {
+          record[header] = row[i];
+        }
+      });
 
       // --- REAL-TIME DATA MERGE ---
       const caseId = record[caseIdHeader];
       if (caseId) {
         if (openPauses.has(caseId)) {
           record['Pause Start Time'] = openPauses.get(caseId);
-          record['Pause End Time'] = ''; // Ensure end time is cleared
+          record['Pause End Time'] = ''; // Match frontend property
         }
         if (openEscalations.has(caseId)) {
           record['Escalated Start Time'] = openEscalations.get(caseId);
-          record['Escalated End Time'] = ''; // Ensure end time is cleared
+          record['Escalated End Time'] = '';
         }
       }
       // --- END ---
-
       return record;
     });
 
     let filteredRecords = records;
     if (status !== 'All') {
-      if (status === 'Task Paused') {
-        filteredRecords = filteredRecords.filter(record => record['Pause Start Time'] && !record['Pause End Time']);
-      } else if (status === 'Escalated') {
-        filteredRecords = filteredRecords.filter(record => record['Escalated Start Time'] && !record['Escalated End Time']);
-      } else {
-        filteredRecords = filteredRecords.filter(record => record.Status === status);
-      }
+      filteredRecords = records.filter(record => {
+        const hasOpenPause = record['Pause Start Time'] && !record['Paused End Time'];
+        const hasOpenEscalation = record['Escalated Start Time'] && !record['Escalated End Time'];
+
+        let effectiveStatus = record.Status;
+        if (hasOpenPause) {
+          effectiveStatus = 'Task Paused';
+        } else if (hasOpenEscalation) {
+          effectiveStatus = 'Escalated';
+        }
+
+        return effectiveStatus === status;
+      });
     }
 
     if (country) {
@@ -1869,8 +1878,7 @@ function updateCaseData(caseId, updatedData) {
       throw new Error(`Case with ID '${caseId}' not found.`);
     }
 
-    // --- NEW LOGIC STARTS HERE ---
-    const dateTimeHeaders = ['Main Task Start Date/Time', 'Main Task End Date/Time', 'Escalated Start Time', 'Escalated End Time', 'Pause Start Time', 'Pause End Time', 'Salesforce Updated time', 'Date stamp', 'Menu Request Sent Date'];
+    const dateTimeHeaders = ['Main Task Start Date/Time', 'Main Task End Date/Time', 'Salesforce Updated time', 'Date stamp', 'Menu Request Sent Date'];
     const durationHeaders = ['Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time'];
 
     for (const header of Object.keys(updatedData)) {
@@ -1879,22 +1887,15 @@ function updateCaseData(caseId, updatedData) {
         let value = updatedData[header];
         const cell = sheet.getRange(rowNumberToUpdate, colIndex + 1);
 
-        // Set the value
         if (dateTimeHeaders.includes(header) && value) {
-            cell.setValue(new Date(value)); // Convert ISO string to Date object
+            cell.setValue(new Date(value)).setNumberFormat("MM-dd-yyyy HH:mm:ss");
+        } else if (durationHeaders.includes(header) && (typeof value === 'number' || !isNaN(value))) {
+            cell.setValue(value).setNumberFormat("HH:mm:ss");
         } else {
             cell.setValue(value);
         }
-
-        // Set the number format
-        if (dateTimeHeaders.includes(header)) {
-            cell.setNumberFormat("M/d/yyyy HH:mm:ss");
-        } else if (durationHeaders.includes(header)) {
-            cell.setNumberFormat("HH:mm:ss");
-        }
       }
     }
-    // --- NEW LOGIC ENDS HERE ---
 
     return `Case ${caseId} updated successfully.`;
 
@@ -1951,9 +1952,9 @@ function getLogsForCase(caseId) {
     };
 
     // Use the flexible helper function with multiple possible column names
-    const escalationLogs = fetchLogData("Escalation Logs", "Related Case ID", "Main Task ID", "Case ID");
-    const pausingLogs = fetchLogData("Pausing Logs", "Related Case ID", "Main Task ID", "Case ID");
-    const cooperationLogs = fetchLogData("Cooperation Logs", "Related Case ID", "Main Task ID", "Case ID");
+    const escalationLogs = fetchLogData(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, "Related Case ID", "Main Task ID", "Case ID");
+    const pausingLogs = fetchLogData(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, "Related Case ID", "Main Task ID", "Case ID");
+    const cooperationLogs = fetchLogData(CONFIG.PRODUCTION.SHEETS.COOPERATION_LOGS, "Related Case ID", "Main Task ID", "Case ID");
 
     return {
       escalationLogs: escalationLogs,
@@ -2165,7 +2166,7 @@ function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
   const endIndex = headers.indexOf(endCol);
 
   if ([idIndex, startIndex, endIndex].includes(-1)) {
-    Logger.log(`Warning: Required columns not found in "${sheetName}".`);
+    Logger.log(`Warning: Required columns not found in "${sheetName}". Looking for ${relatedIdCol}, ${startCol}, ${endCol}`);
     return openLogs;
   }
 
