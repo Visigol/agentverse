@@ -1776,7 +1776,7 @@ function getCasesByStatus(options) {
         const data = sheet.getDataRange().getValues();
         const headers = data.shift();
         const caseIdHeader = 'Main Task ID';
-        const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Pause End Time');
+        const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Paused End Time');
         const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
         const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
         const userEmail = (filter === 'my') ? Session.getActiveUser().getEmail() : null;
@@ -2189,7 +2189,7 @@ function createNewLogEntry(sheetName, logData) {
     }
 }
 
-function endOpenLogEntry(sheetName, caseId, endColName) {
+function endOpenLogEntry(sheetName, caseId, endColName, relatedIdColName) {
     try {
         const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
         const sheet = ss.getSheetByName(sheetName);
@@ -2197,11 +2197,11 @@ function endOpenLogEntry(sheetName, caseId, endColName) {
 
         const data = sheet.getDataRange().getValues();
         const headers = data.shift();
-        const idIndex = headers.indexOf("Related Case ID");
+        const idIndex = headers.indexOf(relatedIdColName);
         const endIndex = headers.indexOf(endColName);
 
         if (idIndex === -1 || endIndex === -1) {
-            throw new Error(`Required columns not found in "${sheetName}".`);
+            throw new Error(`Required columns not found in "${sheetName}". Check sheet configuration.`);
         }
 
         // Iterate backwards to find the most recent open log for the case
@@ -2229,22 +2229,26 @@ function claimCase(caseId) {
 
 function pauseCase(caseId) {
     updateCaseStatus(caseId, 'Task Paused');
+    const userEmail = Session.getActiveUser().getEmail();
     const logData = {
+        'ID': `${caseId}_${new Date().getTime()}`,
         'Related Case ID': caseId,
-        'Pause Start Time': new Date()
+        'Pause Start Time': new Date(),
+        'User Email': userEmail
     };
     return createNewLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, logData);
 }
 
 function unpauseCase(caseId) {
     updateCaseStatus(caseId, 'In Progress');
-    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time');
+    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Paused End Time', 'Related Case ID');
 }
 
 function escalateCase(caseId) {
     updateCaseStatus(caseId, 'Escalated');
     const userEmail = Session.getActiveUser().getEmail();
     const logData = {
+        'Log ID': `${caseId}_${new Date().getTime()}`,
         'Related Case ID': caseId,
         'Escalation Start Time': new Date(),
         'User Email': userEmail
@@ -2254,7 +2258,7 @@ function escalateCase(caseId) {
 
 function deEscalateCase(caseId) {
     updateCaseStatus(caseId, 'In Progress');
-    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalated End Time');
+    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalated End Time', 'Related Case ID');
 }
 
 function endCase(caseId) {
