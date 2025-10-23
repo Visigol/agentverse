@@ -211,6 +211,10 @@
     <h3>Cooperation Logs</h3>
     <div id="cooperation-logs-grid"></div>
 </div>
+<div id="cooperation-logs-container" class="log-section" style="display:none;">
+    <h3>Cooperation Logs</h3>
+    <div id="cooperation-logs-grid"></div>
+</div>
 <!-- ===== NEW LOG SECTIONS END ===== -->
         <div class="modal-actions">
           <div id="case-action-buttons" style="margin-right: auto;">
@@ -645,7 +649,7 @@ function populateActionButtons(caseData) {
     const container = document.getElementById('case-action-buttons');
     container.innerHTML = ''; // Clear existing buttons
     const caseId = caseData['Main Task ID'];
-    const isPaused = activeCaseData['Pause Start Time'] && !activeCaseData['Pause End Time'];
+    const isPaused = activeCaseData['Pause Start Time'] && !activeCaseData['Paused End Time'];
     const isEscalated = activeCaseData['Escalated Start Time'] && !activeCaseData['Escalated End Time'];
 
     // --- BUTTON DEFINITIONS ---

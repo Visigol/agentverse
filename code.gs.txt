@@ -942,7 +942,7 @@ function getAgentSummaryFromAvailableCases(agentEmail, dateStr) {
     const endTimeCol = headers.indexOf("main task end date/time");
 
     if ([emailCol, caseIdCol, endTimeCol].includes(-1)) {
-      throw new Error("Required columns (useremail, main task id, main task end date/time) not found in AvailableCases sheet.");
+      throw new Error("Required columns (useremail, main task id, main task end date/time) not found in " + CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES + " sheet.");
     }
 
     const agentCases = data.filter(row => {
@@ -1629,7 +1629,7 @@ function getAgentDashboardSummary() {
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error("AvailableCases sheet not found.");
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -1697,7 +1697,7 @@ function searchAllCases(searchTerm) {
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error("AvailableCases sheet not found.");
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
     const data = sheet.getDataRange().getValues();
     const headers = data.shift();
@@ -1747,7 +1747,7 @@ function getCasesByStatus(options) {
     const { status, searchTerm, limit = 20, offset = 0, country } = options;
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error("AvailableCases sheet not found.");
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
     const data = sheet.getDataRange().getValues();
     const headers = data.shift();
@@ -1772,7 +1772,7 @@ function getCasesByStatus(options) {
       if (caseId) {
         if (openPauses.has(caseId)) {
           record['Pause Start Time'] = openPauses.get(caseId);
-          record['Pause End Time'] = ''; // Match frontend property
+          record['Paused End Time'] = ''; // Match frontend property
         }
         if (openEscalations.has(caseId)) {
           record['Escalated Start Time'] = openEscalations.get(caseId);
@@ -1855,7 +1855,7 @@ function updateCaseData(caseId, updatedData) {
 
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-    if (!sheet) throw new Error("AvailableCases sheet not found.");
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
     const dataRange = sheet.getDataRange();
     const values = dataRange.getValues();
@@ -2166,7 +2166,7 @@ function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
   const endIndex = headers.indexOf(endCol);
 
   if ([idIndex, startIndex, endIndex].includes(-1)) {
-    Logger.log(`Warning: Required columns not found in "${sheetName}". Looking for ${relatedIdCol}, ${startCol}, ${endCol}`);
+    Logger.log(`Warning: Required columns not found in "${sheetName}".`);
     return openLogs;
   }
 
