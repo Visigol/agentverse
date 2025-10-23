@@ -2276,8 +2276,10 @@ function escalateCase(caseId) {
 }
 
 function deEscalateCase(caseId) {
-    updateCaseStatus(caseId, 'In Progress');
-    return endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalated End Time', 'Related Case ID');
+    // First, attempt to end the log entry. This will throw an error on failure.
+    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalation End Time', 'Related Case ID');
+    // Only if the logging is successful, update the status and return its message.
+    return updateCaseStatus(caseId, 'In Progress');
 }
 
 function endCase(caseId) {
