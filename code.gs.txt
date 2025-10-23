@@ -2087,6 +2087,44 @@ function createSheetWithData(data, headers, fileName) {
 // --- CASE ACTION FUNCTIONS ---
 // =================================================================================
 
+function updateCaseStatus(caseId, newStatus) {
+    try {
+        if (!caseId || !newStatus) {
+            throw new Error("Case ID or new status is missing.");
+        }
+
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+        if (!sheet) throw new Error("AvailableCases sheet not found.");
+
+        const dataRange = sheet.getDataRange();
+        const values = dataRange.getValues();
+        const headers = values.shift();
+        const caseIdColumnIndex = headers.indexOf('Main Task ID');
+        const statusColumnIndex = headers.indexOf('Status');
+
+        if (caseIdColumnIndex === -1) throw new Error("'Main Task ID' column not found.");
+        if (statusColumnIndex === -1) throw new Error("'Status' column not found.");
+
+        let rowNumberToUpdate = -1;
+        for (let i = 0; i < values.length; i++) {
+            if (values[i][caseIdColumnIndex] == caseId) {
+                rowNumberToUpdate = i + 2; // +1 for header offset, +1 for 1-based indexing
+                break;
+            }
+        }
+
+        if (rowNumberToUpdate === -1) throw new Error(`Case with ID '${caseId}' not found.`);
+
+        sheet.getRange(rowNumberToUpdate, statusColumnIndex + 1).setValue(newStatus);
+        return `Case ${caseId}: Status updated successfully to ${newStatus}.`;
+
+    } catch (e) {
+        Logger.log(`Error in updateCaseStatus: ${e.toString()}`);
+        throw new Error(`Failed to update status. ${e.message}`);
+    }
+}
+
 function updateCaseField(caseId, fieldName, value) {
     try {
         if (!caseId || !fieldName) {
@@ -2127,26 +2165,32 @@ function updateCaseField(caseId, fieldName, value) {
 
 function claimCase(caseId) {
     const userEmail = Session.getActiveUser().getEmail();
+    updateCaseStatus(caseId, 'In Progress');
     return updateCaseField(caseId, 'Useremail', userEmail);
 }
 
 function pauseCase(caseId) {
+    updateCaseStatus(caseId, 'Task Paused');
     return updateCaseField(caseId, 'Pause Start Time', new Date());
 }
 
 function unpauseCase(caseId) {
+    updateCaseStatus(caseId, 'In Progress');
     return updateCaseField(caseId, 'Pause End Time', new Date());
 }
 
 function escalateCase(caseId) {
+    updateCaseStatus(caseId, 'Escalated');
     return updateCaseField(caseId, 'Escalated Start Time', new Date());
 }
 
 function deEscalateCase(caseId) {
+    updateCaseStatus(caseId, 'In Progress');
     return updateCaseField(caseId, 'Escalated End Time', new Date());
 }
 
 function endCase(caseId) {
+    updateCaseStatus(caseId, 'Completed');
     return updateCaseField(caseId, 'Main Task End Date/Time', new Date());
 }
 
