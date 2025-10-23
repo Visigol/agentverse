@@ -2298,8 +2298,74 @@ function pauseCase(caseId) {
 }
 
 function unpauseCase(caseId) {
-    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, caseId, 'Pause End Time', 'Related Case ID');
-    return updateCaseStatus(caseId, 'In Progress');
+    try {
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const logSheetName = CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS;
+        const mainSheetName = CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES;
+
+        // --- DURATION CALCULATION ---
+        const logSheet = ss.getSheetByName(logSheetName);
+        if (!logSheet) throw new Error(`Sheet "${logSheetName}" not found.`);
+
+        const logRange = logSheet.getDataRange();
+        const logValues = logRange.getValues();
+        const logHeaders = logValues[0];
+
+        const logIdIndex = logHeaders.indexOf('Related Case ID');
+        const logStartIndex = logHeaders.indexOf('Pause Start Time');
+        const logEndIndex = logHeaders.indexOf('Pause End Time');
+
+        if (logIdIndex === -1 || logStartIndex === -1 || logEndIndex === -1) {
+            throw new Error(`Required columns not found in pausing logs.`);
+        }
+
+        let pauseStartTime = null;
+        for (let i = logValues.length - 1; i >= 1; i--) {
+            const row = logValues[i];
+            if (String(row[logIdIndex]).trim() === String(caseId).trim() && row[logStartIndex] && !row[logEndIndex]) {
+                pauseStartTime = new Date(row[logStartIndex]);
+                break;
+            }
+        }
+
+        if (pauseStartTime) {
+            const endTime = new Date();
+            const durationSeconds = (endTime.getTime() - pauseStartTime.getTime()) / 1000;
+
+            const mainSheet = ss.getSheetByName(mainSheetName);
+            if (!mainSheet) throw new Error(`Sheet "${mainSheetName}" not found.`);
+            const mainRange = mainSheet.getDataRange();
+            const mainValues = mainRange.getValues();
+            const mainHeaders = mainValues[0];
+
+            const mainCaseIdIndex = mainHeaders.indexOf('Main Task ID');
+            const storedDurationIndex = mainHeaders.indexOf('Stored Pause Duration');
+
+            if (mainCaseIdIndex === -1 || storedDurationIndex === -1) {
+                throw new Error("Required columns not found in Main Tasks sheet.");
+            }
+
+            for (let i = 1; i < mainValues.length; i++) {
+                if (String(mainValues[i][mainCaseIdIndex]).trim() === String(caseId).trim()) {
+                    const existingDurationValue = mainValues[i][storedDurationIndex];
+                    const existingDurationSeconds = (parseFloat(existingDurationValue) || 0) * 86400;
+                    const newTotalSeconds = existingDurationSeconds + durationSeconds;
+                    const newTotalSheetDuration = newTotalSeconds > 0 ? newTotalSeconds / 86400 : 0;
+
+                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss");
+                    break;
+                }
+            }
+        }
+        // --- END DURATION CALCULATION ---
+
+        endOpenLogEntry(logSheetName, caseId, 'Pause End Time', 'Related Case ID');
+        return updateCaseStatus(caseId, 'In Progress');
+
+    } catch (e) {
+        Logger.log(`Error in unpauseCase for ${caseId}: ${e.toString()}`);
+        throw e;
+    }
 }
 
 function escalateCase(caseId) {
@@ -2315,10 +2381,79 @@ function escalateCase(caseId) {
 }
 
 function deEscalateCase(caseId) {
-    // First, attempt to end the log entry. This will throw an error on failure.
-    endOpenLogEntry(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, caseId, 'Escalation End Time', 'Related Case ID');
-    // Only if the logging is successful, update the status and return its message.
-    return updateCaseStatus(caseId, 'In Progress');
+    try {
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const logSheetName = CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS;
+        const mainSheetName = CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES;
+
+        // --- DURATION CALCULATION ---
+        const logSheet = ss.getSheetByName(logSheetName);
+        if (!logSheet) throw new Error(`Sheet "${logSheetName}" not found.`);
+
+        const logRange = logSheet.getDataRange();
+        const logValues = logRange.getValues();
+        const logHeaders = logValues[0]; // Keep header row intact for index lookup
+
+        const logIdIndex = logHeaders.indexOf('Related Case ID');
+        const logStartIndex = logHeaders.indexOf('Escalation Start Time');
+        const logEndIndex = logHeaders.indexOf('Escalation End Time');
+
+        if (logIdIndex === -1 || logStartIndex === -1 || logEndIndex === -1) {
+            throw new Error(`Required columns not found in escalation logs.`);
+        }
+
+        let escalationStartTime = null;
+        // Iterate backwards from the last data row to find the open log
+        for (let i = logValues.length - 1; i >= 1; i--) {
+            const row = logValues[i];
+            if (String(row[logIdIndex]).trim() === String(caseId).trim() && row[logStartIndex] && !row[logEndIndex]) {
+                escalationStartTime = new Date(row[logStartIndex]);
+                break;
+            }
+        }
+
+        if (escalationStartTime) {
+            const endTime = new Date();
+            const durationSeconds = (endTime.getTime() - escalationStartTime.getTime()) / 1000;
+
+            const mainSheet = ss.getSheetByName(mainSheetName);
+            if (!mainSheet) throw new Error(`Sheet "${mainSheetName}" not found.`);
+            const mainRange = mainSheet.getDataRange();
+            const mainValues = mainRange.getValues();
+            const mainHeaders = mainValues[0];
+
+            const mainCaseIdIndex = mainHeaders.indexOf('Main Task ID');
+            const storedDurationIndex = mainHeaders.indexOf('Stored Escalation Duration');
+
+            if (mainCaseIdIndex === -1 || storedDurationIndex === -1) {
+                throw new Error("Required columns not found in Main Tasks sheet.");
+            }
+
+            for (let i = 1; i < mainValues.length; i++) {
+                if (String(mainValues[i][mainCaseIdIndex]).trim() === String(caseId).trim()) {
+                    const existingDurationValue = mainValues[i][storedDurationIndex];
+                    const existingDurationSeconds = (parseFloat(existingDurationValue) || 0) * 86400;
+                    const newTotalSeconds = existingDurationSeconds + durationSeconds;
+                    const newTotalSheetDuration = newTotalSeconds > 0 ? newTotalSeconds / 86400 : 0;
+
+                    // Update the cell; row index is i + 1 because sheets are 1-indexed
+                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss");
+                    break;
+                }
+            }
+        }
+        // --- END DURATION CALCULATION ---
+
+        // This function will close the log entry we just read.
+        endOpenLogEntry(logSheetName, caseId, 'Escalation End Time', 'Related Case ID');
+
+        // And finally, update the status.
+        return updateCaseStatus(caseId, 'In Progress');
+
+    } catch (e) {
+        Logger.log(`Error in deEscalateCase for ${caseId}: ${e.toString()}`);
+        throw e; // Re-throw the error to the client
+    }
 }
 
 function endCase(caseId) {
