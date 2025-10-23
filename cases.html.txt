@@ -766,8 +766,9 @@ function populateActionButtons(caseData) {
             }
             element.replaceWith(inputElement);
         });
-        // --- ADD THIS BLOCK TO MAKE LOGS EDITABLE ---
-grid.querySelectorAll('.log-field-value').forEach(span => {
+        // --- THIS BLOCK MAKES LOGS EDITABLE ---
+        const modal = document.getElementById('case-modal');
+        modal.querySelectorAll('.log-field-value').forEach(span => {
     const headerText = span.dataset.header;
     const logId = span.dataset.logId;
     const value = span.textContent;
@@ -891,7 +892,7 @@ logSections.forEach(gridId => {
         let totalPauseSeconds = 0;
         document.querySelectorAll('#pausing-logs-grid .log-record').forEach(log => {
             const startInput = log.querySelector('input[data-header="Pause Start Time"]');
-            const endInput = log.querySelector('input[data-header="Paused End Time"]');
+            const endInput = log.querySelector('input[data-header="Pause End Time"]');
             if (startInput && endInput && startInput.value && endInput.value) {
                 const start = new Date(startInput.value);
                 const end = new Date(endInput.value);
@@ -901,8 +902,8 @@ logSections.forEach(gridId => {
 
         let totalEscalationSeconds = 0;
         document.querySelectorAll('#escalation-logs-grid .log-record').forEach(log => {
-            const startInput = log.querySelector('input[data-header="Escalated Start Time"]');
-            const endInput = log.querySelector('input[data-header="Escalated End Time"]');
+            const startInput = log.querySelector('input[data-header="Escalation Start Time"]');
+            const endInput = log.querySelector('input[data-header="Escalation End Time"]');
             if (startInput && endInput && startInput.value && endInput.value) {
                 const start = new Date(startInput.value);
                 const end = new Date(endInput.value);
@@ -986,7 +987,7 @@ function handleTimestampChange() {
     const pauseLogs = Array.from(modal.querySelectorAll('#pausing-logs-grid .log-record'));
     pauseLogs.forEach(log => {
         const startInput = log.querySelector('input[data-header="Pause Start Time"]');
-        const endInput = log.querySelector('input[data-header="Paused End Time"]');
+        const endInput = log.querySelector('input[data-header="Pause End Time"]');
         if (startInput && endInput && startInput.value && endInput.value) {
             const start = new Date(startInput.value);
             const end = new Date(endInput.value);
@@ -1000,8 +1001,8 @@ function handleTimestampChange() {
     let totalEscalationSeconds = 0;
     const escalationLogs = Array.from(modal.querySelectorAll('#escalation-logs-grid .log-record'));
     escalationLogs.forEach(log => {
-        const startInput = log.querySelector('input[data-header="Escalated Start Time"]');
-        const endInput = log.querySelector('input[data-header="Escalated End Time"]');
+        const startInput = log.querySelector('input[data-header="Escalation Start Time"]');
+        const endInput = log.querySelector('input[data-header="Escalation End Time"]');
         if (startInput && endInput && startInput.value && endInput.value) {
             const start = new Date(startInput.value);
             const end = new Date(endInput.value);
