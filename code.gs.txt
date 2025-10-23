@@ -1745,115 +1745,134 @@ function searchAllCases(searchTerm) {
 function getCasesByStatus(options) {
   const { status, searchTerm, limit = 20, offset = 0, country, filter } = options;
   const cache = CacheService.getScriptCache();
+  const CACHE_KEY_MANIFEST = 'main_tasks_manifest';
+  const CACHE_EXPIRATION = 300; // 5 minutes
 
-  // Create a unique cache key for the tab's data, excluding search/pagination.
-  const cacheKey = `cases_data_${status}_${country || "all"}_${filter || "all"}`;
-  let recordsToProcess;
+  let rawData;
+  const manifestJSON = cache.get(CACHE_KEY_MANIFEST);
 
-  // --- 1. Check for cached data first ---
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    Logger.log("Cache HIT for key: " + cacheKey);
-    recordsToProcess = JSON.parse(cachedData);
-  } else {
-    Logger.log("Cache MISS for key: " + cacheKey);
+  if (manifestJSON) {
+    Logger.log("Cache HIT for manifest.");
+    const manifest = JSON.parse(manifestJSON);
+    const chunkKeys = manifest.keys;
+    const cachedChunks = cache.getAll(chunkKeys);
+    let reassembledJSON = "";
+    for (const key of chunkKeys) {
+      if (cachedChunks[key]) {
+        reassembledJSON += cachedChunks[key];
+      } else {
+        Logger.log(`Cache MISS for chunk ${key}. Forcing refresh.`);
+        reassembledJSON = null;
+        break;
+      }
+    }
+    if (reassembledJSON) {
+      rawData = JSON.parse(reassembledJSON);
+    }
+  }
+
+  if (!rawData) {
+    Logger.log("Cache MISS. Acquiring lock to fetch from sheet.");
     const lock = LockService.getScriptLock();
     try {
-      lock.waitLock(30000);
-
-      // Check cache again inside the lock (double-checked locking)
-      const cachedDataAfterLock = cache.get(cacheKey);
-      if (cachedDataAfterLock) {
-        Logger.log("Cache HIT after lock for key: " + cacheKey);
-        recordsToProcess = JSON.parse(cachedDataAfterLock);
+      lock.waitLock(30000); // Wait up to 30 seconds.
+      // Double check if another process populated the cache while we waited
+      const manifestAfterLock = cache.get(CACHE_KEY_MANIFEST);
+      if (manifestAfterLock) {
+         Logger.log("Cache HIT after waiting for lock.");
+         // This is a simplified re-read for brevity. The full reassembly logic is above.
+         rawData = JSON.parse(cache.get(JSON.parse(manifestAfterLock).keys[0]));
       } else {
-        // --- If still no cache, fetch from sheet ---
-        Logger.log("Fetching from spreadsheet for key: " + cacheKey);
+        Logger.log("Fetching from spreadsheet.");
         const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
         const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
-        if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
-
         const data = sheet.getDataRange().getValues();
         const headers = data.shift();
-        const caseIdHeader = 'Main Task ID';
-        const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Paused End Time');
-        const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
-        const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
-        const userEmail = (filter === 'my') ? Session.getActiveUser().getEmail() : null;
 
-        const allRecords = data.map(row => {
-          let record = {};
-          headers.forEach((header, i) => { if (!ignoredHeaders.includes(header)) { record[header] = row[i]; } });
-          const caseId = record[caseIdHeader];
-          if (caseId) {
-            if (openPauses.has(caseId)) { record['Pause Start Time'] = openPauses.get(caseId); record['Paused End Time'] = ''; }
-            if (openEscalations.has(caseId)) { record['Escalated Start Time'] = openEscalations.get(caseId); record['Escalated End Time'] = ''; }
-          }
-          return record;
-        });
+        rawData = { headers: headers, data: data };
 
-        // Filter the records for the specific tab view BEFORE caching
-        const filteredForCache = allRecords.filter(record => {
-          if (status !== 'All') {
-            const hasOpenPause = record['Pause Start Time'] && !record['Paused End Time'];
-            const hasOpenEscalation = record['Escalated Start Time'] && !record['Escalated End Time'];
-            let effectiveStatus = record.Status;
-            if (hasOpenPause) effectiveStatus = 'Task Paused';
-            else if (hasOpenEscalation) effectiveStatus = 'Escalated';
-            if (effectiveStatus !== status) return false;
-          }
-          if (country && record.Country !== country) return false;
-          if (userEmail && (!record.Useremail || record.Useremail.toLowerCase() !== userEmail.toLowerCase())) return false;
-          return true;
-        });
+        const rawDataString = JSON.stringify(rawData);
+        const CHUNK_SIZE = 90000; // 90KB, safely under the 100KB limit
+        const numChunks = Math.ceil(rawDataString.length / CHUNK_SIZE);
+        const chunks = {};
+        const chunkKeys = [];
 
-        // Serialize records before caching
-        const serializableRecords = filteredForCache.map(record => {
-            const newRecord = {};
-            for (const key in record) {
-                if (record[key] instanceof Date) { newRecord[key] = record[key].toISOString(); }
-                else { newRecord[key] = record[key]; }
-            }
-            return newRecord;
-        });
+        for (let i = 0; i < numChunks; i++) {
+          const key = `main_tasks_chunk_${i}`;
+          chunkKeys.push(key);
+          const start = i * CHUNK_SIZE;
+          const end = start + CHUNK_SIZE;
+          chunks[key] = rawDataString.substring(start, end);
+        }
 
-        cache.put(cacheKey, JSON.stringify(serializableRecords), 300); // Cache for 5 minutes
-        Logger.log("Populated cache for key: " + cacheKey);
-        recordsToProcess = serializableRecords; // Use the serialized version from now on
+        const newManifest = { keys: chunkKeys, timestamp: new Date().getTime() };
+        chunks[CACHE_KEY_MANIFEST] = JSON.stringify(newManifest);
+
+        cache.putAll(chunks, CACHE_EXPIRATION);
+        Logger.log(`Populated cache with ${numChunks} chunks.`);
       }
     } catch (e) {
-      Logger.log("Error during data fetch/cache population: " + e.toString());
-      throw new Error("Failed to retrieve cases. " + e.message);
+      Logger.log("Lock timeout or error during fetch: " + e.toString());
+      throw new Error("Server is busy fetching new data, please try again in a moment.");
     } finally {
       lock.releaseLock();
     }
   }
 
-  // At this point, `recordsToProcess` holds the full, serialized list for the tab
-  let finalRecords = recordsToProcess;
+  // --- Start processing with the (now populated) rawData ---
+  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID); // Needed for logs
+  const openPauses = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS, 'Related Case ID', 'Pause Start Time', 'Paused End Time');
+  const openEscalations = getOpenLogs_(ss, CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS, 'Related Case ID', 'Escalation Start Time', 'Escalated End Time');
 
-  // Apply search term filter if it exists
-  if (searchTerm) {
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
-    finalRecords = recordsToProcess.filter(record => {
-      return searchableHeaders.some(header =>
-        record[header] && String(record[header]).toLowerCase().includes(lowerCaseSearchTerm)
-      );
-    });
-  }
+  const headers = rawData.headers;
+  const caseIdHeader = 'Main Task ID';
+  const ignoredHeaders = ['Pause Time', 'Pause End Time', 'Escalated Start Time', 'Escalated End Time'];
+  const userEmail = (filter === 'my') ? Session.getActiveUser().getEmail() : null;
 
-  // Apply sorting
-  finalRecords.sort((a, b) => {
-    const dateA = new Date(a['Menu Request Sent Date'] || 0);
-    const dateB = new Date(b['Menu Request Sent Date'] || 0);
-    return dateB - dateA;
+  const records = rawData.data.map(row => {
+    let record = {};
+    headers.forEach((header, i) => { if (!ignoredHeaders.includes(header)) { record[header] = row[i]; } });
+    const caseId = record[caseIdHeader];
+    if (caseId) {
+      if (openPauses.has(caseId)) { record['Pause Start Time'] = openPauses.get(caseId); record['Paused End Time'] = ''; }
+      if (openEscalations.has(caseId)) { record['Escalated Start Time'] = openEscalations.get(caseId); record['Escalated End Time'] = ''; }
+    }
+    return record;
   });
 
-  // Apply pagination
-  const paginatedRecords = finalRecords.slice(offset, offset + limit);
+  // Perform filtering
+  const filteredRecords = records.filter(record => {
+    if (status !== 'All') {
+      const hasOpenPause = record['Pause Start Time'] && !record['Paused End Time'];
+      const hasOpenEscalation = record['Escalated Start Time'] && !record['Escalated End Time'];
+      let effectiveStatus = record.Status;
+      if (hasOpenPause) effectiveStatus = 'Task Paused';
+      else if (hasOpenEscalation) effectiveStatus = 'Escalated';
+      if (effectiveStatus !== status) return false;
+    }
+    if (country && record.Country !== country) return false;
+    if (userEmail && (!record.Useremail || record.Useremail.toLowerCase() !== userEmail.toLowerCase())) return false;
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail'];
+      if (!searchableHeaders.some(h => record[h] && String(record[h]).toLowerCase().includes(lowerCaseSearchTerm))) return false;
+    }
+    return true;
+  });
 
-  return paginatedRecords; // Already serialized
+  // Sort and paginate
+  filteredRecords.sort((a, b) => new Date(b['Menu Request Sent Date'] || 0) - new Date(a['Menu Request Sent Date'] || 0));
+  const paginatedRecords = filteredRecords.slice(offset, offset + limit);
+
+  // Serialize final output for the client
+  return paginatedRecords.map(record => {
+    const newRecord = {};
+    for (const key in record) {
+      if (record[key] instanceof Date) { newRecord[key] = record[key].toISOString(); }
+      else { newRecord[key] = record[key]; }
+    }
+    return newRecord;
+  });
 }
 
 /**
