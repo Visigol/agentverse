@@ -2187,3 +2187,54 @@ function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
   });
   return openLogs;
 }
+
+function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
+  try {
+    if (!logId || !sheetName || !primaryKeyColumnName || !updatedData) {
+      throw new Error("Required parameters are missing for updating log data.");
+    }
+
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) throw new Error(`Sheet "${sheetName}" not found.`);
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+    const pkIndex = headers.indexOf(primaryKeyColumnName);
+
+    if (pkIndex === -1) {
+      throw new Error(`Primary key column "${primaryKeyColumnName}" not found in sheet "${sheetName}".`);
+    }
+
+    let rowIndexToUpdate = -1;
+    for (let i = 0; i < data.length; i++) {
+      if (String(data[i][pkIndex]).trim() === String(logId).trim()) {
+        rowIndexToUpdate = i + 2; // +1 for header offset, +1 for 1-based indexing
+        break;
+      }
+    }
+
+    if (rowIndexToUpdate === -1) {
+      throw new Error(`Log entry with ID '${logId}' not found in "${sheetName}".`);
+    }
+
+    // Update each cell specified in the updatedData object
+    for (const header of Object.keys(updatedData)) {
+      const colIndex = headers.indexOf(header);
+      if (colIndex !== -1) {
+        let value = updatedData[header];
+        // If the value is a date string, convert it back to a Date object
+        if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+           value = new Date(value);
+        }
+        sheet.getRange(rowIndexToUpdate, colIndex + 1).setValue(value);
+      }
+    }
+
+    return `Log ${logId} in ${sheetName} updated successfully.`;
+
+  } catch (e) {
+    Logger.log(`Error in updateLogData: ${e.toString()}`);
+    throw new Error(`Failed to update log: ${e.message}`);
+  }
+}
