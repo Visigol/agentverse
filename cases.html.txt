@@ -645,8 +645,21 @@ function getOriginalLog(logId, logType) {
         } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
-            } else if (isDurationField(field)) {
-                const seconds = parseFloat(displayValue) * 86400;
+        } else if (displayValue && isDurationField(field)) {
+            let seconds = 0;
+            if (typeof displayValue === 'string' && displayValue.includes('T')) {
+                const date = new Date(displayValue);
+                if (!isNaN(date.getTime())) {
+                    const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
+                    const durationMillis = date.getTime() - baseDate;
+                    seconds = durationMillis / 1000;
+                }
+            } else {
+                const num = parseFloat(displayValue);
+                if (!isNaN(num)) {
+                    seconds = num * 86400;
+                }
+            }
                 displayValue = formatTime(seconds);
             }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
@@ -691,8 +704,22 @@ function handleCaseAction(action, caseId) {
             alert(response);
             actionButton.disabled = false;
             actionButton.textContent = action.replace(/([A-Z])/g, ' $1').trim(); // Restore original text
+
+            const currentlyOpenCaseId = activeCaseData ? activeCaseData['Main Task ID'] : null;
+
             closeCaseModal();
             initializeBoard(); // Refresh the board to reflect changes
+
+            // If a case was open, try to reopen it after the refresh.
+            if (currentlyOpenCaseId) {
+                // We need to wait for the new data to be fetched and stored.
+                // A simple timeout is a pragmatic way to handle this.
+                setTimeout(() => {
+                    if (caseDataStore[currentlyOpenCaseId]) {
+                        openCaseModal(currentlyOpenCaseId);
+                    }
+                }, 1500); // 1.5 second delay to allow for data fetching.
+            }
         })
         .withFailureHandler(err => {
             alert('Error: ' + err.message);
@@ -960,8 +987,17 @@ cooperationUpdates.forEach((data, logId) => {
     google.script.run
         .withSuccessHandler(response => {
             alert(response);
+            const currentlyOpenCaseId = activeCaseData ? activeCaseData['Main Task ID'] : null;
             closeCaseModal();
             initializeBoard();
+
+            if (currentlyOpenCaseId) {
+                setTimeout(() => {
+                    if (caseDataStore[currentlyOpenCaseId]) {
+                        openCaseModal(currentlyOpenCaseId);
+                    }
+                }, 1500);
+            }
         })
         .withFailureHandler(err => {
             alert('Error: ' + err.message);

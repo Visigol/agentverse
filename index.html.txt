@@ -51,7 +51,7 @@
     .card { background-color: var(--card-background); border-radius: 12px; border: 1px solid var(--border-light); box-shadow: 0 4px 8px var(--shadow-color); padding: 25px; }
     .card h2 { font-size: 1.6em; font-weight: 600; margin: 0 0 20px 0; padding-bottom: 15px; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: 12px; }
     .card h2 svg { stroke: var(--text-secondary); width: 24px; height: 24px; }
-    
+
     /* --- TOP SECTION: STATUS & SCORECARDS --- */
     .status-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px; }
     .current-status-display { text-align: center; }
@@ -106,7 +106,7 @@
     .message-area { text-align: center; min-height: 1.5em; font-size: 1em; margin-top: 20px; font-weight: 500; }
     .error-message { color: var(--red); }
     .success-message { color: var(--primary-accent); }
-    
+
     /* --- SIDEBAR (FROM ORIGINAL) --- */
     #sidebar-toggle-btn { position: fixed; top: 20px; left: 20px; z-index: 1001; background-color: var(--card-background); border: 1px solid var(--border-light); color: var(--text-primary); border-radius: 50%; width: 45px; height: 45px; padding: 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center; }
     #sidebar { position: fixed; top: 0; left: 0; width: 300px; height: 100%; background-color: #F9FAFB; z-index: 1000; transform: translateX(-100%); transition: transform 0.3s ease-in-out; display: flex; flex-direction: column; border-right: 1px solid var(--border-light); }
@@ -125,12 +125,12 @@
     .link-item:hover { background-color: var(--background-main); }
     .link-item-name { font-weight: 600; color: var(--primary-accent); font-size: 1.1em; margin: 0; }
     .link-item-desc { font-size: 0.9em; color: var(--text-secondary); margin-top: 5px; }
-    
+
     /* --- VERSION INFO CONTAINER (FROM ORIGINAL) --- */
     #version-info-container { text-align: right; font-size: 0.9em; color: var(--text-secondary); }
     #updateNotificationArea { margin-top: 5px; padding: 8px; background-color: var(--yellow); color: var(--text-primary); border-radius: 8px; }
     #updateNotificationArea button { width: 100%; padding: 6px; font-size: 0.9em; background-color: var(--text-primary); color: white; border: none; cursor: pointer; margin-top: 5px; }
-    
+
     /* --- NEW MODAL STYLES --- */
     #correctionModal { display:none; position:fixed; z-index:2000; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.6); }
     #modalLogDetails { background-color: var(--background-main); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-family: 'Consolas', monospace; }
@@ -141,6 +141,33 @@
       .status-header { flex-direction: column; align-items: stretch; }
       .header { flex-direction: column; align-items: flex-start; }
       .header p { text-align: left; margin-top: 10px; }
+    }
+
+    /* Add styles for the new tabs */
+    .nav-tabs {
+      background-color: var(--card-background);
+      border-bottom: 1px solid var(--border-light);
+      padding: 0 30px;
+      display: flex;
+      gap: 10px;
+    }
+    .nav-tabs button {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      padding: 18px 25px;
+      font-size: 1.1em;
+      cursor: pointer;
+      font-weight: 600;
+      border-bottom: 3px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .nav-tabs button.active {
+      color: var(--primary-accent);
+      border-bottom-color: var(--primary-accent);
+    }
+    .nav-tabs button:not(.active):hover {
+      color: var(--text-primary);
     }
   </style>
 </head>
@@ -176,8 +203,14 @@
     </div>
   </div>
 
+  <div class="nav-tabs">
+    <button class="active">Attendance</button>
+    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=production', '_blank')">Production</button>
+    <button id="cases-tab" style="display:none;" onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
+  </div>
+
   <div class="dashboard-container">
-    
+
     <div class="card status-header">
       <div class="current-status-display">
         <div class="status-title">CURRENT STATUS</div>
@@ -286,7 +319,7 @@
               </table>
             </div>
         </div>
-        
+
         <div class="card">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
@@ -323,7 +356,7 @@
       </h2>
       <p>You are requesting a correction for the log entry:</p>
       <div id="modalLogDetails" style="background-color: var(--background-main); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-family: 'Consolas', monospace;"></div>
-      
+
       <div class="form-group">
           <label for="modalCorrectedTimestamp">New Corrected Timestamp:</label>
           <input type="datetime-local" id="modalCorrectedTimestamp">
@@ -367,7 +400,15 @@
                 fetchVersionInformation();
             })
             .getInitialAgentState();
-        
+
+        google.script.run
+            .withSuccessHandler(hasAccess => {
+                if (hasAccess) {
+                    document.getElementById('cases-tab').style.display = 'block';
+                }
+            })
+            .checkUserCaseAccess();
+
         loadDashboardMetrics();
         loadPendingRequests();
         loadImportantLinks();
@@ -416,12 +457,12 @@
     setUserMessage("Log loaded successfully.", "success", "attendanceLogMessage");
     logs.forEach(log => {
         const row = tbody.insertRow();
-        
+
         // --- CHANGE IS HERE ---
         // Now create a Date object and format it for display
         const displayTimestamp = new Date(log.timestamp).toLocaleString();
         row.insertCell().textContent = displayTimestamp;
-        
+
         row.insertCell().textContent = log.action;
         row.insertCell().textContent = log.sessionId;
         const editCell = row.insertCell();
@@ -437,16 +478,16 @@
 // In index.html, also REPLACE this function
 function openCorrectionModal(logData) {
     logDataForModal = logData; // The timestamp here is the full ISO string
-    
+
     // --- CHANGE IS HERE ---
     const displayTimestamp = new Date(logData.timestamp).toLocaleString();
     document.getElementById('modalLogDetails').innerHTML = `<strong>Timestamp:</strong> ${displayTimestamp}<br><strong>Action:</strong> ${logData.action}`;
-    
+
     const timestampInput = document.getElementById('modalCorrectedTimestamp');
     // The ISO string is perfect for pre-filling the datetime-local input
     const localDateTime = logData.timestamp.substring(0, 16);
     timestampInput.value = localDateTime;
-    
+
     document.getElementById('modalCorrectionReason').value = '';
     document.getElementById('correctionModal').style.display = 'block';
 }
@@ -518,7 +559,7 @@ function openCorrectionModal(logData) {
         const btnWork = document.getElementById('btnWorkToggle');
         const btnBreak = document.getElementById('btnBreakToggle');
         const btnMeeting = document.getElementById('btnMeetingToggle');
-        
+
         if (workTimerInterval) clearInterval(workTimerInterval); workTimerInterval = null;
         if (currentBreakTimerInterval) clearInterval(currentBreakTimerInterval); currentBreakTimerInterval = null;
         if (currentMeetingTimerInterval) clearInterval(currentMeetingTimerInterval); currentMeetingTimerInterval = null;
@@ -531,10 +572,10 @@ function openCorrectionModal(logData) {
 
         statusDisplay.className = 'status-text';
         if (isWorking) {
-            if (isOnBreak) { statusDisplay.textContent = 'On Break'; statusDisplay.classList.add('break'); } 
-            else if (isInMeeting) { statusDisplay.textContent = 'In Meeting'; statusDisplay.classList.add('meeting'); } 
+            if (isOnBreak) { statusDisplay.textContent = 'On Break'; statusDisplay.classList.add('break'); }
+            else if (isInMeeting) { statusDisplay.textContent = 'In Meeting'; statusDisplay.classList.add('meeting'); }
             else { statusDisplay.textContent = 'Working'; statusDisplay.classList.add('working'); }
-            
+
             activitySection.style.display = 'block';
             if (summarySection) summarySection.style.display = 'block';
             if (scorecardGrid) scorecardGrid.style.opacity = 1;
@@ -547,7 +588,7 @@ function openCorrectionModal(logData) {
             btnBreak.querySelector('span').textContent = isOnBreak ? "End Break" : "Start Break";
             btnMeeting.className = isInMeeting ? 'actions btn-end' : 'actions btn-meeting-start';
             btnMeeting.querySelector('span').textContent = isInMeeting ? "End Meeting" : "Start Meeting";
-            
+
             if (workSessionActualStartTimeISO) { updateGrossWorkTimerDisplay(); workTimerInterval = setInterval(updateGrossWorkTimerDisplay, 1000); }
             if (isOnBreak && currentBreakStartTimeISO) { updateCurrentBreakTimerDisplay(); currentBreakTimerInterval = setInterval(updateCurrentBreakTimerDisplay, 1000); }
             if (isInMeeting && currentMeetingStartTimeISO) { updateCurrentMeetingTimerDisplay(); currentMeetingTimerInterval = setInterval(updateCurrentMeetingTimerDisplay, 1000); }
@@ -561,7 +602,7 @@ function openCorrectionModal(logData) {
             btnWork.querySelector('span').textContent = "Start Work";
         }
     }
-    
+
     // --- ALL ORIGINAL FUNCTIONS ---
     function handleWorkToggle(){const action=currentAgentState.isWorking?"End Work":"Start Work";if(action==="End Work"&&(currentAgentState.isOnBreak||currentAgentState.isInMeeting)&&!confirm("You are currently on break or in a meeting. End work session anyway?"))return;if(action==="End Work"&&!confirm("Are you sure you want to end your work session?"))return;showLoader(!0);setUserMessage("Processing...","status");google.script.run.withSuccessHandler(handleBackendResponse).withFailureHandler(showError).logAgentAction(action)}
     function handleBreakToggle(){const action=currentAgentState.isOnBreak?"End Break":"Start Break";showLoader(!0);setUserMessage("Processing...","status");google.script.run.withSuccessHandler(handleBackendResponse).withFailureHandler(showError).logAgentAction(action)}

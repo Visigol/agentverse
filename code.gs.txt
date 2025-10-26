@@ -2457,8 +2457,101 @@ function deEscalateCase(caseId) {
 }
 
 function endCase(caseId) {
-    updateCaseField(caseId, 'Main Task End Date/Time', new Date());
-    return updateCaseStatus(caseId, 'Completed');
+    try {
+        // 1. Get all logs for the case to calculate total durations.
+        const logs = getLogsForCase(caseId);
+        if (logs.error) {
+            throw new Error(logs.error);
+        }
+
+        // 2. Calculate total pause duration from all log entries.
+        let totalPauseSeconds = 0;
+        if (logs.pausingLogs) {
+            logs.pausingLogs.forEach(log => {
+                const startTime = log['Pause Start Time'] ? new Date(log['Pause Start Time']) : null;
+                const endTime = log['Pause End Time'] ? new Date(log['Pause End Time']) : null;
+                if (startTime && endTime && endTime > startTime) {
+                    totalPauseSeconds += (endTime.getTime() - startTime.getTime()) / 1000;
+                }
+            });
+        }
+
+        // 3. Calculate total escalation duration from all log entries.
+        let totalEscalationSeconds = 0;
+        if (logs.escalationLogs) {
+            logs.escalationLogs.forEach(log => {
+                const startTime = log['Escalation Start Time'] ? new Date(log['Escalation Start Time']) : null;
+                const endTime = log['Escalation End Time'] ? new Date(log['Escalation End Time']) : null;
+                if (startTime && endTime && endTime > startTime) {
+                    totalEscalationSeconds += (endTime.getTime() - startTime.getTime()) / 1000;
+                }
+            });
+        }
+
+        // 4. Find the case in Main Tasks sheet to get start time and update all fields.
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+        if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
+
+        const dataRange = sheet.getDataRange();
+        const values = dataRange.getValues();
+        const headers = values.shift(); // Remove headers to process data rows
+
+        const caseIdCol = headers.indexOf('Main Task ID');
+        const startTimeCol = headers.indexOf('Main Task Start Date/Time');
+        const endTimeCol = headers.indexOf('Main Task End Date/Time');
+        const storedPauseCol = headers.indexOf('Stored Pause Duration');
+        const storedEscalationCol = headers.indexOf('Stored Escalation Duration');
+        const storedAHTCol = headers.indexOf('Stored Agent Handling Time');
+        const statusCol = headers.indexOf('Status');
+
+        if ([caseIdCol, startTimeCol, endTimeCol, storedPauseCol, storedEscalationCol, storedAHTCol, statusCol].includes(-1)) {
+            throw new Error("One or more required columns for duration calculation were not found in the Main Tasks sheet.");
+        }
+
+        let rowNumberToUpdate = -1;
+        let caseRowData = null;
+        for (let i = 0; i < values.length; i++) {
+            if (values[i][caseIdCol] == caseId) {
+                rowNumberToUpdate = i + 2; // +1 for header offset, +1 for 1-based indexing
+                caseRowData = values[i];
+                break;
+            }
+        }
+
+        if (rowNumberToUpdate === -1) {
+            throw new Error(`Case with ID '${caseId}' not found.`);
+        }
+
+        const mainTaskStartTime = new Date(caseRowData[startTimeCol]);
+        const mainTaskEndTime = new Date(); // The end time is now.
+
+        if (isNaN(mainTaskStartTime.getTime())) {
+            throw new Error("The 'Main Task Start Date/Time' for this case is invalid, so duration cannot be calculated.");
+        }
+
+        const grossDurationSeconds = (mainTaskEndTime.getTime() - mainTaskStartTime.getTime()) / 1000;
+        const agentHandlingTimeSeconds = grossDurationSeconds - totalPauseSeconds - totalEscalationSeconds;
+
+        // Convert calculated seconds into Google Sheet's duration format (fraction of a day).
+        const storedPauseDuration = totalPauseSeconds > 0 ? totalPauseSeconds / 86400 : 0;
+        const storedEscalationDuration = totalEscalationSeconds > 0 ? totalEscalationSeconds / 86400 : 0;
+        const storedAgentHandlingTime = agentHandlingTimeSeconds > 0 ? agentHandlingTimeSeconds / 86400 : 0;
+
+        // 5. Update all relevant cells in the sheet for this case.
+        sheet.getRange(rowNumberToUpdate, storedPauseCol + 1).setValue(storedPauseDuration).setNumberFormat("[h]:mm:ss");
+        sheet.getRange(rowNumberToUpdate, storedEscalationCol + 1).setValue(storedEscalationDuration).setNumberFormat("[h]:mm:ss");
+        sheet.getRange(rowNumberToUpdate, storedAHTCol + 1).setValue(storedAgentHandlingTime).setNumberFormat("[h]:mm:ss");
+        sheet.getRange(rowNumberToUpdate, endTimeCol + 1).setValue(mainTaskEndTime).setNumberFormat("MM-dd-yyyy HH:mm:ss");
+        sheet.getRange(rowNumberToUpdate, statusCol + 1).setValue('Completed');
+
+        invalidateCasesCache(); // Ensure UI can fetch the new data.
+        return `Case ${caseId} has been marked as 'Completed' and all durations have been calculated and stored successfully.`;
+
+    } catch (e) {
+        Logger.log(`Error in endCase for ${caseId}: ${e.toString()}`);
+        throw e; // Re-throw the error to be displayed on the client-side.
+    }
 }
 
 /**
@@ -2497,4 +2590,65 @@ function getOpenLogs_(ss, sheetName, relatedIdCol, startCol, endCol) {
     }
   });
   return openLogs;
+}
+
+function addUserAccess(email) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const sheet = ss.getSheetByName('BackupSystemAccess');
+    if (!sheet) {
+      throw new Error("Sheet 'BackupSystemAccess' not found.");
+    }
+    sheet.appendRow([email]);
+    return `User ${email} added successfully.`;
+  } catch (e) {
+    Logger.log("Error in addUserAccess: " + e.toString());
+    throw new Error("Failed to add user. " + e.message);
+  }
+}
+
+function getAuthorizedUsers() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const sheet = ss.getSheetByName('BackupSystemAccess');
+    if (!sheet || sheet.getLastRow() < 2) {
+      return [];
+    }
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    return data.flat().filter(Boolean);
+  } catch (e) {
+    Logger.log("Error in getAuthorizedUsers: " + e.toString());
+    return [];
+  }
+}
+
+function removeUserAccess(email) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const sheet = ss.getSheetByName('BackupSystemAccess');
+    if (!sheet) {
+      throw new Error("Sheet 'BackupSystemAccess' not found.");
+    }
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i][0] === email) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+    return `User ${email} removed successfully.`;
+  } catch (e) {
+    Logger.log("Error in removeUserAccess: " + e.toString());
+    throw new Error("Failed to remove user. " + e.message);
+  }
+}
+
+function checkUserCaseAccess() {
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    const authorizedUsers = getAuthorizedUsers();
+    return authorizedUsers.includes(userEmail);
+  } catch (e) {
+    Logger.log("Error in checkUserCaseAccess: " + e.toString());
+    return false;
+  }
 }
