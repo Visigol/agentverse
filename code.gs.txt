@@ -102,10 +102,21 @@ function doGet(e) {
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
   } else {
-    // If not a manager, show the agent index page.
-    return HtmlService.createHtmlOutputFromFile('index')
-      .setTitle('Agent Status Tracker')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    // If not a manager, route to the correct page.
+    if (e.parameter.page === 'production') {
+      return HtmlService.createHtmlOutputFromFile('production')
+        .setTitle('Production Dashboard')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'cases') {
+      return HtmlService.createHtmlOutputFromFile('cases')
+        .setTitle('Case Management')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else {
+      // Default to the agent index page.
+      return HtmlService.createHtmlOutputFromFile('index')
+        .setTitle('Agent Status Tracker')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
   }
 }
 
