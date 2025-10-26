@@ -855,7 +855,20 @@ function populateActionButtons(caseData) {
                 if (isDateTimeField(field)) {
                     displayValue = formatDisplayDate(displayValue);
                 } else if (isDurationField(field)) {
-                    const seconds = parseFloat(displayValue) * 86400;
+                let seconds = 0;
+                if (typeof displayValue === 'string' && displayValue.includes('T')) {
+                    const date = new Date(displayValue);
+                    if (!isNaN(date.getTime())) {
+                        const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
+                        const durationMillis = date.getTime() - baseDate;
+                        seconds = durationMillis / 1000;
+                    }
+                } else {
+                    const num = parseFloat(displayValue);
+                    if (!isNaN(num)) {
+                        seconds = num * 86400;
+                    }
+                }
                     displayValue = formatTime(seconds);
                 }
                 finalHtml = `<span class="field-value">${displayValue}</span>`;
@@ -1161,7 +1174,8 @@ function hideGuide() {
     // --- ADD THESE HELPER FUNCTIONS ---
 function isDateTimeField(fieldName) {
     const lower = fieldName.toLowerCase();
-    return lower.includes('date') || lower.includes('time');
+    // A field is a date/time field if it contains 'date' or 'time', but is NOT a duration field.
+    return (lower.includes('date') || lower.includes('time')) && !isDurationField(fieldName);
 }
 
 function isDurationField(fieldName) {
