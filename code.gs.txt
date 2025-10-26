@@ -1939,7 +1939,7 @@ function updateCaseData(caseId, updatedData) {
         if (dateTimeHeaders.includes(header) && value) {
             cell.setValue(new Date(value)).setNumberFormat("MM-dd-yyyy HH:mm:ss");
         } else if (durationHeaders.includes(header) && (typeof value === 'number' || !isNaN(value))) {
-            cell.setValue(value).setNumberFormat("HH:mm:ss");
+            cell.setValue(value).setNumberFormat("[h]:mm:ss.SSS");
         } else {
             cell.setValue(value);
         }
@@ -2363,7 +2363,7 @@ function unpauseCase(caseId) {
                     const newTotalSeconds = existingDurationSeconds + durationSeconds;
                     const newTotalSheetDuration = newTotalSeconds > 0 ? newTotalSeconds / 86400 : 0;
 
-                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss");
+                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss.SSS");
                     break;
                 }
             }
@@ -2448,7 +2448,7 @@ function deEscalateCase(caseId) {
                     const newTotalSheetDuration = newTotalSeconds > 0 ? newTotalSeconds / 86400 : 0;
 
                     // Update the cell; row index is i + 1 because sheets are 1-indexed
-                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss");
+                    mainSheet.getRange(i + 1, storedDurationIndex + 1).setValue(newTotalSheetDuration).setNumberFormat("[h]:mm:ss.SSS");
                     break;
                 }
             }
@@ -2550,9 +2550,9 @@ function endCase(caseId) {
         const storedAgentHandlingTime = agentHandlingTimeSeconds > 0 ? agentHandlingTimeSeconds / 86400 : 0;
 
         // 5. Update all relevant cells in the sheet for this case.
-        sheet.getRange(rowNumberToUpdate, storedPauseCol + 1).setValue(storedPauseDuration).setNumberFormat("[h]:mm:ss");
-        sheet.getRange(rowNumberToUpdate, storedEscalationCol + 1).setValue(storedEscalationDuration).setNumberFormat("[h]:mm:ss");
-        sheet.getRange(rowNumberToUpdate, storedAHTCol + 1).setValue(storedAgentHandlingTime).setNumberFormat("[h]:mm:ss");
+        sheet.getRange(rowNumberToUpdate, storedPauseCol + 1).setValue(storedPauseDuration).setNumberFormat("[h]:mm:ss.SSS");
+        sheet.getRange(rowNumberToUpdate, storedEscalationCol + 1).setValue(storedEscalationDuration).setNumberFormat("[h]:mm:ss.SSS");
+        sheet.getRange(rowNumberToUpdate, storedAHTCol + 1).setValue(storedAgentHandlingTime).setNumberFormat("[h]:mm:ss.SSS");
         sheet.getRange(rowNumberToUpdate, endTimeCol + 1).setValue(mainTaskEndTime).setNumberFormat("MM-dd-yyyy HH:mm:ss");
         sheet.getRange(rowNumberToUpdate, statusCol + 1).setValue('Completed');
 
@@ -2563,6 +2563,59 @@ function endCase(caseId) {
         Logger.log(`Error in endCase for ${caseId}: ${e.toString()}`);
         throw e; // Re-throw the error to be displayed on the client-side.
     }
+}
+
+function getCaseDetailsById(caseId) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
+
+    const dataRange = sheet.getDataRange();
+    const values = dataRange.getValues();
+    const headers = values.shift();
+    const caseIdColumnIndex = headers.indexOf('Main Task ID');
+
+    if (caseIdColumnIndex === -1) {
+      throw new Error("'Main Task ID' column not found.");
+    }
+
+    let caseData = null;
+    for (let i = 0; i < values.length; i++) {
+      if (values[i][caseIdColumnIndex] == caseId) {
+        caseData = {};
+        headers.forEach((header, index) => {
+          caseData[header] = values[i][index];
+        });
+        break;
+      }
+    }
+
+    if (!caseData) {
+      throw new Error(`Case with ID '${caseId}' not found.`);
+    }
+
+    const logs = getLogsForCase(caseId);
+    if (logs.error) {
+      throw new Error(logs.error);
+    }
+
+    caseData.escalationLogs = logs.escalationLogs;
+    caseData.pausingLogs = logs.pausingLogs;
+    caseData.cooperationLogs = logs.cooperationLogs;
+
+    // Serialize dates for the client
+    for (const key in caseData) {
+      if (caseData[key] instanceof Date) {
+        caseData[key] = caseData[key].toISOString();
+      }
+    }
+
+    return caseData;
+  } catch (e) {
+    Logger.log(`Error in getCaseDetailsById for ${caseId}: ${e.toString()}`);
+    throw e;
+  }
 }
 
 /**
