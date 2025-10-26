@@ -185,7 +185,7 @@
     tbody tr:not(.details-row):hover { background-color: #F9FAFB; }
 
     .agent-name-cell { font-weight: 600; color: var(--text-primary); }
-    
+
     .btn-view-cases, .btn-action {
       font-size: 0.9em;
       padding: 6px 14px;
@@ -203,7 +203,7 @@
 
     .btn-view-cases { background-color: var(--text-secondary); }
     .btn-view-cases:hover { background-color: var(--text-primary); transform: translateY(-1px); }
-    
+
     /* Approval Buttons */
     .btn-approve { background-color: var(--primary-accent); }
     .btn-approve:hover { background-color: #008f3f; }
@@ -231,32 +231,32 @@
     .error-message { color: var(--red-deny); }
     .success-message { color: var(--primary-accent); }
     .status-message { color: var(--text-secondary); }
-    
+
     #leaderboardBody > tr { cursor: pointer; }
 
     /* --- VERSION INFO CONTAINER --- */
-    #version-info-container { 
-      text-align: right; 
-      font-size: 0.9em; 
-      color: var(--text-secondary); 
+    #version-info-container {
+      text-align: right;
+      font-size: 0.9em;
+      color: var(--text-secondary);
     }
-    #updateNotificationArea { 
-      margin-top: 5px; 
-      padding: 8px; 
-      background-color: var(--yellow); 
-      color: var(--text-primary); 
-      border-radius: 8px; 
+    #updateNotificationArea {
+      margin-top: 5px;
+      padding: 8px;
+      background-color: var(--yellow);
+      color: var(--text-primary);
+      border-radius: 8px;
       border: 1px solid var(--border-light);
     }
-    #updateNotificationArea button { 
-      width: 100%; 
-      padding: 6px; 
-      font-size: 0.9em; 
-      background-color: var(--text-primary); 
-      color: white; 
-      border: none; 
-      cursor: pointer; 
-      margin-top: 5px; 
+    #updateNotificationArea button {
+      width: 100%;
+      padding: 6px;
+      font-size: 0.9em;
+      background-color: var(--text-primary);
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: 5px;
       border-radius: 6px;
     }
 
@@ -267,7 +267,7 @@
       user-select: none; /* Prevents text selection on click */
       padding-left: 25px; /* Make space for the arrow */
       /* Ensure it lines up with other h2 tags if they are not collapsible */
-      margin-left: -25px; 
+      margin-left: -25px;
     }
     .collapsible-header::before {
       content: '▶'; /* Collapsed state arrow */
@@ -290,14 +290,14 @@
     }
     .collapsible-content.expanded {
       /* A large value to accommodate any content size */
-      max-height: 3000px; 
+      max-height: 3000px;
       transition: max-height 0.5s ease-in;
     }
   </style>
 </head>
 <body>
 
-  
+
 <button id="sidebar-toggle-btn" onclick="toggleSidebar()">
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
 </button>
@@ -324,12 +324,13 @@
   <div id="versionError" class="error-message" style="display:none;"></div>
 </div>
   <div class="nav-tabs">
-    <button class="active">Homepage</button>
+    <button class="active" id="tab-homepage" onclick="showTab('homepage')">Homepage</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=production', '_blank')">Production</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
+    <button id="tab-settings" onclick="showTab('settings')">Settings</button>
   </div>
 
-  <div class="manager-container">
+  <div id="homepage-container" class="manager-container">
     <div class="top-section-wrapper">
       <div class="controls">
         <div class="control-group">
@@ -413,7 +414,7 @@
         </table>
       </div>
     </div>
-    
+
     <div class="leaderboard-section">
       <h2 class="collapsible-header">Agent Attendance Log</h2>
       <div class="collapsible-content">
@@ -446,18 +447,58 @@
         </table>
       </div>
     </div>
+  </div>
 
+  <div id="settings-container" class="manager-container" style="display: none;">
+    <h2>Settings</h2>
+    <div class="collapsible-content expanded">
+        <h3>Manage User Access for 'Cases' Tab</h3>
+        <div class="controls">
+            <div class="control-group">
+                <label for="newUserEmail">Agent Email:</label>
+                <input type="email" id="newUserEmail" placeholder="agent.email@example.com" style="width: 250px;">
+            </div>
+            <button onclick="addUserAccess()">Add User</button>
+            <div id="addUserLoader" class="loader"></div>
+        </div>
+        <div id="userAccessMessage" class="message-area"></div>
+
+        <h4>Authorized Users</h4>
+        <div style="max-height: 300px; overflow-y: auto;">
+            <table id="authorizedUsersTable">
+                <thead>
+                    <tr>
+                        <th>Agent Email</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="authorizedUsersBody">
+                    <tr><td colspan="2" style="text-align:center;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
   </div>
 
 <script>
     // --- UTILITY AND HELPER FUNCTIONS ---
+    function showTab(tabName) {
+      document.getElementById('homepage-container').style.display = tabName === 'homepage' ? 'block' : 'none';
+      document.getElementById('settings-container').style.display = tabName === 'settings' ? 'block' : 'none';
+      document.querySelectorAll('.nav-tabs button').forEach(button => button.classList.remove('active'));
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+      if (tabName === 'settings') {
+        loadAuthorizedUsers();
+      }
+    }
+
     function toggleDateRange() {
       const endDateInput = document.getElementById('endDate');
       const isRange = document.getElementById('dateRangeToggle').checked;
       endDateInput.disabled = !isRange;
       if (!isRange) { endDateInput.value = document.getElementById('startDate').value; }
     }
-    function showLoader(show) { document.getElementById('loader').style.display = show ? 'inline-block' : 'none'; }
+    function showLoader(show, id = 'loader') { document.getElementById(id).style.display = show ? 'inline-block' : 'none'; }
     function setUserMessage(message, type = "status", areaId = 'userMessage') {
       const msgEl = document.getElementById(areaId);
       msgEl.textContent = message;
@@ -493,14 +534,14 @@
       document.querySelectorAll('.collapsible-header').forEach(header => {
         // Get the content block that is the *next* element
         const content = header.nextElementSibling;
-        
+
         // Check if content exists
         if (content && content.classList.contains('collapsible-content')) {
-          
+
           // Set all sections to be expanded by default
           header.classList.add('expanded');
           content.classList.add('expanded');
-          
+
           // Add the click event listener
           header.addEventListener('click', () => {
             header.classList.toggle('expanded');
@@ -565,7 +606,7 @@
       }
       container.innerHTML = contentHtml;
     }
-    
+
     // --- DATA LOADING & EVENT HANDLER FUNCTIONS ---
     function loadActiveAgents() { google.script.run.withSuccessHandler(displayActiveAgents).getActiveAgentStatuses(); }
     function loadManagerData() {
@@ -579,9 +620,9 @@
       const startDisplay = new Date(startDateStr + "T12:00:00Z").toLocaleDateString(undefined, { timeZone: 'UTC' });
       const endDisplay = new Date(endDateStr + "T12:00:00Z").toLocaleDateString(undefined, { timeZone: 'UTC' });
       document.getElementById('summaryDateDisplay').textContent = (startDateStr === endDateStr) ? `for ${startDisplay}` : `from ${startDisplay} to ${endDisplay}`;
-      
+
       google.script.run.withSuccessHandler(displayAttendanceSummary).withFailureHandler(showError).getManagerAttendanceSummary(startDateStr, endDateStr);
-      loadLeaderboardData(startDateStr, endDateStr); 
+      loadLeaderboardData(startDateStr, endDateStr);
     }
     function toggleAgentCases(button, agentEmail, agentName) {
       const clickedRow = button.parentElement.parentElement;
@@ -623,11 +664,11 @@
         const option = document.createElement('option');
         option.value = agent.email;
         // Display name and email for clarity
-        option.textContent = `${agent.name} (${agent.email})`; 
+        option.textContent = `${agent.name} (${agent.email})`;
         selector.appendChild(option);
       });
     }
-      
+
     // --- VERSION INFO FUNCTIONS ---
     function fetchVersionInformation() {
       google.script.run
@@ -644,7 +685,7 @@
       const featuresDisplayEl = document.getElementById('updateFeaturesDisplay');
       const versionErrorEl = document.getElementById('versionError');
       if (!versionDisplayEl || !statusMsgEl || !updateNotificationEl) return;
-      
+
       versionErrorEl.style.display = 'none';
       if (versionInfo && versionInfo.error) {
         versionDisplayEl.textContent = "Error";
@@ -757,7 +798,7 @@
         row.id = `request-row-${req.rowNumber}`;
         const displayOrigTimestamp = req.originalTimestamp ? new Date(req.originalTimestamp).toLocaleString() : 'N/A';
         const displayReqTimestamp = req.requestedTimestamp ? new Date(req.requestedTimestamp).toLocaleString() : 'N/A';
-        
+
         row.insertCell().textContent = req.agent;
         row.insertCell().textContent = displayOrigTimestamp;
         row.insertCell().textContent = req.originalAction;
@@ -837,7 +878,7 @@
     function displayManagerAgentLog(logs) {
       const loader = document.getElementById('attendanceLogLoaderManager');
       if (loader) loader.style.display = 'none';
-      
+
       const tbody = document.getElementById('managerLogTableBody');
       tbody.innerHTML = '';
 
@@ -931,7 +972,7 @@
       document.getElementById('agentSummaryBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
       loadApprovalRequests();
       document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
-      
+
       loadManagerImportantLinks();
       loadAllAgentsForDropdown();
       fetchVersionInformation();
@@ -941,6 +982,69 @@
     }
     window.addEventListener('load', initializePage);
 
+    function addUserAccess() {
+      const email = document.getElementById('newUserEmail').value;
+      if (!email) {
+        return setUserMessage("Please enter an email address.", "error", "userAccessMessage");
+      }
+      showLoader(true, 'addUserLoader');
+      google.script.run
+        .withSuccessHandler(response => {
+          showLoader(false, 'addUserLoader');
+          setUserMessage(response, "success", "userAccessMessage");
+          loadAuthorizedUsers();
+        })
+        .withFailureHandler(err => {
+          showLoader(false, 'addUserLoader');
+          setUserMessage(err.message, "error", "userAccessMessage");
+        })
+        .addUserAccess(email);
+    }
+
+    function loadAuthorizedUsers() {
+      google.script.run
+        .withSuccessHandler(displayAuthorizedUsers)
+        .withFailureHandler(err => {
+          const tbody = document.getElementById('authorizedUsersBody');
+          tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:red;">Could not load users.</td></tr>';
+        })
+        .getAuthorizedUsers();
+    }
+
+    function displayAuthorizedUsers(users) {
+      const tbody = document.getElementById('authorizedUsersBody');
+      tbody.innerHTML = '';
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;">No authorized users found.</td></tr>';
+        return;
+      }
+      users.forEach(user => {
+        const row = tbody.insertRow();
+        row.insertCell().textContent = user;
+        const actionCell = row.insertCell();
+        const removeButton = document.createElement('button');
+        removeButton.className = 'btn-action btn-deny';
+        removeButton.textContent = 'Remove';
+        removeButton.onclick = () => removeUserAccess(user);
+        actionCell.appendChild(removeButton);
+      });
+    }
+
+    function removeUserAccess(email) {
+      if (!confirm(`Are you sure you want to remove access for ${email}?`)) {
+        return;
+      }
+      setUserMessage("Removing user...", "status", "userAccessMessage");
+      google.script.run
+        .withSuccessHandler(response => {
+          setUserMessage(response, "success", "userAccessMessage");
+          loadAuthorizedUsers();
+        })
+        .withFailureHandler(err => {
+          setUserMessage(err.message, "error", "userAccessMessage");
+        })
+        .removeUserAccess(email);
+    }
 </script>
 </body>
 </html>
