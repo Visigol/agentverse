@@ -102,18 +102,18 @@ function doGet(e) {
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
   } else {
-    // If not a manager, route to the correct page.
+    // If not a manager, route to the correct page, evaluating it as a template.
     if (e.parameter.page === 'production') {
-      return HtmlService.createHtmlOutputFromFile('production')
+      return HtmlService.createTemplateFromFile('production').evaluate()
         .setTitle('Production Dashboard')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else if (e.parameter.page === 'cases') {
-      return HtmlService.createHtmlOutputFromFile('cases')
+      return HtmlService.createTemplateFromFile('cases').evaluate()
         .setTitle('Case Management')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else {
       // Default to the agent index page.
-      return HtmlService.createHtmlOutputFromFile('index')
+      return HtmlService.createTemplateFromFile('index').evaluate()
         .setTitle('Agent Status Tracker')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
