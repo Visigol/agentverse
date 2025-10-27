@@ -205,7 +205,6 @@
 
   <div class="nav-tabs">
     <button class="active">Attendance</button>
-    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=production', '_blank')">Production</button>
     <button id="cases-tab" style="display:none;" onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
   </div>
 
