@@ -1939,6 +1939,7 @@ function updateCaseData(caseId, updatedData) {
       }
     }
 
+    SpreadsheetApp.flush(); // Force all pending changes to be written immediately.
     invalidateCasesCache();
     return `Case ${caseId} updated successfully.`;
 
@@ -2062,6 +2063,7 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
       }
     }
 
+    SpreadsheetApp.flush(); // Force all pending changes to be written immediately.
     invalidateCasesCache();
     return `Log ${logId} in ${sheetName} updated successfully.`;
 
