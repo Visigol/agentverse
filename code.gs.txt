@@ -2596,7 +2596,7 @@ function serializeCaseData_(dataObject) {
             let totalSeconds = 0;
             if (value instanceof Date) {
                 // Incorrect format from sheet (interpreted as a date)
-                totalSeconds = (value.getUTCHours() * 3600) + (value.getUTCMinutes() * 60) + value.getUTCSeconds();
+                totalSeconds = (value.getHours() * 3600) + (value.getMinutes() * 60) + value.getSeconds();
             } else if (typeof value === 'number' && value > 0) {
                 // Correct format from sheet (fraction of a day)
                 totalSeconds = Math.round(value * 86400);
