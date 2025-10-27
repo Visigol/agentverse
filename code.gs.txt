@@ -1033,6 +1033,49 @@ function getActiveAgentStatuses() {
 }
 
 /**
+ * A fast function that gets the real-time status of inactive agents.
+ */
+function getInactiveAgentStatuses() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const agentsSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENTS);
+    if (!agentsSheet) throw new Error(`Sheet "${CONFIG.ATTENDANCE.SHEETS.AGENTS}" not found.`);
+    const agentList = agentsSheet.getRange("A2:B" + agentsSheet.getLastRow()).getValues();
+
+    const agentLogSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENT_LOG);
+    if (!agentLogSheet) return [];
+
+    const agentLogData = agentLogSheet.getDataRange().getValues();
+    const lastActions = new Map();
+
+    for (let i = agentLogData.length - 1; i >= 1; i--) {
+      const row = agentLogData[i];
+      const email = (row[1] || "").toString().trim().toLowerCase();
+      if (email && !lastActions.has(email)) {
+        lastActions.set(email, { action: row[3], timestamp: new Date(row[0]) });
+      }
+    }
+
+    return agentList.map(row => {
+      const email = row[0];
+      const name = row[1] || (email ? email.split('@')[0] : '');
+      if (!email) return null;
+
+      const lastState = lastActions.get(email.toLowerCase());
+      if (!lastState || lastState.action === 'End Work') {
+        const statusDetail = lastState ? `Ended Work at ${lastState.timestamp.toLocaleString()}` : 'No recent activity';
+        return { agentName: name, statusDetail: statusDetail };
+      }
+      return null;
+    }).filter(Boolean);
+
+  } catch (e) {
+    Logger.log(`Error in getInactiveAgentStatuses: ${e.message}`);
+    return [{ agentName: "Error", statusDetail: e.message }];
+  }
+}
+
+/**
  * Gets attendance data for the initial manager dashboard load.
  */
 function getManagerAttendanceSummary(startDateStr, endDateStr) {
@@ -1472,8 +1515,10 @@ function getAnomalies(startDateStr, endDateStr) {
 
         const pauseStartTimes = new Map();
         pauseLogData.forEach(row => {
-            const caseId = row[pauseCaseIdIdx];
             const startTime = row[pauseStartIdx] instanceof Date ? row[pauseStartIdx] : null;
+            if (!startTime || startTime < startDate || startTime > endDate) return;
+
+            const caseId = row[pauseCaseIdIdx];
             if (caseId && startTime) {
                 if (!pauseStartTimes.has(caseId)) pauseStartTimes.set(caseId, new Set());
                 pauseStartTimes.get(caseId).add(startTime.getTime());
@@ -1481,8 +1526,10 @@ function getAnomalies(startDateStr, endDateStr) {
         });
 
         escalationLogData.forEach(row => {
-            const caseId = row[escCaseIdIdx];
             const escStartTime = row[escStartIdx] instanceof Date ? row[escStartIdx] : null;
+            if (!escStartTime || escStartTime < startDate || escStartTime > endDate) return;
+
+            const caseId = row[escCaseIdIdx];
             if (caseId && escStartTime && pauseStartTimes.has(caseId)) {
                 if (pauseStartTimes.get(caseId).has(escStartTime.getTime())) {
                     anomalies.push({
