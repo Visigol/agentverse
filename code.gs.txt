@@ -1341,6 +1341,170 @@ function getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr) {
 }
 
 /**
+ * Scans production data to find operational anomalies within a given date range.
+ * @param {string} startDateStr The start date in 'YYYY-MM-DD' format.
+ * @param {string} endDateStr The end date in 'YYYY-MM-DD' format.
+ * @returns {Array<Object>} An array of anomaly objects found.
+ */
+function getAnomalies(startDateStr, endDateStr) {
+  const anomalies = [];
+  try {
+    // --- 1. SETUP DATE RANGE ---
+    let startDate, endDate;
+    if (startDateStr && endDateStr) {
+      startDate = new Date(startDateStr);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(endDateStr);
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      // Default to today
+      startDate = new Date();
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+    }
+
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+
+    // --- 2. READ ALL NECESSARY SHEETS ONCE ---
+    const mainTaskSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    const pauseLogSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS);
+    const escalationLogSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS);
+
+    const mainTaskData = mainTaskSheet ? mainTaskSheet.getDataRange().getValues() : [];
+    const pauseLogData = pauseLogSheet ? pauseLogSheet.getDataRange().getValues() : [];
+    const escalationLogData = escalationLogSheet ? escalationLogSheet.getDataRange().getValues() : [];
+
+    if (mainTaskData.length < 2) return [{ caseId: "N/A", type: "Info", details: "No main task data to analyze." }];
+
+    // --- 3. PROCESS MAIN TASK SHEET ANOMALIES ---
+    const mainHeaders = mainTaskData.shift();
+    const mainCaseIdIdx = mainHeaders.indexOf('Main Task ID');
+    const startTimeIdx = mainHeaders.indexOf('Main Task Start Date/Time');
+    const endTimeIdx = mainHeaders.indexOf('Main Task End Date/Time');
+    const handlingTimeIdx = mainHeaders.indexOf('Stored Agent Handling Time');
+    const pauseDurationIdx = mainHeaders.indexOf('Stored Pause Duration');
+    const escalationDurationIdx = mainHeaders.indexOf('Stored Escalation Duration');
+
+    mainTaskData.forEach(row => {
+      const caseId = row[mainCaseIdIdx];
+      const startTime = row[startTimeIdx] instanceof Date ? row[startTimeIdx] : null;
+
+      // Filter rows that are not within the selected date range
+      if (!startTime || startTime < startDate || startTime > endDate) {
+        return;
+      }
+
+      const endTime = row[endTimeIdx] instanceof Date ? row[endTimeIdx] : null;
+
+      // Anomaly: Invalid Timestamps
+      if (startTime && endTime && endTime < startTime) {
+        anomalies.push({
+          caseId: caseId,
+          type: "Invalid Timestamps",
+          details: `End time (${endTime.toLocaleString()}) is before start time (${startTime.toLocaleString()}).`
+        });
+      }
+
+      // Anomaly: Excessive Handling Time & Negative Durations
+      const durationFields = [
+        { name: 'Handling Time', index: handlingTimeIdx, limit: 36000 }, // 10 hours
+        { name: 'Pause Duration', index: pauseDurationIdx, limit: null },
+        { name: 'Escalation Duration', index: escalationDurationIdx, limit: null }
+      ];
+
+      durationFields.forEach(field => {
+        const durationValue = row[field.index];
+        if (durationValue !== '' && !isNaN(durationValue)) {
+          const durationSeconds = parseFloat(durationValue) * 86400;
+          if (durationSeconds < 0) {
+            anomalies.push({
+              caseId: caseId,
+              type: "Negative Duration",
+              details: `${field.name} is negative: ${durationSeconds.toFixed(2)}s.`
+            });
+          }
+          if (field.limit && durationSeconds > field.limit) {
+            anomalies.push({
+              caseId: caseId,
+              type: "Excessive Duration",
+              details: `${field.name} of ${(durationSeconds / 3600).toFixed(2)}h exceeds the 10-hour limit.`
+            });
+          }
+        }
+      });
+    });
+
+    // --- 4. PROCESS LOG-BASED ANOMALIES ---
+    const pauseHeaders = pauseLogData.length > 1 ? pauseLogData.shift() : null;
+    const escHeaders = escalationLogData.length > 1 ? escalationLogData.shift() : null;
+
+    if (pauseHeaders) {
+        const pauseCaseIdIdx = pauseHeaders.indexOf('Related Case ID');
+        const pauseStartIdx = pauseHeaders.indexOf('Pause Start Time');
+        const pauseEndIdx = pauseHeaders.indexOf('Pause End Time');
+
+        // Short Pause Anomaly
+        pauseLogData.forEach(row => {
+            const startTime = row[pauseStartIdx] instanceof Date ? row[pauseStartIdx] : null;
+            if (!startTime || startTime < startDate || startTime > endDate) return;
+
+            const endTime = row[pauseEndIdx] instanceof Date ? row[pauseEndIdx] : null;
+            if (startTime && endTime) {
+                const durationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
+                if (durationSeconds > 0 && durationSeconds < 5) {
+                    anomalies.push({
+                        caseId: row[pauseCaseIdIdx],
+                        type: "Short Pause",
+                        details: `A pause of only ${durationSeconds.toFixed(2)} seconds was recorded.`
+                    });
+                }
+            }
+        });
+    }
+
+    // Concurrent Events Anomaly
+    if (pauseHeaders && escHeaders && pauseLogData.length > 0 && escalationLogData.length > 0) {
+        const pauseCaseIdIdx = pauseHeaders.indexOf('Related Case ID');
+        const pauseStartIdx = pauseHeaders.indexOf('Pause Start Time');
+        const escCaseIdIdx = escHeaders.indexOf('Related Case ID');
+        const escStartIdx = escHeaders.indexOf('Escalation Start Time');
+
+        const pauseStartTimes = new Map();
+        pauseLogData.forEach(row => {
+            const caseId = row[pauseCaseIdIdx];
+            const startTime = row[pauseStartIdx] instanceof Date ? row[pauseStartIdx] : null;
+            if (caseId && startTime) {
+                if (!pauseStartTimes.has(caseId)) pauseStartTimes.set(caseId, new Set());
+                pauseStartTimes.get(caseId).add(startTime.getTime());
+            }
+        });
+
+        escalationLogData.forEach(row => {
+            const caseId = row[escCaseIdIdx];
+            const escStartTime = row[escStartIdx] instanceof Date ? row[escStartIdx] : null;
+            if (caseId && escStartTime && pauseStartTimes.has(caseId)) {
+                if (pauseStartTimes.get(caseId).has(escStartTime.getTime())) {
+                    anomalies.push({
+                        caseId: caseId,
+                        type: "Concurrent Events",
+                        details: `A pause and an escalation were started at the exact same time: ${escStartTime.toLocaleString()}.`
+                    });
+                }
+            }
+        });
+    }
+
+    return anomalies.length > 0 ? anomalies : [{ caseId: "N/A", type: "No Anomalies Found", details: "No issues detected in the selected date range." }];
+
+  } catch (e) {
+    Logger.log("Error in getAnomalies: " + e.toString());
+    // Return the error message as a special kind of anomaly
+    return [{ caseId: "Error", type: "Function Error", details: e.message }];
+  }
+}
+
+/**
  * Gets unique values for all specified filter columns to populate the dashboard UI.
  * NOTE: Adjust the header names in the 'headerNames' object if they differ in your sheet.
  */

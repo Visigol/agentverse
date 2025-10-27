@@ -447,6 +447,36 @@
         </table>
       </div>
     </div>
+
+    <!-- Anomaly Detection Section -->
+    <div class="anomalies-section">
+      <h2 class="collapsible-header">Anomaly Detection</h2>
+      <div class="collapsible-content">
+        <div class="controls">
+          <div class="control-group">
+            <label for="anomalyStartDate">Start Date:</label>
+            <input type="date" id="anomalyStartDate">
+          </div>
+          <div class="control-group">
+            <label for="anomalyEndDate">End Date:</label>
+            <input type="date" id="anomalyEndDate">
+          </div>
+          <button onclick="loadAnomalies()">Load Anomalies</button>
+          <div id="anomalyLoader" class="loader"></div>
+        </div>
+        <div id="anomalyMessage" class="message-area"></div>
+        <table id="anomalyTable">
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Anomaly Type</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody id="anomalyBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div id="settings-container" class="manager-container" style="display: none;">
@@ -962,11 +992,48 @@
       }
     }
 
+    // --- ANOMALY FUNCTIONS ---
+    function loadAnomalies() {
+      const startDate = document.getElementById('anomalyStartDate').value;
+      const endDate = document.getElementById('anomalyEndDate').value;
+      if (!startDate || !endDate) {
+        return setUserMessage("Please select a start and end date for anomaly detection.", "error", "anomalyMessage");
+      }
+      showLoader(true, 'anomalyLoader');
+      setUserMessage("Scanning for anomalies...", "status", "anomalyMessage");
+      google.script.run
+        .withSuccessHandler(displayAnomalies)
+        .withFailureHandler(err => {
+          showLoader(false, 'anomalyLoader');
+          setUserMessage(err.message, "error", "anomalyMessage");
+        })
+        .getAnomalies(startDate, endDate);
+    }
+
+    function displayAnomalies(anomalies) {
+      showLoader(false, 'anomalyLoader');
+      const tbody = document.getElementById('anomalyBody');
+      tbody.innerHTML = '';
+      if (!anomalies || anomalies.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No anomalies found.</td></tr>';
+        return;
+      }
+      setUserMessage(`Found ${anomalies.length} anomalies.`, "success", "anomalyMessage");
+      anomalies.forEach(anomaly => {
+        const row = tbody.insertRow();
+        row.insertCell().textContent = anomaly.caseId;
+        row.insertCell().textContent = anomaly.type;
+        row.insertCell().textContent = anomaly.details;
+      });
+    }
+
     // --- INITIALIZATION ---
     function initializePage() {
       const today = new Date().toISOString().split('T')[0];
       document.getElementById('startDate').value = today;
       document.getElementById('endDate').value = today;
+      document.getElementById('anomalyStartDate').value = today;
+      document.getElementById('anomalyEndDate').value = today;
       toggleDateRange();
       loadActiveAgents();
       document.getElementById('agentSummaryBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
@@ -976,6 +1043,7 @@
       loadManagerImportantLinks();
       loadAllAgentsForDropdown();
       fetchVersionInformation();
+      loadAnomalies();
 
       // --- NEW: Call the setup function on page load ---
       setupCollapsibleSections();
