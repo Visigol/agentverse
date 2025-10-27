@@ -83,7 +83,9 @@
     .modal-main { flex-grow: 1; padding: 30px; overflow-y: auto; }
     .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 20px; margin-bottom: 20px; }
     .modal-header h2 { margin: 0; font-size: 1.8em; }
+    .modal-header-controls { display: flex; align-items: center; gap: 15px; }
     .close-button { font-size: 2.5em; font-weight: 300; color: var(--text-secondary); background: none; border: none; cursor: pointer; line-height: 1; }
+    .btn-refresh { font-size: 0.8em; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-light); background-color: #F9FAFB; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
     .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px 30px; }
     .details-grid .field { display: flex; flex-direction: column; }
     .details-grid .field strong { font-size: 0.8em; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; }
@@ -202,8 +204,11 @@
     <div class="modal-content">
       <div class="modal-main">
         <div class="modal-header">
-          <h2 id="modal-title">Case Details</h2>
-          <button class="close-button" onclick="closeCaseModal()">×</button>
+            <h2 id="modal-title">Case Details</h2>
+            <div class="modal-header-controls">
+                <button id="modal-btn-refresh" class="btn-refresh" onclick="refreshSingleCaseView()"><i class="fa-solid fa-sync"></i> Refresh</button>
+                <button class="close-button" onclick="closeCaseModal()">×</button>
+            </div>
         </div>
         <div class="details-grid" id="modal-details-grid">
           </div>
@@ -977,9 +982,12 @@ cooperationUpdates.forEach((data, logId) => {
         .updateCaseData(caseId, updatedData);
 }
 
-function refreshSingleCaseView(caseId) {
-    if (!caseId) return;
-
+function refreshSingleCaseView() {
+    const caseId = activeCaseData ? activeCaseData['Main Task ID'] : null;
+    if (!caseId) {
+        console.error("No active case to refresh.");
+        return;
+    }
     // Show a subtle loading indicator in the modal
     const modalTitle = document.getElementById('modal-title');
     modalTitle.textContent += ' (Refreshing...)';
