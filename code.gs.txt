@@ -1920,25 +1920,26 @@ function updateCaseData(caseId, updatedData) {
       throw new Error(`Case with ID '${caseId}' not found.`);
     }
 
-    const dateTimeHeaders = ['Main Task Start Date/Time', 'Main Task End Date/Time', 'Salesforce Updated time', 'Date stamp', 'Menu Request Sent Date'];
-    const durationHeaders = ['Stored Escalation Duration', 'Stored Pause Duration', 'Stored Agent Handling Time'];
-
     for (const header of Object.keys(updatedData)) {
       const colIndex = headers.indexOf(header);
       if (colIndex !== -1) {
         let value = updatedData[header];
         const cell = sheet.getRange(rowNumberToUpdate, colIndex + 1);
 
-        if (dateTimeHeaders.includes(header) && value) {
-            cell.setValue(new Date(value)).setNumberFormat("MM-dd-yyyy HH:mm:ss");
-        } else if (durationHeaders.includes(header) && (typeof value === 'number' || !isNaN(value))) {
-            cell.setValue(value).setNumberFormat("[h]:mm:ss.SSS");
+        if (isDateTimeField_(header) && value) {
+          cell.setValue(new Date(value)).setNumberFormat("MM-dd-yyyy HH:mm:ss");
+        } else if (isDurationField_(header)) {
+          const totalSeconds = parseFloat(value) || 0;
+          // Convert total seconds to Google Sheet's fraction-of-a-day format for durations
+          const sheetDuration = totalSeconds > 0 ? totalSeconds / 86400 : 0;
+          cell.setValue(sheetDuration).setNumberFormat("[h]:mm:ss.SSS");
         } else {
-            cell.setValue(value);
+          cell.setValue(value);
         }
       }
     }
 
+    SpreadsheetApp.flush(); // Force all pending changes to be written immediately.
     invalidateCasesCache();
     return `Case ${caseId} updated successfully.`;
 
@@ -2062,6 +2063,7 @@ function updateLogData(logId, sheetName, primaryKeyColumnName, updatedData) {
       }
     }
 
+    SpreadsheetApp.flush(); // Force all pending changes to be written immediately.
     invalidateCasesCache();
     return `Log ${logId} in ${sheetName} updated successfully.`;
 
@@ -2559,6 +2561,17 @@ function endCase(caseId) {
 }
 
 /**
+ * A server-side helper to check if a field name indicates a date/time.
+ * @param {string} fieldName The name of the field.
+ * @returns {boolean} True if it's a date/time field.
+ */
+function isDateTimeField_(fieldName) {
+    const lower = fieldName.toLowerCase();
+    // A field is a date/time field if it contains 'date' or 'time', but is NOT a duration field.
+    return (lower.includes('date') || lower.includes('time')) && !isDurationField_(fieldName);
+}
+
+/**
  * A server-side helper to check if a field name indicates a duration.
  * @param {string} fieldName The name of the field.
  * @returns {boolean} True if it's a duration field.
@@ -2579,15 +2592,18 @@ function serializeCaseData_(dataObject) {
     const serialized = {};
     for (const key in dataObject) {
         let value = dataObject[key];
-        if (value instanceof Date) {
-            if (isDurationField_(key)) {
-                // Format the duration into a simple HH:mm:ss string.
-                // Using "UTC" as the timezone prevents any timezone-related shifts
-                // from the server's local settings, treating the time components literally.
-                value = Utilities.formatDate(value, "UTC", "HH:mm:ss");
-            } else {
-                value = value.toISOString();
+        if (isDurationField_(key)) {
+            let totalSeconds = 0;
+            if (value instanceof Date) {
+                // Incorrect format from sheet (interpreted as a date)
+                totalSeconds = (value.getHours() * 3600) + (value.getMinutes() * 60) + value.getSeconds();
+            } else if (typeof value === 'number' && value > 0) {
+                // Correct format from sheet (fraction of a day)
+                totalSeconds = Math.round(value * 86400);
             }
+            value = totalSeconds;
+        } else if (value instanceof Date) {
+            value = value.toISOString();
         }
         serialized[key] = value;
     }

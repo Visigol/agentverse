@@ -83,7 +83,9 @@
     .modal-main { flex-grow: 1; padding: 30px; overflow-y: auto; }
     .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 20px; margin-bottom: 20px; }
     .modal-header h2 { margin: 0; font-size: 1.8em; }
+    .modal-header-controls { display: flex; align-items: center; gap: 15px; }
     .close-button { font-size: 2.5em; font-weight: 300; color: var(--text-secondary); background: none; border: none; cursor: pointer; line-height: 1; }
+    .btn-refresh { font-size: 0.8em; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border-light); background-color: #F9FAFB; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
     .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px 30px; }
     .details-grid .field { display: flex; flex-direction: column; }
     .details-grid .field strong { font-size: 0.8em; color: var(--text-secondary); margin-bottom: 3px; text-transform: uppercase; }
@@ -202,8 +204,11 @@
     <div class="modal-content">
       <div class="modal-main">
         <div class="modal-header">
-          <h2 id="modal-title">Case Details</h2>
-          <button class="close-button" onclick="closeCaseModal()">×</button>
+            <h2 id="modal-title">Case Details</h2>
+            <div class="modal-header-controls">
+                <button id="modal-btn-refresh" class="btn-refresh" onclick="refreshSingleCaseView()"><i class="fa-solid fa-sync"></i> Refresh</button>
+                <button class="close-button" onclick="closeCaseModal()">×</button>
+            </div>
         </div>
         <div class="details-grid" id="modal-details-grid">
           </div>
@@ -597,12 +602,11 @@ function displayCaseLogs(logs) {
                     let displayValue = log[header] || '';
                     if (isDateTimeField(header) && displayValue) {
                         displayValue = formatDisplayDate(displayValue);
-                    } else if (isDurationField(header) && typeof displayValue === 'string' && displayValue.includes(':')) {
-                        const parts = displayValue.split(':');
-                        const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
-                        displayValue = formatTime(seconds);
+                    } else if (isDurationField(header)) {
+                        displayValue = formatTime(displayValue); // Already in seconds
                     }
-                    logHtml += `<div class="field"><strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
+                    logHtml += `<div class="field">
+<strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
                 }
                 logHtml += `</div></div>`;
                 allLogsHtml += logHtml;
@@ -647,11 +651,9 @@ function getOriginalLog(logId, logType) {
         } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
-        } else if (isDurationField(field) && typeof displayValue === 'string' && displayValue.includes(':')) {
-            const parts = displayValue.split(':');
-            const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
-            displayValue = formatTime(seconds);
-        }
+            } else if (isDurationField(field)) {
+                displayValue = formatTime(displayValue); // Already in seconds
+            }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
         } else {
             finalHtml = `<span class="field-value"></span>`;
@@ -833,22 +835,8 @@ function populateActionButtons(caseData) {
             } else if (displayValue) {
                 if (isDateTimeField(field)) {
                     displayValue = formatDisplayDate(displayValue);
-                } else if (isDurationField(field)) {
-                let seconds = 0;
-                if (typeof displayValue === 'string' && displayValue.includes('T')) {
-                    const date = new Date(displayValue);
-                    if (!isNaN(date.getTime())) {
-                        const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
-                        const durationMillis = date.getTime() - baseDate;
-                        seconds = durationMillis / 1000;
-                    }
-                } else {
-                    const num = parseFloat(displayValue);
-                    if (!isNaN(num)) {
-                        seconds = num * 86400;
-                    }
-                }
-                    displayValue = formatTime(seconds);
+                } else if (isDurationField(field)) { // It's already in seconds from the server
+                    displayValue = formatTime(displayValue);
                 }
                 finalHtml = `<span class="field-value">${displayValue}</span>`;
             } else {
@@ -938,10 +926,9 @@ logSections.forEach(gridId => {
             newAHTSeconds = grossSeconds - totalPauseSeconds - totalEscalationSeconds;
         }
 
-        // Convert seconds to Google Sheet's duration format (fraction of a day)
-        updatedData['Stored Agent Handling Time'] = newAHTSeconds > 0 ? (newAHTSeconds / 86400) : 0;
-        updatedData['Stored Pause Duration'] = totalPauseSeconds > 0 ? (totalPauseSeconds / 86400) : 0;
-        updatedData['Stored Escalation Duration'] = totalEscalationSeconds > 0 ? (totalEscalationSeconds / 86400) : 0;
+        updatedData['Stored Agent Handling Time'] = newAHTSeconds;
+        updatedData['Stored Pause Duration'] = totalPauseSeconds;
+        updatedData['Stored Escalation Duration'] = totalEscalationSeconds;
     }
 // --- ADD THIS BLOCK TO SAVE LOGS ---
 const collectLogUpdates = (containerId, pkName) => {
@@ -995,9 +982,12 @@ cooperationUpdates.forEach((data, logId) => {
         .updateCaseData(caseId, updatedData);
 }
 
-function refreshSingleCaseView(caseId) {
-    if (!caseId) return;
-
+function refreshSingleCaseView() {
+    const caseId = activeCaseData ? activeCaseData['Main Task ID'] : null;
+    if (!caseId) {
+        console.error("No active case to refresh.");
+        return;
+    }
     // Show a subtle loading indicator in the modal
     const modalTitle = document.getElementById('modal-title');
     modalTitle.textContent += ' (Refreshing...)';
@@ -1024,22 +1014,8 @@ function refreshSingleCaseView(caseId) {
                 } else if (displayValue) {
                     if (isDateTimeField(field)) {
                         displayValue = formatDisplayDate(displayValue);
-                    } else if (isDurationField(field)) {
-                        let seconds = 0;
-                        if (typeof displayValue === 'string' && displayValue.includes('T')) {
-                            const date = new Date(displayValue);
-                            if (!isNaN(date.getTime())) {
-                                const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
-                                const durationMillis = date.getTime() - baseDate;
-                                seconds = durationMillis / 1000;
-                            }
-                        } else {
-                            const num = parseFloat(displayValue);
-                            if (!isNaN(num)) {
-                                seconds = num * 86400;
-                            }
-                        }
-                        displayValue = formatTime(seconds);
+                } else if (isDurationField(field)) { // It's already in seconds from the server
+                    displayValue = formatTime(displayValue);
                     }
                     finalHtml = `<span class="field-value">${displayValue}</span>`;
                 } else {
