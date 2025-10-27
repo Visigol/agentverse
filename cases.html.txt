@@ -597,12 +597,11 @@ function displayCaseLogs(logs) {
                     let displayValue = log[header] || '';
                     if (isDateTimeField(header) && displayValue) {
                         displayValue = formatDisplayDate(displayValue);
-                    } else if (isDurationField(header) && typeof displayValue === 'string' && displayValue.includes(':')) {
-                        const parts = displayValue.split(':');
-                        const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
-                        displayValue = formatTime(seconds);
+                    } else if (isDurationField(header)) {
+                        displayValue = formatTime(displayValue); // Already in seconds
                     }
-                    logHtml += `<div class="field"><strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
+                    logHtml += `<div class="field">
+<strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
                 }
                 logHtml += `</div></div>`;
                 allLogsHtml += logHtml;
@@ -647,11 +646,9 @@ function getOriginalLog(logId, logType) {
         } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
-        } else if (isDurationField(field) && typeof displayValue === 'string' && displayValue.includes(':')) {
-            const parts = displayValue.split(':');
-            const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
-            displayValue = formatTime(seconds);
-        }
+            } else if (isDurationField(field)) {
+                displayValue = formatTime(displayValue); // Already in seconds
+            }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
         } else {
             finalHtml = `<span class="field-value"></span>`;
@@ -938,10 +935,9 @@ logSections.forEach(gridId => {
             newAHTSeconds = grossSeconds - totalPauseSeconds - totalEscalationSeconds;
         }
 
-        // Convert seconds to Google Sheet's duration format (fraction of a day)
-        updatedData['Stored Agent Handling Time'] = newAHTSeconds > 0 ? (newAHTSeconds / 86400) : 0;
-        updatedData['Stored Pause Duration'] = totalPauseSeconds > 0 ? (totalPauseSeconds / 86400) : 0;
-        updatedData['Stored Escalation Duration'] = totalEscalationSeconds > 0 ? (totalEscalationSeconds / 86400) : 0;
+        updatedData['Stored Agent Handling Time'] = newAHTSeconds;
+        updatedData['Stored Pause Duration'] = totalPauseSeconds;
+        updatedData['Stored Escalation Duration'] = totalEscalationSeconds;
     }
 // --- ADD THIS BLOCK TO SAVE LOGS ---
 const collectLogUpdates = (containerId, pkName) => {
