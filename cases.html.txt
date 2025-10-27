@@ -830,22 +830,8 @@ function populateActionButtons(caseData) {
             } else if (displayValue) {
                 if (isDateTimeField(field)) {
                     displayValue = formatDisplayDate(displayValue);
-                } else if (isDurationField(field)) {
-                let seconds = 0;
-                if (typeof displayValue === 'string' && displayValue.includes('T')) {
-                    const date = new Date(displayValue);
-                    if (!isNaN(date.getTime())) {
-                        const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
-                        const durationMillis = date.getTime() - baseDate;
-                        seconds = durationMillis / 1000;
-                    }
-                } else {
-                    const num = parseFloat(displayValue);
-                    if (!isNaN(num)) {
-                        seconds = num * 86400;
-                    }
-                }
-                    displayValue = formatTime(seconds);
+                } else if (isDurationField(field)) { // It's already in seconds from the server
+                    displayValue = formatTime(displayValue);
                 }
                 finalHtml = `<span class="field-value">${displayValue}</span>`;
             } else {
@@ -1020,22 +1006,8 @@ function refreshSingleCaseView(caseId) {
                 } else if (displayValue) {
                     if (isDateTimeField(field)) {
                         displayValue = formatDisplayDate(displayValue);
-                    } else if (isDurationField(field)) {
-                        let seconds = 0;
-                        if (typeof displayValue === 'string' && displayValue.includes('T')) {
-                            const date = new Date(displayValue);
-                            if (!isNaN(date.getTime())) {
-                                const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
-                                const durationMillis = date.getTime() - baseDate;
-                                seconds = durationMillis / 1000;
-                            }
-                        } else {
-                            const num = parseFloat(displayValue);
-                            if (!isNaN(num)) {
-                                seconds = num * 86400;
-                            }
-                        }
-                        displayValue = formatTime(seconds);
+                } else if (isDurationField(field)) { // It's already in seconds from the server
+                    displayValue = formatTime(displayValue);
                     }
                     finalHtml = `<span class="field-value">${displayValue}</span>`;
                 } else {
