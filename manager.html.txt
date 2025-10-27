@@ -357,6 +357,15 @@
           <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
         </ul>
       </div>
+      <div class="active-agents-box" id="inactiveAgentsBox">
+        <h3>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="8"></line><line x1="19" y1="14" x2="19" y2="14"></line></svg>
+          Inactive Agents
+        </h3>
+        <ul id="inactiveAgentsList">
+          <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
+        </ul>
+      </div>
     </div>
 
     <div id="userMessage" class="message-area"></div>
@@ -595,6 +604,21 @@
         activeAgentsList.innerHTML = '<li style="color:var(--text-secondary); font-style:italic;">No agents currently active.</li>';
       }
     }
+
+    function displayInactiveAgents(inactiveAgents) {
+      const inactiveAgentsList = document.getElementById('inactiveAgentsList');
+      inactiveAgentsList.innerHTML = '';
+      if (inactiveAgents && inactiveAgents.length > 0) {
+        inactiveAgents.forEach(agent => {
+          const listItem = document.createElement('li');
+          listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail})`;
+          inactiveAgentsList.appendChild(listItem);
+        });
+      } else {
+        inactiveAgentsList.innerHTML = '<li style="color:var(--text-secondary); font-style:italic;">All agents are currently active.</li>';
+      }
+    }
+
     function displayAttendanceSummary(attendanceData) {
       showLoader(false);
       const tbody = document.getElementById('agentSummaryBody');
@@ -639,6 +663,11 @@
 
     // --- DATA LOADING & EVENT HANDLER FUNCTIONS ---
     function loadActiveAgents() { google.script.run.withSuccessHandler(displayActiveAgents).getActiveAgentStatuses(); }
+
+    function loadInactiveAgents() {
+      google.script.run.withSuccessHandler(displayInactiveAgents).getInactiveAgentStatuses();
+    }
+
     function loadManagerData() {
       showLoader(true);
       setUserMessage("Loading attendance summary...", "status");
@@ -1036,6 +1065,7 @@
       document.getElementById('anomalyEndDate').value = today;
       toggleDateRange();
       loadActiveAgents();
+      loadInactiveAgents();
       document.getElementById('agentSummaryBody').innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
       loadApprovalRequests();
       document.getElementById('leaderboardBody').innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px;">Click "Load Data" to generate the report.</td></tr>';
