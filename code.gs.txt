@@ -2581,17 +2581,10 @@ function serializeCaseData_(dataObject) {
         let value = dataObject[key];
         if (value instanceof Date) {
             if (isDurationField_(key)) {
-                // To avoid timezone issues, manually calculate total seconds from UTC values.
-                // Apps Script may interpret a duration like "0:42:00" as a Date object
-                // on 1899-12-30. Using UTC methods ensures we get the time components
-                // without any server-side timezone shifts.
-                const hours = value.getUTCHours();
-                const minutes = value.getUTCMinutes();
-                const seconds = value.getUTCSeconds();
-                const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
-
-                // Convert to a fractional day, which is what the frontend expects.
-                value = totalSeconds / 86400.0;
+                // Format the duration into a simple HH:mm:ss string.
+                // Using "UTC" as the timezone prevents any timezone-related shifts
+                // from the server's local settings, treating the time components literally.
+                value = Utilities.formatDate(value, "UTC", "HH:mm:ss");
             } else {
                 value = value.toISOString();
             }

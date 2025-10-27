@@ -595,10 +595,12 @@ function displayCaseLogs(logs) {
                 for (const header in log) {
                     // Use the same formatting helpers as the main modal
                     let displayValue = log[header] || '';
-                    if (displayValue && isDateTimeField(header)) {
+                    if (isDateTimeField(header) && displayValue) {
                         displayValue = formatDisplayDate(displayValue);
-                    } else if (displayValue && isDurationField(header)) {
-                        displayValue = formatTime(parseFloat(displayValue) * 86400);
+                    } else if (isDurationField(header) && typeof displayValue === 'string' && displayValue.includes(':')) {
+                        const parts = displayValue.split(':');
+                        const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
+                        displayValue = formatTime(seconds);
                     }
                     logHtml += `<div class="field"><strong>${header}</strong><span class="log-field-value" data-header="${header}" data-log-id="${logId}">${displayValue}</span></div>`;
                 }
@@ -645,10 +647,10 @@ function getOriginalLog(logId, logType) {
         } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
-        } else if (isDurationField(field) && (displayValue || displayValue === 0)) {
-             const num = parseFloat(displayValue);
-             const seconds = !isNaN(num) ? num * 86400 : 0;
-             displayValue = formatTime(seconds);
+        } else if (isDurationField(field) && typeof displayValue === 'string' && displayValue.includes(':')) {
+            const parts = displayValue.split(':');
+            const seconds = (+parts[0]) * 3600 + (+parts[1]) * 60 + (+parts[2] || 0);
+            displayValue = formatTime(seconds);
         }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
         } else {
