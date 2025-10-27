@@ -645,23 +645,11 @@ function getOriginalLog(logId, logType) {
         } else if (displayValue) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
-        } else if (displayValue && isDurationField(field)) {
-            let seconds = 0;
-            if (typeof displayValue === 'string' && displayValue.includes('T')) {
-                const date = new Date(displayValue);
-                if (!isNaN(date.getTime())) {
-                    const baseDate = new Date('1899-12-30T00:00:00.000Z').getTime();
-                    const durationMillis = date.getTime() - baseDate;
-                    seconds = durationMillis / 1000;
-                }
-            } else {
-                const num = parseFloat(displayValue);
-                if (!isNaN(num)) {
-                    seconds = num * 86400;
-                }
-            }
-                displayValue = formatTime(seconds);
-            }
+        } else if (isDurationField(field) && (displayValue || displayValue === 0)) {
+             const num = parseFloat(displayValue);
+             const seconds = !isNaN(num) ? num * 86400 : 0;
+             displayValue = formatTime(seconds);
+        }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
         } else {
             finalHtml = `<span class="field-value"></span>`;
@@ -1236,7 +1224,8 @@ function isDateTimeField(fieldName) {
 }
 
 function isDurationField(fieldName) {
-    return fieldName.toLowerCase().includes('duration') || fieldName === 'Stored Agent Handling Time';
+    const lower = fieldName.toLowerCase();
+    return lower.includes('duration') || lower.includes('agent handling time');
 }
 
 function formatDisplayDate(isoString) {
