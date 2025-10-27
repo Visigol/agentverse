@@ -145,28 +145,56 @@
     .controls button:hover { background-color: #008f3f; }
     .date-range-toggle { display: flex; align-items: center; gap: 5px; }
 
-    /* Active Agents Card */
-    .active-agents-box {
+    /* Agent Status Cards Wrapper */
+    .agent-cards-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      flex: 0 0 300px; /* Fixed width for the column */
+    }
+
+    /* Common styles for agent boxes */
+    .agent-box {
       background-color: var(--card-background);
       padding: 20px;
       border-radius: 12px;
       border: 1px solid var(--border-light);
-      flex: 0 0 300px; /* Fixed width */
       box-shadow: 0 4px 8px var(--shadow-color);
     }
-    .active-agents-box h3 {
+    .agent-box h3 {
       margin-top: 0; margin-bottom: 15px; font-size: 1.2em; color: var(--text-primary);
       border-bottom: 1px solid var(--border-light); padding-bottom: 10px;
       display: flex; align-items: center; gap: 10px; font-weight: 700;
     }
-    .active-agents-box h3 svg { stroke: var(--primary-accent); }
-    .active-agents-box ul { list-style-type: none; padding: 0; margin: 0; }
-    .active-agents-box li {
-      padding: 8px 5px; font-size: 1em; color: var(--text-secondary);
-      border-bottom: 1px solid var(--border-light);
+    .agent-box h3.collapsible {
+      cursor: pointer;
+      user-select: none;
+      position: relative;
     }
-    .active-agents-box li:last-child { border-bottom: none; }
-    .active-agents-box strong { color: var(--text-primary); }
+    .agent-box h3.collapsible::after {
+      content: '▲';
+      position: absolute;
+      right: 5px;
+      font-size: 0.8em;
+      transition: transform 0.2s ease-in-out;
+    }
+    .agent-box h3.collapsible.collapsed::after {
+      transform: rotate(180deg);
+    }
+    .agent-box ul {
+      list-style-type: none; padding: 0; margin: 0;
+      transition: max-height 0.3s ease-out, opacity 0.2s ease-out;
+      overflow: hidden;
+      max-height: 1000px; /* Large value for expanded state */
+      opacity: 1;
+    }
+    .agent-box ul.collapsed {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
 
     /* Table Styling */
     table {
@@ -348,23 +376,25 @@
         <button onclick="loadManagerData()">Load Data</button>
         <div id="loader" class="loader"></div>
       </div>
-      <div class="active-agents-box" id="activeAgentsBox">
-        <h3>
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          Active Agents
-        </h3>
-        <ul id="activeAgentsList">
-          <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
-        </ul>
-      </div>
-      <div class="active-agents-box" id="inactiveAgentsBox">
-        <h3>
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="8"></line><line x1="19" y1="14" x2="19" y2="14"></line></svg>
-          Inactive Agents
-        </h3>
-        <ul id="inactiveAgentsList">
-          <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
-        </ul>
+      <div class="agent-cards-wrapper">
+        <div class="agent-box" id="activeAgentsBox">
+          <h3>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            Active Agents
+          </h3>
+          <ul id="activeAgentsList">
+            <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
+          </ul>
+        </div>
+        <div class="agent-box" id="inactiveAgentsBox">
+          <h3 class="collapsible" onclick="toggleInactiveAgentsList()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="8"></line><line x1="19" y1="14" x2="19" y2="14"></line></svg>
+            Inactive Agents
+          </h3>
+          <ul id="inactiveAgentsList" class="collapsed">
+            <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -545,6 +575,14 @@
       if (type === "error") msgEl.classList.add('error-message');
       else if (type === "success") msgEl.classList.add('success-message');
     }
+
+    function toggleInactiveAgentsList() {
+      const list = document.getElementById('inactiveAgentsList');
+      const header = document.querySelector('#inactiveAgentsBox .collapsible');
+      list.classList.toggle('collapsed');
+      header.classList.toggle('collapsed');
+    }
+
     function formatDuration(value) {
       if (value === null || value === undefined || value === "N/A" || value === "") return "N/A";
       const totalSeconds = Number(value);
