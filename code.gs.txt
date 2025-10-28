@@ -1458,11 +1458,18 @@ function getAnomalies(startDateStr, endDateStr) {
 
       durationFields.forEach(field => {
         const durationValue = row[field.index];
-        if (durationValue !== '' && !isNaN(durationValue)) {
-          const durationSeconds = parseFloat(durationValue) * 86400;
-          if (durationSeconds < 0) {
+        // In-line serialization logic to correctly interpret sheet durations
+        let durationSeconds = 0;
+        if (durationValue instanceof Date) {
+            const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00Z').getTime();
+            durationSeconds = Math.round((durationValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
+        } else if (typeof durationValue === 'number' && durationValue !== '') {
+            durationSeconds = Math.round(durationValue * 86400);
+        }
+
+        if (durationSeconds < 0) {
             anomalies.push({
-              caseId: caseId,
+                caseId: caseId,
               type: "Negative Duration",
               details: `${field.name} is negative: ${durationSeconds.toFixed(2)}s.`
             });
