@@ -1451,7 +1451,7 @@ function getAnomalies(startDateStr, endDateStr) {
 
       // Anomaly: Excessive Handling Time & Negative Durations
       const durationFields = [
-        { name: 'Handling Time', index: handlingTimeIdx, limit: 36000 }, // 10 hours
+        { name: 'Handling Time', index: handlingTimeIdx, limit: 28800 }, // 8 hours
         { name: 'Pause Duration', index: pauseDurationIdx, limit: null },
         { name: 'Escalation Duration', index: escalationDurationIdx, limit: null }
       ];
@@ -1471,7 +1471,7 @@ function getAnomalies(startDateStr, endDateStr) {
             anomalies.push({
               caseId: caseId,
               type: "Excessive Duration",
-              details: `${field.name} of ${(durationSeconds / 3600).toFixed(2)}h exceeds the 10-hour limit.`
+              details: `${field.name} of ${(durationSeconds / 3600).toFixed(2)}h exceeds the 8-hour limit.`
             });
           }
         }
