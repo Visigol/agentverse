@@ -2497,6 +2497,36 @@ function endOpenLogEntry(sheetName, caseId, endColName, relatedIdColName) {
 
 
 function claimCase(caseId) {
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
+
+    const dataRange = sheet.getDataRange();
+    const values = dataRange.getValues();
+    const headers = values[0]; // Keep header row for indices
+    const caseIdColumnIndex = headers.indexOf('Main Task ID');
+    const userEmailColumnIndex = headers.indexOf('Useremail');
+
+    if (caseIdColumnIndex === -1) throw new Error("'Main Task ID' column not found.");
+    if (userEmailColumnIndex === -1) throw new Error("'Useremail' column not found.");
+
+    let caseRow = null;
+    for (let i = 1; i < values.length; i++) { // Start from 1 to skip header
+        if (values[i][caseIdColumnIndex] == caseId) {
+            caseRow = values[i];
+            break;
+        }
+    }
+
+    if (!caseRow) {
+        throw new Error(`Case with ID '${caseId}' not found.`);
+    }
+
+    const existingUser = caseRow[userEmailColumnIndex];
+    if (existingUser) {
+        throw new Error("Ups, Someone was faster than you and already claimed this case, please refresh the Case Box.");
+    }
+
     const userEmail = Session.getActiveUser().getEmail();
     updateCaseField(caseId, 'Useremail', userEmail);
     return updateCaseStatus(caseId, 'In Progress');
