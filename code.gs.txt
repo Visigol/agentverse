@@ -1551,6 +1551,139 @@ function getAnomalies(startDateStr, endDateStr) {
   }
 }
 
+function previewHandlingTimeFix(caseId) {
+    try {
+        const fixDetails = calculateCorrectedHandlingTime_(caseId);
+
+        // Helper to format seconds into HH:MM:SS string
+        const formatSeconds = (s) => {
+            if (isNaN(s)) return "Invalid";
+            const prefix = s < 0 ? "-" : "";
+            s = Math.abs(s);
+            const hours = Math.floor(s / 3600);
+            const minutes = Math.floor((s % 3600) / 60);
+            const seconds = Math.floor(s % 60);
+            return `${prefix}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
+
+        return {
+            currentAHT: formatSeconds(fixDetails.currentAHTSeconds),
+            proposedAHT: formatSeconds(fixDetails.newAHTSeconds),
+            grossDuration: formatSeconds(fixDetails.grossDurationSeconds),
+            mergedDowntime: formatSeconds(fixDetails.totalDowntimeSeconds)
+        };
+    } catch (e) {
+        Logger.log(`Error in previewHandlingTimeFix for case ${caseId}: ${e.toString()}`);
+        return { error: e.message };
+    }
+}
+
+function fixHandlingTimeAnomaly(caseId) {
+    try {
+        const fixDetails = calculateCorrectedHandlingTime_(caseId);
+        const newAHTSheetValue = fixDetails.newAHTSeconds > 0 ? fixDetails.newAHTSeconds / 86400 : 0;
+
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+        const data = sheet.getDataRange().getValues();
+        const headers = data[0];
+        const caseIdCol = headers.indexOf('Main Task ID');
+        const ahtCol = headers.indexOf('Stored Agent Handling Time');
+
+        for (let i = 1; i < data.length; i++) {
+            if (data[i][caseIdCol] == caseId) {
+                const ahtCell = sheet.getRange(i + 1, ahtCol + 1);
+                ahtCell.setValue(newAHTSheetValue).setNumberFormat("[h]:mm:ss.SSS");
+                SpreadsheetApp.flush();
+                invalidateCasesCache();
+                return `Successfully corrected Agent Handling Time for case ${caseId}.`;
+            }
+        }
+        throw new Error("Could not find the case to update after calculation.");
+    } catch (e) {
+        Logger.log(`Error in fixHandlingTimeAnomaly for case ${caseId}: ${e.toString()}`);
+        throw e; // Re-throw to be caught by the frontend
+    }
+}
+
+function calculateCorrectedHandlingTime_(caseId) {
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    if (!sheet) throw new Error("Main Tasks sheet not found.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift();
+    const caseIdCol = headers.indexOf('Main Task ID');
+    const startCol = headers.indexOf('Main Task Start Date/Time');
+    const endCol = headers.indexOf('Main Task End Date/Time');
+    const ahtCol = headers.indexOf('Stored Agent Handling Time');
+
+    let caseRow = null;
+    for (const row of data) {
+        if (row[caseIdCol] == caseId) {
+            caseRow = row;
+            break;
+        }
+    }
+    if (!caseRow) throw new Error(`Case ${caseId} not found.`);
+
+    const mainStartTime = new Date(caseRow[startCol]);
+    const mainEndTime = new Date(caseRow[endCol]);
+    if (isNaN(mainStartTime.getTime()) || isNaN(mainEndTime.getTime())) {
+        throw new Error("Case has invalid start or end times.");
+    }
+
+    const grossDurationSeconds = (mainEndTime - mainStartTime) / 1000;
+
+    const logs = getLogsForCase(caseId);
+    let allIntervals = [];
+    logs.pausingLogs.forEach(log => {
+        if (log['Pause Start Time'] && log['Pause End Time']) {
+            allIntervals.push({ start: new Date(log['Pause Start Time']), end: new Date(log['Pause End Time']) });
+        }
+    });
+    logs.escalationLogs.forEach(log => {
+        if (log['Escalation Start Time'] && log['Escalation End Time']) {
+            allIntervals.push({ start: new Date(log['Escalation Start Time']), end: new Date(log['Escalation End Time']) });
+        }
+    });
+
+    const mergedIntervals = mergeTimeIntervals_(allIntervals);
+    const totalDowntimeSeconds = mergedIntervals.reduce((acc, interval) => acc + (interval.end - interval.start) / 1000, 0);
+    const newAHTSeconds = grossDurationSeconds - totalDowntimeSeconds;
+
+    // Also get the currently stored (incorrect) value
+    const currentAHTValue = caseRow[ahtCol];
+    let currentAHTSeconds = 0;
+    if (!isNaN(parseFloat(currentAHTValue))) {
+      currentAHTSeconds = parseFloat(currentAHTValue) * 86400;
+    }
+
+
+    return {
+        currentAHTSeconds: currentAHTSeconds,
+        newAHTSeconds: newAHTSeconds,
+        grossDurationSeconds: grossDurationSeconds,
+        totalDowntimeSeconds: totalDowntimeSeconds
+    };
+}
+
+function mergeTimeIntervals_(intervals) {
+    if (intervals.length <= 1) return intervals;
+    intervals.sort((a, b) => a.start - b.start);
+    const merged = [intervals[0]];
+    for (let i = 1; i < intervals.length; i++) {
+        const lastMerged = merged[merged.length - 1];
+        const current = intervals[i];
+        if (current.start < lastMerged.end) {
+            lastMerged.end = new Date(Math.max(lastMerged.end, current.end));
+        } else {
+            merged.push(current);
+        }
+    }
+    return merged;
+}
+
 /**
  * Gets unique values for all specified filter columns to populate the dashboard UI.
  * NOTE: Adjust the header names in the 'headerNames' object if they differ in your sheet.
@@ -2705,99 +2838,63 @@ function deEscalateCase(caseId) {
 
 function endCase(caseId) {
     try {
-        // 1. Get all logs for the case to calculate total durations.
+        // Use the robust, centralized calculation function to get correct numbers.
+        const correctTimes = calculateCorrectedHandlingTime_(caseId);
+
+        // This function calculates individual sums without merging overlaps.
+        // This is for storing representative (though potentially overlapping) values in the sheet.
         const logs = getLogsForCase(caseId);
-        if (logs.error) {
-            throw new Error(logs.error);
-        }
-
-        // 2. Calculate total pause duration from all log entries.
         let totalPauseSeconds = 0;
-        if (logs.pausingLogs) {
-            logs.pausingLogs.forEach(log => {
-                const startTime = log['Pause Start Time'] ? new Date(log['Pause Start Time']) : null;
-                const endTime = log['Pause End Time'] ? new Date(log['Pause End Time']) : null;
-                if (startTime && endTime && endTime > startTime) {
-                    totalPauseSeconds += (endTime.getTime() - startTime.getTime()) / 1000;
-                }
-            });
-        }
-
-        // 3. Calculate total escalation duration from all log entries.
+        logs.pausingLogs.forEach(log => {
+            const start = new Date(log['Pause Start Time']);
+            const end = new Date(log['Pause End Time']);
+            if (start && end && end > start) totalPauseSeconds += (end - start) / 1000;
+        });
         let totalEscalationSeconds = 0;
-        if (logs.escalationLogs) {
-            logs.escalationLogs.forEach(log => {
-                const startTime = log['Escalation Start Time'] ? new Date(log['Escalation Start Time']) : null;
-                const endTime = log['Escalation End Time'] ? new Date(log['Escalation End Time']) : null;
-                if (startTime && endTime && endTime > startTime) {
-                    totalEscalationSeconds += (endTime.getTime() - startTime.getTime()) / 1000;
-                }
-            });
-        }
+        logs.escalationLogs.forEach(log => {
+            const start = new Date(log['Escalation Start Time']);
+            const end = new Date(log['Escalation End Time']);
+            if (start && end && end > start) totalEscalationSeconds += (end - start) / 1000;
+        });
 
-        // 4. Find the case in Main Tasks sheet to get start time and update all fields.
         const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
         const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
         if (!sheet) throw new Error(`Sheet '${CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES}' not found.`);
 
-        const dataRange = sheet.getDataRange();
-        const values = dataRange.getValues();
-        const headers = values.shift(); // Remove headers to process data rows
-
+        const data = sheet.getDataRange().getValues();
+        const headers = data.shift();
         const caseIdCol = headers.indexOf('Main Task ID');
-        const startTimeCol = headers.indexOf('Main Task Start Date/Time');
         const endTimeCol = headers.indexOf('Main Task End Date/Time');
         const storedPauseCol = headers.indexOf('Stored Pause Duration');
         const storedEscalationCol = headers.indexOf('Stored Escalation Duration');
         const storedAHTCol = headers.indexOf('Stored Agent Handling Time');
         const statusCol = headers.indexOf('Status');
 
-        if ([caseIdCol, startTimeCol, endTimeCol, storedPauseCol, storedEscalationCol, storedAHTCol, statusCol].includes(-1)) {
-            throw new Error("One or more required columns for duration calculation were not found in the Main Tasks sheet.");
-        }
-
         let rowNumberToUpdate = -1;
-        let caseRowData = null;
-        for (let i = 0; i < values.length; i++) {
-            if (values[i][caseIdCol] == caseId) {
-                rowNumberToUpdate = i + 2; // +1 for header offset, +1 for 1-based indexing
-                caseRowData = values[i];
+        for (let i = 0; i < data.length; i++) {
+            if (data[i][caseIdCol] == caseId) {
+                rowNumberToUpdate = i + 2;
                 break;
             }
         }
+        if (rowNumberToUpdate === -1) throw new Error(`Case ID '${caseId}' not found.`);
 
-        if (rowNumberToUpdate === -1) {
-            throw new Error(`Case with ID '${caseId}' not found.`);
-        }
+        const mainTaskEndTime = new Date();
+        const storedPause = totalPauseSeconds > 0 ? totalPauseSeconds / 86400 : 0;
+        const storedEscalation = totalEscalationSeconds > 0 ? totalEscalationSeconds / 86400 : 0;
+        const storedAHT = correctTimes.newAHTSeconds > 0 ? correctTimes.newAHTSeconds / 86400 : 0;
 
-        const mainTaskStartTime = new Date(caseRowData[startTimeCol]);
-        const mainTaskEndTime = new Date(); // The end time is now.
-
-        if (isNaN(mainTaskStartTime.getTime())) {
-            throw new Error("The 'Main Task Start Date/Time' for this case is invalid, so duration cannot be calculated.");
-        }
-
-        const grossDurationSeconds = (mainTaskEndTime.getTime() - mainTaskStartTime.getTime()) / 1000;
-        const agentHandlingTimeSeconds = grossDurationSeconds - totalPauseSeconds - totalEscalationSeconds;
-
-        // Convert calculated seconds into Google Sheet's duration format (fraction of a day).
-        const storedPauseDuration = totalPauseSeconds > 0 ? totalPauseSeconds / 86400 : 0;
-        const storedEscalationDuration = totalEscalationSeconds > 0 ? totalEscalationSeconds / 86400 : 0;
-        const storedAgentHandlingTime = agentHandlingTimeSeconds > 0 ? agentHandlingTimeSeconds / 86400 : 0;
-
-        // 5. Update all relevant cells in the sheet for this case.
-        sheet.getRange(rowNumberToUpdate, storedPauseCol + 1).setValue(storedPauseDuration).setNumberFormat("[h]:mm:ss.SSS");
-        sheet.getRange(rowNumberToUpdate, storedEscalationCol + 1).setValue(storedEscalationDuration).setNumberFormat("[h]:mm:ss.SSS");
-        sheet.getRange(rowNumberToUpdate, storedAHTCol + 1).setValue(storedAgentHandlingTime).setNumberFormat("[h]:mm:ss.SSS");
+        sheet.getRange(rowNumberToUpdate, storedPauseCol + 1).setValue(storedPause).setNumberFormat("[h]:mm:ss.SSS");
+        sheet.getRange(rowNumberToUpdate, storedEscalationCol + 1).setValue(storedEscalation).setNumberFormat("[h]:mm:ss.SSS");
+        sheet.getRange(rowNumberToUpdate, storedAHTCol + 1).setValue(storedAHT).setNumberFormat("[h]:mm:ss.SSS");
         sheet.getRange(rowNumberToUpdate, endTimeCol + 1).setValue(mainTaskEndTime).setNumberFormat("MM-dd-yyyy HH:mm:ss");
         sheet.getRange(rowNumberToUpdate, statusCol + 1).setValue('Completed');
 
-        invalidateCasesCache(); // Ensure UI can fetch the new data.
-        return `Case ${caseId} has been marked as 'Completed' and all durations have been calculated and stored successfully.`;
-
+        invalidateCasesCache();
+        return `Case ${caseId} marked as 'Completed' and durations calculated.`;
     } catch (e) {
         Logger.log(`Error in endCase for ${caseId}: ${e.toString()}`);
-        throw e; // Re-throw the error to be displayed on the client-side.
+        throw e;
     }
 }
 
@@ -2831,15 +2928,19 @@ function isDurationField_(fieldName) {
 function serializeCaseData_(dataObject) {
     if (!dataObject) return null;
     const serialized = {};
+    const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00Z').getTime();
+
     for (const key in dataObject) {
         let value = dataObject[key];
         if (isDurationField_(key)) {
             let totalSeconds = 0;
             if (value instanceof Date) {
-                // Incorrect format from sheet (interpreted as a date)
-                totalSeconds = (value.getHours() * 3600) + (value.getMinutes() * 60) + value.getSeconds();
-            } else if (typeof value === 'number' && value > 0) {
-                // Correct format from sheet (fraction of a day)
+                // This handles durations misinterpreted as dates.
+                // It correctly calculates total seconds from the epoch, accounting for >24h durations.
+                const timeValue = value.getTime() - SPREADSHEET_EPOCH_OFFSET_MS;
+                totalSeconds = Math.round(timeValue / 1000);
+            } else if (typeof value === 'number') {
+                 // Always assume a raw number in a duration field is a fraction of a day.
                 totalSeconds = Math.round(value * 86400);
             }
             value = totalSeconds;

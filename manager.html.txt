@@ -321,6 +321,12 @@
       max-height: 3000px;
       transition: max-height 0.5s ease-in;
     }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
+    .modal-content { background-color: var(--card-background); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); width: 90%; max-width: 1400px; max-height: 90vh; display: flex; overflow: hidden; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding: 20px; }
+    .modal-header h2 { margin: 0; font-size: 1.5em; }
+    .close-button { font-size: 2em; color: var(--text-secondary); background: none; border: none; cursor: pointer; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 15px; padding: 20px; border-top: 1px solid var(--border-light); background-color: #F9FAFB; }
   </style>
 </head>
 <body>
@@ -510,11 +516,29 @@
               <th>Case ID</th>
               <th>Anomaly Type</th>
               <th>Details</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody id="anomalyBody"></tbody>
         </table>
       </div>
+    </div>
+
+    <div id="fix-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 600px; flex-direction: column;">
+            <div class="modal-header">
+                <h2>Confirm Calculation Fix</h2>
+                <button class="close-button" onclick="closeFixModal()">×</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <p>You are about to correct the calculation for Case ID: <strong id="fix-case-id"></strong></p>
+                <div id="fix-details"></div>
+            </div>
+            <div class="modal-actions" style="margin-top: 20px;">
+                <button class="btn-secondary" onclick="closeFixModal()">Cancel</button>
+                <button class="btn-primary" id="confirm-fix-btn" onclick="applyFix()">Confirm & Save Changes</button>
+            </div>
+        </div>
     </div>
   </div>
 
@@ -1082,7 +1106,7 @@
       const tbody = document.getElementById('anomalyBody');
       tbody.innerHTML = '';
       if (!anomalies || anomalies.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No anomalies found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No anomalies found.</td></tr>';
         return;
       }
       setUserMessage(`Found ${anomalies.length} anomalies.`, "success", "anomalyMessage");
@@ -1091,16 +1115,82 @@
         row.insertCell().textContent = anomaly.caseId;
         row.insertCell().textContent = anomaly.type;
         row.insertCell().textContent = anomaly.details;
+        const actionCell = row.insertCell();
+        if (anomaly.type === 'Negative Duration') {
+          actionCell.innerHTML = `<button class="btn-action btn-view-cases" onclick="previewFix('${anomaly.caseId}')">Fix Calculation</button>`;
+        }
       });
     }
 
+    let caseIdToFix = null;
+
+    function previewFix(caseId) {
+        caseIdToFix = caseId;
+        document.getElementById('fix-case-id').textContent = caseId;
+        const detailsDiv = document.getElementById('fix-details');
+        detailsDiv.innerHTML = '<div class="loader" style="display:block; margin: 10px auto;"></div><p>Calculating preview...</p>';
+        document.getElementById('fix-modal').style.display = 'flex';
+
+        google.script.run
+            .withSuccessHandler(previewData => {
+                if (previewData.error) {
+                    detailsDiv.innerHTML = `<p class="error-message">${previewData.error}</p>`;
+                    document.getElementById('confirm-fix-btn').style.display = 'none';
+                } else {
+                    detailsDiv.innerHTML = `
+                        <p><strong>Current Stored AHT:</strong> <span style="color:var(--red-deny);">${previewData.currentAHT}</span></p>
+                        <p><strong>Proposed Corrected AHT:</strong> <span style="color:var(--primary-accent);">${previewData.proposedAHT}</span></p>
+                        <hr>
+                        <p><strong>Calculation Breakdown:</strong></p>
+                        <p>Total Case Duration: ${previewData.grossDuration}</p>
+                        <p>Total Non-Working Time (after merging overlaps): ${previewData.mergedDowntime}</p>
+                    `;
+                    document.getElementById('confirm-fix-btn').style.display = 'block';
+                }
+            })
+            .withFailureHandler(err => {
+                detailsDiv.innerHTML = `<p class="error-message">${err.message}</p>`;
+                document.getElementById('confirm-fix-btn').style.display = 'none';
+            })
+            .previewHandlingTimeFix(caseId);
+    }
+
+    function closeFixModal() {
+        document.getElementById('fix-modal').style.display = 'none';
+        caseIdToFix = null;
+    }
+
+    function applyFix() {
+        if (!caseIdToFix) return;
+        const btn = document.getElementById('confirm-fix-btn');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+
+        google.script.run
+            .withSuccessHandler(response => {
+                alert(response);
+                closeFixModal();
+                loadAnomalies();
+            })
+            .withFailureHandler(err => {
+                alert('Error: ' + err.message);
+                btn.textContent = 'Confirm & Save Changes';
+                btn.disabled = false;
+            })
+            .fixHandlingTimeAnomaly(caseIdToFix);
+    }
     // --- INITIALIZATION ---
     function initializePage() {
-      const today = new Date().toISOString().split('T')[0];
-      document.getElementById('startDate').value = today;
-      document.getElementById('endDate').value = today;
-      document.getElementById('anomalyStartDate').value = today;
-      document.getElementById('anomalyEndDate').value = today;
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(today.getDate() - 30);
+      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+      document.getElementById('startDate').value = todayStr;
+      document.getElementById('endDate').value = todayStr;
+      document.getElementById('anomalyStartDate').value = thirtyDaysAgoStr;
+      document.getElementById('anomalyEndDate').value = todayStr;
       toggleDateRange();
       loadActiveAgents();
       loadInactiveAgents();
