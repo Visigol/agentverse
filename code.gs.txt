@@ -1463,13 +1463,14 @@ function getAnomalies(startDateStr, endDateStr) {
         if (durationValue instanceof Date) {
             const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00Z').getTime();
             durationSeconds = Math.round((durationValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
-        } else if (typeof durationValue === 'number' && durationValue !== '') {
-            durationSeconds = Math.round(durationValue * 86400);
+        } else if (durationValue !== '' && !isNaN(parseFloat(durationValue))) {
+            // Use parseFloat to handle numbers that might be stored as strings.
+            durationSeconds = Math.round(parseFloat(durationValue) * 86400);
         }
 
         if (durationSeconds < 0) {
             anomalies.push({
-                caseId: caseId,
+              caseId: caseId,
               type: "Negative Duration",
               details: `${field.name} is negative: ${durationSeconds.toFixed(2)}s.`
             });
@@ -1481,7 +1482,6 @@ function getAnomalies(startDateStr, endDateStr) {
               details: `${field.name} of ${(durationSeconds / 3600).toFixed(2)}h exceeds the 8-hour limit.`
             });
           }
-        }
       });
     });
 
