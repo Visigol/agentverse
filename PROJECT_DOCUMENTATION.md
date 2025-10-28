@@ -237,12 +237,199 @@ This workflow covers the data aggregation and reporting features available to ma
 
 ## 4. UI Sections Breakdown
 
-(This section remains largely the same as the previous version, providing a high-level overview of the UI pages.)
+This section details the three primary user interfaces of the application.
+
+### 4.1. Agent Dashboard (`index.html.txt`)
+
+This is the main daily interface for agents, focused on attendance and personal productivity.
+
+*   **Header & Navigation:** Displays the agent's name, email, and provides access to the "Cases" tab (if authorized) and a sidebar with important links.
+*   **Status & Scorecards:**
+    *   **Current Status:** A prominent display showing the agent's real-time status (e.g., "Working", "On Break", "Offline").
+    *   **Scorecards:** A grid of key performance indicators (KPIs) for the current day, including "Cases Closed Today," "Average Handling Time," "Open Escalated," and "In Progress."
+*   **Session Control:** Contains the main "Start Work" and "End Work" buttons that control the agent's daily session. It includes a timer for the total session duration.
+*   **Activity Section:** This card appears after an agent starts work and contains buttons to "Start/End Break" and "Start/End Meeting," along with timers for current and total break/meeting durations.
+*   **My Case Summary:** A table where agents can view their case activity for a selected date, showing case details and durations.
+*   **My Pending Requests:** A table listing any attendance correction requests the agent has submitted that are awaiting manager approval.
+*   **Attendance Log:** Allows agents to view their own attendance history for a selected date range and initiate a correction request for any log entry.
+
+### 4.2. Manager Dashboard (`manager.html.txt`)
+
+This is the command center for managers, providing an aggregated view of team performance, attendance, and data integrity.
+
+*   **Header & Navigation:** Provides access to the "Homepage," a "Production" dashboard (for analytics), the "Cases" page, and a "Settings" tab.
+*   **Controls & Status:**
+    *   **Date Controls:** Date pickers to define the reporting range for all dashboard components.
+    *   **Active/Inactive Agents:** Two cards showing real-time lists of which agents are currently working and which are not.
+*   **Homepage Tab:**
+    *   **Agent Summary:** A collapsible table summarizing each agent's total work, break, and meeting times for the selected date range. Managers can click to view the specific cases handled by an agent during that period.
+    *   **Attendance Correction Requests:** A collapsible table where managers can review, approve, and apply or deny correction requests submitted by agents.
+    *   **Agent Leaderboard:** A ranked table of agents based on cases completed and average handling time.
+    *   **Agent Attendance Log:** A tool for managers to select any agent and view their detailed attendance log for a specific period.
+    *   **Anomaly Detection:** A section where managers can scan for data integrity issues (e.g., negative durations, excessive handling times) within a date range.
+*   **Settings Tab:**
+    *   **User Access Management:** A simple interface for managers to add or remove agents' access to the "Cases" tab.
+
+### 4.3. Case Management Page (`cases.html.txt`)
+
+A dedicated interface for both agents and managers to interact with the full lifecycle of cases.
+
+*   **Tabs & Search:**
+    *   **Tabs:** Allows users to toggle between viewing "All Tasks" and "My Cases" (which filters cases assigned to the current user).
+    *   **Search Bar:** A powerful search input that filters across multiple key fields (ID, Country, Account Name, etc.) and displays results in a separate, closable table.
+    *   **Refresh Button:** A manual "Refresh Live Data" button that invalidates the server-side cache, ensuring the next data load is from the source spreadsheet.
+*   **Case Tables:** The main view is organized into collapsible sections based on case status (e.g., "Not Started," "In Progress," "Escalated"). Cases are grouped by country within each status section.
+*   **Case Modal:** Clicking on any case opens a detailed modal view with three main parts:
+    1.  **Main Details:** A grid displaying all fields from the `Main Tasks` sheet for that case.
+    2.  **Log Sections:** Dedicated, collapsible sections below the main details that show related log entries from the `Pausing Logs`, `Escalation Logs`, and `Cooperation Logs` sheets.
+    3.  **Action Buttons:** A dynamic set of buttons that change based on the case's status (e.g., "Claim," "Pause," "Unpause," "Escalate," "De-Escalate," "End Case"). It also includes "Edit," "Save," and "Cancel" buttons for modifying case data.
+*   **Edit Mode & Recalculation Sidebar:** When "Edit" is clicked, all fields in the modal (both main details and logs) become editable. If a user modifies any timestamp field, a sidebar automatically appears, showing the real-time recalculation of stored durations (like Agent Handling Time) before the changes are saved.
 
 ## 5. Feature List
 
-(This section remains largely the same as the previous version, providing a high-level list of application features.)
+This section outlines the core features of the application, categorized by user role.
+
+### 5.1. Agent Features
+
+*   **Attendance Tracking:**
+    *   **Start/End Work:** Clock in and out to create a daily work session.
+    *   **Start/End Break:** Log break periods, which are automatically deducted from work time.
+    *   **Start/End Meeting:** Log meeting periods, also deducted from work time.
+    *   **Real-time Timers:** View running timers for the current session, breaks, and meetings.
+*   **Dashboard & Analytics:**
+    *   **Live Status:** See current status (Working, On Break, Offline) reflected in the UI.
+    *   **Daily Scorecards:** View at-a-glance metrics for cases closed today, average handling time, and the number of escalated or in-progress cases.
+    *   **Case Summary:** View a detailed table of personal case activity for any selected date.
+*   **Attendance Correction:**
+    *   **Viewable Log:** Access a historical log of all personal attendance events (work, break, meeting starts/stops).
+    *   **Correction Requests:** Submit a request to a manager to correct an incorrect timestamp, providing a reason for the change.
+    *   **Pending Request View:** See a list of submitted correction requests that are awaiting manager approval.
+*   **Case Management (with authorized access):**
+    *   **View Cases:** Access the shared case management board, with views for "All Tasks" and "My Cases."
+    *   **Claim Case:** Assign an unassigned case to oneself, changing its status to "In Progress."
+    *   **Lifecycle Management:** Perform actions on a claimed case:
+        *   **Pause/Unpause:** Start or stop a pause timer for a case, which is logged separately.
+        *   **Escalate/De-Escalate:** Mark a case as needing higher-level attention and bring it back into the normal workflow.
+        *   **End Case:** Mark a case as "Completed," automatically calculating and storing final handling and duration metrics.
+    *   **Edit Case Data:** Modify any field within a case's details or associated logs.
+    *   **Real-time Recalculation:** See an immediate recalculation of Agent Handling Time and other durations when editing timestamp fields.
+
+### 5.2. Manager Features
+
+*   **Team Oversight:**
+    *   **Real-time Agent Status:** View lists of all "Active" and "Inactive" agents and their current status (e.g., Working, On Break).
+    *   **Agent Summary Report:** Generate a summary of total work, break, and meeting times for all agents within a selected date range.
+    *   **Drill-Down Views:** Click on an agent in the summary report to see a detailed list of all cases they handled in that period.
+*   **Attendance Management:**
+    *   **Correction Request Approval:** Review, approve, or deny attendance correction requests submitted by agents. Approved requests automatically update the agent's official log.
+    *   **Full Agent Log Access:** Select any agent from a dropdown to view their complete, historical attendance log for any date range.
+*   **Analytics & Reporting:**
+    *   **Production Dashboard:** Access a separate, advanced dashboard with visual charts and filterable metrics on team productivity.
+    *   **Agent Leaderboard:** View a ranked list of agents based on performance metrics (total cases, average handling time) for a selected period.
+    *   **Data Anomaly Detection:** Scan the production data for integrity issues, such as negative durations, excessively long handling times, or invalid timestamps.
+*   **System Administration:**
+    *   **Case Management Access:** Grant or revoke agent access to the "Cases" tab via a simple settings panel.
+*   **Full Case Management Access:**
+    *   Managers have all the same case viewing, searching, and editing capabilities as agents.
 
 ## 6. Standard Operating Procedure (SOP)
 
-(This section remains largely the same as the previous version, providing guides for end-users and developers.)
+This section provides clear, step-by-step guides for common tasks within the application, separated into procedures for end-users (Agents and Managers) and developers.
+
+### 6.1. End-User SOPs
+
+#### **SOP-USER-01: Agent Daily Workflow**
+
+1.  **Start of Day:**
+    *   Navigate to the Agent Dashboard URL.
+    *   Click the **"Start Work"** button to begin your session. The main timer will start, and the "Activity" card will appear.
+2.  **Handling Cases (if applicable):**
+    *   Navigate to the "Cases" tab.
+    *   Find an unassigned case in the "Not Started" section and click on it to open the modal.
+    *   Click the **"Claim Case"** button. The case is now assigned to you and moves to "In Progress."
+3.  **Pausing a Task:**
+    *   If you need to step away from a case temporarily, open the case modal and click **"Pause Case."** The case status will change to "Task Paused."
+    *   When you return, click **"Unpause Case."** The case will return to "In Progress."
+4.  **Taking a Break or Attending a Meeting:**
+    *   Return to the "Attendance" tab.
+    *   Click **"Start Break"** or **"Start Meeting."** Your status will update, and the respective timer will begin.
+    *   When finished, click **"End Break"** or **"End Meeting"** to return to a "Working" status.
+5.  **Completing a Case:**
+    *   After finishing all work on a case, open its modal.
+    *   Ensure all data fields are accurate.
+    *   Click the **"End Case"** button. The system will automatically calculate all final durations and move the case to the "Completed" section.
+6.  **End of Day:**
+    *   Return to the "Attendance" tab.
+    *   Click the **"End Work"** button to officially end your session.
+
+#### **SOP-USER-02: Requesting an Attendance Correction**
+
+1.  **Navigate to Log:** On the Agent Dashboard, go to the "Attendance Log" card.
+2.  **Select Date:** Use the date pickers to select the range that includes the incorrect entry and click **"View Log."**
+3.  **Find Entry:** Locate the incorrect log entry in the table that appears.
+4.  **Initiate Request:** Click the **"Edit"** button in that row.
+5.  **Fill Modal:**
+    *   In the modal that appears, use the "New Corrected Timestamp" picker to set the accurate date and time.
+    *   In the "Reason for Correction" box, provide a clear and concise explanation for the change.
+6.  **Submit:** Click **"Submit Request."** The request will now appear in your "My Pending Requests" table and on the manager's dashboard for approval.
+
+#### **SOP-USER-03: Manager Approving a Correction**
+
+1.  **Navigate to Requests:** On the Manager Dashboard, find the "Attendance Correction Requests" section.
+2.  **Review Request:** Locate the pending request in the table. Review the agent, original time, requested time, and reason.
+3.  **Take Action:**
+    *   To approve: Click the **"Approve & Apply"** button. The system will automatically find the original log entry, update its timestamp, and mark the request as approved.
+    *   To deny: Click the **"Deny"** button. The request will be marked as denied, and the original log will remain unchanged.
+
+#### **SOP-USER-04: Granting Case Management Access**
+
+1.  **Navigate to Settings:** On the Manager Dashboard, click the "Settings" tab in the top navigation bar.
+2.  **Add User:**
+    *   In the "Manage User Access" section, enter the agent's full email address into the "Agent Email" input field.
+    *   Click the **"Add User"** button.
+3.  **Verify:** The agent's email should now appear in the "Authorized Users" table below. The "Cases" tab will now be visible for that agent on their next page load.
+4.  **Remove User:** To revoke access, find the user in the "Authorized Users" table and click the corresponding **"Remove"** button.
+
+### 6.2. Developer & Maintenance SOPs
+
+#### **SOP-DEV-01: Adding a New Field to the Case Modal**
+
+*This procedure is detailed in Section 3 (Maintenance & Extensibility FAQ) but is summarized here.*
+
+1.  **Spreadsheet:** Add a new column with the desired field name to the **`Main Tasks`** sheet in the Production Google Sheet.
+2.  **Code (`cases.html.txt`):**
+    *   Locate the `ALL_FIELDS` JavaScript array near the top of the `<script>` tag.
+    *   Add the exact, case-sensitive name of your new column to this array as a string.
+3.  **Deploy:** Save the changes. The field will now automatically appear in the case modal's view and edit modes.
+
+#### **SOP-DEV-02: Adding a New Case Action Button**
+
+*This procedure is also covered in Section 3 and is summarized here.*
+
+1.  **Backend (`code.gs.txt`):**
+    *   Create a new, top-level function that accepts a `caseId` argument (e.g., `function requestReview(caseId) { ... }`).
+    *   Implement the desired logic. The function should perform its actions and return a success message string.
+2.  **Frontend (`cases.html.txt`):**
+    *   Find the `populateActionButtons` JavaScript function.
+    *   Add a new button definition object to the `buttons` array. Define its text, icon, CSS class, the `action` it calls (e.g., `handleCaseAction('requestReview', caseId)`), and an optional `condition` for its visibility.
+
+#### **SOP-DEV-03: Deploying a New Version**
+
+1.  **Update Version Number:**
+    *   In `code.gs.txt`, locate the `SCRIPT_APP_VERSION` constant at the top of the file.
+    *   Increment the version number (e.g., from `"8.1"` to `"8.2"`).
+2.  **Update Version Config Sheet:**
+    *   Open the Attendance Google Sheet (`CONFIG.ATTENDANCE.ID`).
+    *   Navigate to the **`UpdateConfig`** sheet.
+    *   Update the `LatestVersion` field to the new version number (e.g., `8.2`).
+    *   Update the `LatestFeatures` field with a comma-separated list of new features or fixes.
+    *   **Crucially:** Update the `LatestVersionURL` with the new deployment URL you will generate in the next step.
+3.  **Deploy in Apps Script:**
+    *   In the Apps Script editor, click **Deploy > New deployment**.
+    *   Select the deployment type (e.g., "Web app").
+    *   Enter a description for the new version (e.g., "Added feature X, fixed bug Y").
+    *   Ensure "Execute as" is set to "Me" and "Who has access" is set to "Anyone with Google account."
+    *   Click **Deploy**.
+4.  **Final URL Update:**
+    *   Copy the new "Web app" URL provided after deployment.
+    *   Paste this new URL into the `LatestVersionURL` field in the `UpdateConfig` sheet as mentioned in step 2. This enables the automatic "Update Available" notification for users.
