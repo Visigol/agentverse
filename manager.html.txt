@@ -1181,16 +1181,11 @@
     }
     // --- INITIALIZATION ---
     function initializePage() {
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const thirtyDaysAgo = new Date(today);
-      thirtyDaysAgo.setDate(today.getDate() - 30);
-      const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
-
-      document.getElementById('startDate').value = todayStr;
-      document.getElementById('endDate').value = todayStr;
-      document.getElementById('anomalyStartDate').value = thirtyDaysAgoStr;
-      document.getElementById('anomalyEndDate').value = todayStr;
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('startDate').value = today;
+      document.getElementById('endDate').value = today;
+      document.getElementById('anomalyStartDate').value = today;
+      document.getElementById('anomalyEndDate').value = '2030-01-01';
       toggleDateRange();
       loadActiveAgents();
       loadInactiveAgents();
