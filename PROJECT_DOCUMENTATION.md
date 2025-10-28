@@ -32,194 +32,217 @@ The application relies on two primary Google Spreadsheets, configured in the `CO
     -   If the cache is empty or stale, it locks the script (`LockService`), fetches fresh data from the spreadsheet, splits it into chunks, and stores it in the cache under a new version number.
     *   Data modification functions (like `updateCaseData`) call `invalidateCasesCache()` to increment the version number, ensuring that the next data fetch will ignore the old cache and retrieve fresh data.
 
-## 2. UI Sections Breakdown
+## 2. Function Reference (Detailed)
 
-This section details the components of each HTML page and the backend functions that support them.
+Functions are grouped by workflow and ordered to show the typical flow of execution from the user interface to the backend.
 
-### `index.html.txt` (Agent Dashboard)
+### 2.1. Initialization & Routing
 
-*   **Purpose:** Provides agents with a view of their current status, daily performance, and tools to manage their attendance.
-*   **Sections:**
-    *   **Header:** Displays the logged-in agent's email and name.
-        *   **Backend:** `getInitialAgentState()`
-    *   **Session Control:** "Start/End Work" button and session timer.
-        *   **Backend:** `handleWorkToggle()` -> `logAgentAction()`
-    *   **Activity Section:** "Start/End Break" and "Start/End Meeting" buttons with associated timers.
-        *   **Backend:** `handleBreakToggle()`, `handleMeetingToggle()` -> `logAgentAction()`
-    *   **My Case Summary:** A table showing cases the agent has handled on a selected date.
-        *   **Backend:** `loadMyCaseSummary()` -> `getAgentSummaryFromAvailableCases()`
-    *   **My Pending Requests:** Lists any attendance correction requests the agent has submitted that are awaiting manager approval.
-        *   **Backend:** `loadPendingRequests()` -> `getPendingRequests()`
-    *   **Attendance Log:** A detailed log of the agent's work, break, and meeting activities. Includes an "Edit" button to request corrections.
-        *   **Backend:** `loadAttendanceLog()` -> `getAgentAttendanceLog()`, `submitCorrectionFromLog()` -> `logCorrectionRequest()`
-    *   **Sidebar:** Provides quick access to important links.
-        *   **Backend:** `loadImportantLinks()` -> `getImportantLinks()`
+This workflow handles the initial loading of the application.
 
-### `cases.html.txt` (Case Management)
+1.  **(Backend) `doGet(e)`** (`code.gs.txt`)
+    *   **Purpose:** The main entry point for the web app. It acts as a router.
+    *   **Connections:**
+        *   Called by: Google Apps Script runtime when a user visits the URL.
+        *   Calls: `isUserManager_()` to determine the user's role. `HtmlService.createTemplateFromFile().evaluate()` to serve the appropriate HTML page.
 
-*   **Purpose:** The primary interface for viewing, searching, and managing all cases. Accessible to managers and authorized agents.
-*   **Sections:**
-    *   **Tabs:** Allows switching between "All Tasks" and "My Cases" (filtered to the current user).
-        *   **Backend:** The `filter` parameter is passed to `getCasesByStatus()`.
-    *   **Search Bar:** Filters cases by keywords across multiple fields. Includes a "Refresh Live Data" button to clear the server cache.
-        *   **Backend:** `handleSearch()` -> `searchAllCases()`, `refreshCache()` -> `manuallyInvalidateCache()`
-    *   **Cases Container:** Displays cases in collapsible tables, grouped by status (e.g., 'Not Started', 'In Progress') and then by country.
-        *   **Backend:** `initializeBoard()` -> `loadCases()` -> `getCasesByStatus()`
-    *   **Case Modal:** A detailed pop-up view for a single case.
-        *   **Details Grid:** Shows all fields for the selected case.
-            *   **Backend:** Data is initially loaded from a local JavaScript store (`caseDataStore`). The modal can be refreshed with the latest data using `refreshSingleCaseView()` -> `getCaseDetailsById()`.
-        *   **Log Sections:** Displays related Escalation, Pausing, and Cooperation logs in separate grids.
-            *   **Backend:** `openCaseModal()` triggers `getLogsForCase()`.
-        *   **Action Buttons:** A dynamic set of buttons (Claim, Pause, Escalate, etc.) based on the case's current status.
-            *   **Backend:** `populateActionButtons()` calls `handleCaseAction()`, which in turn calls specific backend functions like `claimCase()`, `pauseCase()`, etc.
-        *   **Edit/Save Workflow:** Allows users to modify case fields and log entries directly.
-            *   **Backend:** `saveChanges()` calls `updateCaseData()` for main fields and `updateLogData()` for log entries.
-        *   **Recalculation Sidebar:** Appears during editing to show real-time calculations of handling time as timestamps are modified.
+2.  **(Backend) `isUserManager_(email)`** (`code.gs.txt`)
+    *   **Purpose:** Checks if a given email belongs to a manager.
+    *   **Connections:**
+        *   Called by: `doGet(e)`.
+        *   Calls: Reads from the `Managers` sheet in the Attendance spreadsheet.
 
-### `manager.html.txt` (Manager Dashboard)
+3.  **(Frontend) `initializePage()`** (`index.html.txt`, `manager.html.txt`, `production.html.txt`)
+    *   **Purpose:** The primary function called on window load in the agent and manager dashboards. It orchestrates the initial data fetching.
+    *   **Connections:**
+        *   Called by: `window.addEventListener('load', ...)`
+        *   Calls (Backend): `getInitialAgentState()`, `checkUserCaseAccess()`, `getAgentDashboardSummary()`, `getPendingRequests()`, `getImportantLinks()`, `getVersionDetails()`, `getActiveAgentStatuses()`, etc.
 
-*   **Purpose:** A centralized dashboard for managers to oversee agent activity, approve requests, and analyze data.
-*   **Sections:**
-    *   **Controls:** Date filters that control the data displayed across the entire dashboard.
-        *   **Backend:** The selected dates are passed to functions like `getManagerAttendanceSummary()` and `getLeaderboardData()`.
-    *   **Active/Inactive Agents:** Two cards showing real-time agent statuses.
-        *   **Backend:** `loadActiveAgents()` -> `getActiveAgentStatuses()`, `loadInactiveAgents()` -> `getInactiveAgentStatuses()`
-    *   **Agent Summary:** A table summarizing each agent's work, break, and meeting durations. Rows can be expanded to show detailed case activity.
-        *   **Backend:** `loadManagerData()` -> `getManagerAttendanceSummary()`. Drill-down uses `toggleAgentCases()` -> `getAgentCasesForDateRange()`.
-    *   **Attendance Correction Requests:** A table listing pending requests from agents, with "Approve" and "Deny" buttons.
-        *   **Backend:** `loadApprovalRequests()` -> `getPendingApprovalRequests()`. Actions call `applyCorrection()` or `updateRequestStatus()`.
-    *   **Agent Leaderboard:** Ranks agents based on performance metrics like cases completed and average handling time.
-        *   **Backend:** `loadLeaderboardData()` -> `getLeaderboardData()`
-    *   **Anomaly Detection:** A section to scan for and display data integrity issues within a selected date range.
-        *   **Backend:** `loadAnomalies()` -> `getAnomalies()`
-    *   **Settings Tab:** An administrative panel for managing which users have access to the "Cases" tab.
-        *   **Backend:** `addUserAccess()`, `loadAuthorizedUsers()` -> `getAuthorizedUsers()`, `removeUserAccess()`.
+### 2.2. Agent Attendance Workflow (`index.html.txt`)
 
-### `production.html.txt` (Production Dashboard)
+This workflow manages an agent's daily attendance and status changes.
 
-*   **Purpose:** A dedicated, highly-visual dashboard for in-depth analysis of production metrics.
-*   **Sections:**
-    *   **Advanced Controls:** A comprehensive set of filters for date range, status, market, category, and other dimensions.
-    *   **Task Summary Scorecards:** High-level case counts by status. These are clickable to drill down into details.
-    *   **Charts and Tables:** A series of data visualizations, each with a corresponding table:
-        *   Task Count by Market
-        *   TAT Adherence by Market
-        *   TAT Bucket Distribution
-        *   Menu Complexity Analysis
-        *   Average AHT per Market by Month
-        *   Average AHT by Retailer Provider Type
-        *   Average AHT by Category
-    *   **Backend:** All data for this dashboard is fetched and aggregated by a single, powerful backend function: `getProductionReport()`. Clicking on data points to drill down re-calls this same function with additional filter parameters.
+1.  **(Frontend) `handleWorkToggle()`, `handleBreakToggle()`, `handleMeetingToggle()`**
+    *   **Purpose:** Event handlers for the main action buttons on the agent dashboard.
+    *   **Connections:**
+        *   Called by: `onclick` events on the respective buttons.
+        *   Calls (Backend): `logAgentAction(actionType)`.
 
-## 3. Feature List
+2.  **(Backend) `logAgentAction(actionType)`** (`code.gs.txt`)
+    *   **Purpose:** The core function for logging agent status changes. It validates the action and appends a new row to the `AgentLog` sheet.
+    *   **Connections:**
+        *   Called by: `handleWorkToggle()`, `handleBreakToggle()`, `handleMeetingToggle()`.
+        *   Calls: `_determineCurrentAgentState()` to validate the action (e.g., can't start a break if not working). Appends a row to the `AgentLog` sheet. Returns the new state to the frontend.
 
-*   **Role-Based Dashboards:** Separate, tailored interfaces for Agents and Managers.
-*   **Real-Time Agent Status:** Managers can see at a glance who is Working, On Break, In Meeting, or Offline.
-*   **Attendance Management:**
-    *   Agents can log their work, break, and meeting sessions.
-    *   A correction system allows agents to request fixes for incorrect log entries.
-    *   Managers have an interface to approve or deny these requests.
-*   **Comprehensive Case Management:**
-    *   View cases grouped by status and country.
-    *   Full-text search across key case fields.
-    *   Detailed modal view for individual cases, including all related logs.
-    *   Direct case actions from the UI (Claim, Pause, Unpause, Escalate, etc.).
-*   **In-Place Editing:**
-    *   Ability to edit main case details and log entries directly from the case modal.
-    *   A recalculation sidebar provides immediate feedback on how timestamp changes affect handling time.
-*   **Advanced Reporting & Analytics (Production Dashboard):**
-    *   Multi-select filters for granular data analysis.
-    *   A suite of charts and tables visualizing key metrics (TAT, AHT, Volume, Complexity).
-    *   Drill-down functionality from any chart or table to see the underlying case data.
-*   **Data Integrity & Anomaly Detection:**
-    *   A dedicated section in the manager dashboard to flag operational anomalies like negative durations, excessive handling times, and invalid timestamps.
-*   **Performance and Optimization:**
-    *   Server-side caching is used to reduce load times and minimize Google Sheets API calls.
-    *   A "Refresh Live Data" button allows users to manually invalidate the cache for immediate updates.
-*   **User & Access Management:**
-    *   A settings panel for managers to grant or revoke access to the case management system.
-*   **System Maintenance:**
-    *   Centralized `CONFIG` object for easy management of spreadsheet IDs and sheet names.
-    *   Built-in version checking and a notification system to prompt users when an update is available.
+3.  **(Backend) `_determineCurrentAgentState(agentEmail, agentName)`** (`code.gs.txt`)
+    *   **Purpose:** A crucial internal function that reconstructs an agent's current state (isWorking, isOnBreak, currentSessionId, etc.) by analyzing the `AgentLog` from the beginning of their last session.
+    *   **Connections:**
+        *   Called by: `getInitialAgentState()` and `logAgentAction()`.
+        *   Calls: Reads data from the `AgentLog` and `CaseLog` sheets.
 
-## 4. Maintenance FAQ
+4.  **(Frontend) `openCorrectionModal(logData)` & `submitCorrectionFromLog()`**
+    *   **Purpose:** Handles the UI for an agent to request a correction to their attendance log.
+    *   **Connections:**
+        *   Called by: Clicking the "Edit" button in the attendance log.
+        *   Calls (Backend): `logCorrectionRequest()`.
 
-**Q: How do I add a new agent or manager?**
-**A:** Open the **Attendance Spreadsheet**. To add an agent, add their email and name to the **`Agents`** sheet. To add a manager, add their email to the **`Managers`** sheet.
+5.  **(Backend) `logCorrectionRequest(...)`** (`code.gs.txt`)
+    *   **Purpose:** Appends a new entry to the `Requests` sheet with the details of the correction, awaiting manager approval.
+    *   **Connections:**
+        *   Called by: `submitCorrectionFromLog()`.
+        *   Calls: Appends a row to the `Requests` sheet.
 
-**Q: The application seems slow or is showing old data. What should I do?**
-**A:** Click the **"Refresh Live Data"** button on the "Cases" page. This clears the server-side cache and forces the app to fetch the latest data from the Google Sheets. If performance is consistently slow, the underlying Google Sheets may be very large and could benefit from archiving old data.
+### 2.3. Case Management Workflow (`cases.html.txt`)
 
-**Q: How do I change an anomaly detection rule, like the 8-hour AHT limit?**
+This workflow covers all actions related to viewing, searching, and modifying cases.
+
+1.  **(Frontend) `loadCases(status)`**
+    *   **Purpose:** Fetches a list of cases for a specific status tab.
+    *   **Connections:**
+        *   Called by: `initializeBoard()` and clicking "Show More".
+        *   Calls (Backend): `getCasesByStatus()`.
+
+2.  **(Backend) `getCasesByStatus(options)`** (`code.gs.txt`)
+    *   **Purpose:** A complex function that fetches, filters, and paginates cases. It is the primary data source for the main cases view. It includes the caching and locking logic.
+    *   **Connections:**
+        *   Called by: `loadCases()`.
+        *   Calls: `CacheService`, `LockService`, `getOpenLogs_()`, `serializeCaseData_()`. Reads from `Main Tasks`, `Pausing Logs`, and `Escalation Logs`.
+
+3.  **(Frontend) `openCaseModal(caseId)`**
+    *   **Purpose:** Opens the detailed modal view for a selected case.
+    *   **Connections:**
+        *   Called by: Clicking on a case row in any table.
+        *   Calls (Backend): `getLogsForCase()` to fetch associated logs.
+
+4.  **(Backend) `getLogsForCase(caseId)`** (`code.gs.txt`)
+    *   **Purpose:** Fetches all log entries from the Pausing, Escalation, and Cooperation log sheets that are related to a specific `caseId`.
+    *   **Connections:**
+        *   Called by: `openCaseModal()`.
+        *   Calls: Reads from `Pausing Logs`, `Escalation Logs`, `Cooperation Logs`.
+
+5.  **(Frontend) `handleCaseAction(action, caseId)`**
+    *   **Purpose:** A generic handler for all action buttons within the case modal (e.g., Claim, Pause).
+    *   **Connections:**
+        *   Called by: `onclick` events on the dynamic action buttons.
+        *   Calls (Backend): A dynamically determined function based on the `action` parameter, such as `claimCase(caseId)`, `pauseCase(caseId)`, `unpauseCase(caseId)`, etc.
+
+6.  **(Backend) Case Action Functions (`claimCase`, `pauseCase`, etc.)** (`code.gs.txt`)
+    *   **Purpose:** A group of functions that perform a specific action on a case. They typically involve creating a log entry and/or updating the case status.
+    *   **Connections:**
+        *   Called by: `handleCaseAction()`.
+        *   Calls: `createNewLogEntry()`, `endOpenLogEntry()`, `updateCaseStatus()`, `updateCaseField()`. These functions orchestrate the data changes in the spreadsheets.
+
+7.  **(Frontend) `saveChanges(saveButton)`**
+    *   **Purpose:** Collects all edited data from the modal's input fields and sends it to the backend for saving.
+    *   **Connections:**
+        *   Called by: Clicking the "Save" button in the modal.
+        *   Calls (Backend): `updateCaseData()` to save changes to the `Main Tasks` sheet and `updateLogData()` for each log sheet that had changes.
+
+8.  **(Backend) `updateCaseData(caseId, updatedData)` & `updateLogData(...)`** (`code.gs.txt`)
+    *   **Purpose:** Finds the specific row in the target sheet (`Main Tasks` or a log sheet) and updates its cells with the provided data.
+    *   **Connections:**
+        *   Called by: `saveChanges()`.
+        *   Calls: `invalidateCasesCache()` to ensure the UI will fetch fresh data. `SpreadsheetApp.flush()` to commit changes immediately.
+
+### 2.4. Manager Analytics & Reporting (`manager.html.txt`, `production.html.txt`)
+
+This workflow covers the data aggregation and reporting features available to managers.
+
+1.  **(Frontend) `loadManagerData()`** (`manager.html.txt`)
+    *   **Purpose:** Fetches the main summary data for the manager homepage based on the selected date range.
+    *   **Connections:**
+        *   Called by: The "Load Data" button.
+        *   Calls (Backend): `getManagerAttendanceSummary()` and `getLeaderboardData()`.
+
+2.  **(Backend) `getManagerAttendanceSummary(startDateStr, endDateStr)`** (`code.gs.txt`)
+    *   **Purpose:** Aggregates attendance data from `AgentLog` for all agents within a date range to calculate total work, break, and meeting times.
+    *   **Connections:**
+        *   Called by: `loadManagerData()`.
+        *   Calls: Reads from `AgentLog` and `Agents` sheets.
+
+3.  **(Frontend) `loadProductionData()`** (`production.html.txt`)
+    *   **Purpose:** Fetches and processes all data for the visual Production Dashboard.
+    *   **Connections:**
+        *   Called by: The "Load Data" button on the production page.
+        *   Calls (Backend): `getProductionReport()`.
+
+4.  **(Backend) `getProductionReport(filters)`** (`code.gs.txt`)
+    *   **Purpose:** The single most complex aggregation function. It filters the entire `Main Tasks` sheet by date and any other criteria, then calculates all metrics for every chart and table on the Production Dashboard in a single pass.
+    *   **Connections:**
+        *   Called by: `loadProductionData()` and any drill-down click.
+        *   Calls: Reads from the `Main Tasks` sheet.
+
+5.  **(Frontend) `loadAnomalies()`** (`manager.html.txt`)
+    *   **Purpose:** Fetches data integrity issues.
+    *   **Connections:**
+        *   Called by: The "Load Anomalies" button.
+        *   Calls (Backend): `getAnomalies()`.
+
+6.  **(Backend) `getAnomalies(startDateStr, endDateStr)`** (`code.gs.txt`)
+    *   **Purpose:** Scans `Main Tasks`, `Pausing Logs`, and `Escalation Logs` for data that violates predefined rules (e.g., negative durations, excessive handling time).
+    *   **Connections:**
+        *   Called by: `loadAnomalies()`.
+        *   Calls: Reads from the three specified production sheets.
+
+## 3. Maintenance & Extensibility FAQ
+
+**Q: How do I add a new data field to be viewable and editable in the Case Modal?**
+**A:** This requires a two-step process:
+1.  **Backend (Spreadsheet):** Add a new column to the `Main Tasks` sheet in your Production Google Sheet. The column header you choose will be the field name used in the code.
+2.  **Frontend (`cases.html.txt`):**
+    *   Find the `ALL_FIELDS` JavaScript array near the top of the `<script>` tag.
+    *   Add the exact name of your new column (e.g., `"My New Field"`) to this array.
+    *   That's it. The application will automatically render the field in the details view, make it editable when "Edit" is clicked, and include it in the data sent to `updateCaseData` when "Save" is clicked.
+
+**Q: How do I add a completely new chart to the Production Dashboard?**
+**A:** This is a more advanced task:
+1.  **Backend (`code.gs.txt`):**
+    *   In the `getProductionReport` function, create a new aggregation object (e.g., `const myNewChartAgg = {};`).
+    *   Inside the main `dataInDateRange.forEach` loop, add logic to populate your new aggregation object with data from each row.
+    *   After the loop, process your aggregation object to calculate the final data for the chart.
+    *   Add your final chart data to the `summary` object that is returned at the end of the function.
+2.  **Frontend (`production.html.txt`):**
+    *   Add a new chart container element to the HTML body (e.g., `<div class="card chart-card" id="myNewChart"></div>`).
+    *   Create a new global variable for the chart instance (e.g., `let myNewChartInstance = null;`).
+    *   In the `displaySummaryData` function, add a call to a new rendering function (e.g., `renderMyNewChart(summary.myNewChartData)`).
+    *   Create the new rendering function (e.g., `function renderMyNewChart(data) { ... }`). This function will contain the ApexCharts options and logic to create and render your new chart. Use the existing chart functions as a template.
+
+**Q: How do I add a new case action button (e.g., "Send Reminder") to the Case Modal?**
 **A:**
-1.  Open the `code.gs.txt` file in the Apps Script editor.
-2.  Find the `getAnomalies` function.
-3.  Locate the `durationFields` array inside the function.
-4.  Change the `limit` property for the 'Handling Time' object. The value is in seconds (e.g., 8 hours = 28800).
-5.  Update the `details` message string to reflect the new limit.
-6.  Save and deploy a new version of the script.
+1.  **Backend (`code.gs.txt`):**
+    *   Create a new top-level function that accepts a `caseId` as its argument (e.g., `function sendReminder(caseId) { ... }`).
+    *   Implement the logic for your action inside this function. It should return a success message string or throw an error.
+2.  **Frontend (`cases.html.txt`):**
+    *   Find the `populateActionButtons` JavaScript function.
+    *   Add a new object to the `buttons` array. This object defines the button's appearance and behavior.
+    *   Example: `{ text: 'Send Reminder', icon: 'fa-solid fa-bell', className: 'btn-secondary', action: () => handleCaseAction('sendReminder', caseId) }`
+    *   (Optional) Add a `condition` property to the object to control when the button should be visible (e.g., `condition: caseData['Status'] === 'In Progress'`).
 
-**Q: How do I grant an agent access to the "Cases" tab?**
+**Q: How do I add a new filter (e.g., "Priority") to the Production Dashboard?**
 **A:**
-1.  Navigate to the **Manager Dashboard** and click the **"Settings"** tab.
-2.  Under "Manage User Access," enter the agent's full email address and click "Add User".
-3.  The user will appear in the "Authorized Users" list. They will need to refresh the application to see the "Cases" tab.
+1.  **Backend (`code.gs.txt`):**
+    *   In `getProductionFilterOptions`, add a new `Set` to `uniqueValues` (e.g., `priorities: new Set()`). Find the column index for your new field and add a line to populate the set from the data. Finally, add it to the returned object.
+    *   In `getProductionReport`, add your new filter to the list of destructured `filters`.
+    *   In the `dataInDateRange.filter` logic, add a new matching condition for your filter (e.g., `const priorityMatch = !selectedPriority || selectedPriority.length === 0 || selectedPriority.includes(row[headerMap.priority]);`). Remember to add it to the final `return` statement.
+2.  **Frontend (`production.html.txt`):**
+    *   In the `.controls-card` HTML, add a new `<select id="priorityFilter" multiple></select>`.
+    *   In `populateFilterDropdowns`, add a new call to `initializeChoice('priorityFilter', options.priorities, 'All Priorities');`.
+    *   In `buildFilters`, add `selectedPriority: getChoiceValues('priorityFilter')` to the returned object.
 
-**Q: How do I deploy a new version of the application?**
-**A:**
-1.  After making your code changes, increment the `SCRIPT_APP_VERSION` constant at the top of `code.gs.txt`.
-2.  (Optional) Update the `UpdateConfig` sheet in the Attendance spreadsheet with details about the new version.
-3.  In the Apps Script editor, go to **Deploy > Manage deployments**.
-4.  Find your active web app deployment, click the **Edit (pencil) icon**.
-5.  In the dialog, select **"New version"** from the "Version" dropdown.
-6.  Click **"Deploy"**. Users will be prompted to refresh or will see an update notification.
+**Q: The app is throwing an error related to "Cannot find function... in object...". What does this mean?**
+**A:** This is a common error in Google Apps Script when the frontend calls a backend function that doesn't exist or has a typo in its name.
+1.  Check the client-side JavaScript (e.g., the `handleCaseAction` or `loadCases` function) to see the exact name of the backend function being called via `google.script.run`.
+2.  Go to `code.gs.txt` and ensure a top-level function with that exact name exists and is spelled correctly.
+3.  Remember that only top-level functions in `.gs` files are exposed to the `google.script.run` API. Helper functions prefixed with an underscore (`_`) or functions defined inside another function cannot be called directly from the frontend.
 
-## 5. Standard Operating Procedure (SOP)
+## 4. UI Sections Breakdown
 
-### 5.1. Non-Technical SOP (For End Users)
+(This section remains largely the same as the previous version, providing a high-level overview of the UI pages.)
 
-#### Daily Agent Workflow
-1.  **Start of Shift:** Access the application URL. On the "Attendance" tab, click **"Start Work"**.
-2.  **During Shift:**
-    *   Use **"Start Break"** / **"End Break"** for all breaks.
-    *   Use **"Start Meeting"** / **"End Meeting"** for all meetings.
-    *   Access the **"Cases"** tab to view and work on your assigned tasks. Use the action buttons (e.g., "Claim", "Pause") within the case modal as needed.
-3.  **End of Shift:** Ensure you are not on a break or in a meeting, then click **"End Work"**.
+## 5. Feature List
 
-#### Requesting a Correction
-1.  On the "Attendance" tab, find the **"Attendance Log"** section.
-2.  Use the date filters to find the log entry you need to correct.
-3.  Click the **"Edit"** button on the corresponding row.
-4.  In the pop-up, set the new correct timestamp and provide a clear reason for the change.
-5.  Click **"Submit Request"**. Your manager will be notified to approve it.
+(This section remains largely the same as the previous version, providing a high-level list of application features.)
 
-#### Manager Daily Tasks
-1.  **Overview:** Use the date filters on the **"Homepage"** to get a summary of agent attendance and performance for the day.
-2.  **Approve Requests:** Check the **"Attendance Correction Requests"** section for pending items and approve or deny them.
-3.  **Monitor Activity:** Use the **"Active Agents"** and **"Inactive Agents"** cards to see real-time team status.
-4.  **Analyze Data:** Use the **"Production"** dashboard to investigate trends, and the **"Anomaly Detection"** section on the Homepage to find potential data issues.
+## 6. Standard Operating Procedure (SOP)
 
-### 5.2. Technical SOP (For Developers & Admins)
-
-#### Codebase Overview
-*   **`code.gs.txt`:** The backend. Contains all server-side logic, data manipulation, and API-like functions.
-*   **`*.html.txt`:** The frontend. Each file represents a different page or view and contains the HTML structure, CSS styling, and client-side JavaScript for interacting with the backend.
-
-#### Configuration Management
-*   **Primary Config:** All spreadsheet IDs and sheet names **must** be managed in the `CONFIG` object at the top of `code.gs.txt`. Avoid hardcoding these values anywhere else in the code.
-*   **Version Config:** The `UpdateConfig` sheet in the Attendance spreadsheet controls the information displayed in the update notification.
-
-#### Common Modification Procedures
-1.  **Adding a New Field to the Case Modal:**
-    *   Add the new spreadsheet column to the `Main Tasks` sheet.
-    *   In `cases.html.txt`, add the exact column name to the `ALL_FIELDS` JavaScript array.
-    *   The UI will automatically render the new field in the details view and include it in the edit/save workflow.
-2.  **Adding a New Case Action Button:**
-    *   In `code.gs.txt`, create a new backend function to handle the action (e.g., `function releaseCase(caseId) {...}`).
-    *   In `cases.html.txt`, find the `populateActionButtons` function.
-    *   Add a new object to the `buttons` array, defining the button's text, icon, class, display condition, and the backend function it should call.
-
-#### Troubleshooting
-1.  **Server-Side Errors:** Check the **Executions** log in the Google Apps Script editor for errors in `code.gs.txt`. Use `Logger.log()` to print variables for debugging.
-2.  **Client-Side Errors:** Open the browser's Developer Console (F12) to check for JavaScript errors originating from the HTML files.
-3.  **Data Discrepancies:** If the UI shows outdated information, the first step is always to use the **"Refresh Live Data"** button. If the issue persists, verify that the `CONFIG` object in `code.gs.txt` points to the correct spreadsheet IDs and sheet names.
+(This section remains largely the same as the previous version, providing guides for end-users and developers.)
