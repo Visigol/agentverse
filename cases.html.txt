@@ -686,26 +686,22 @@ function getOriginalLog(logId, logType) {
     populateActionButtons(activeCaseData);
 }
 
-function handleCaseAction(action, caseId) {
-    const actionButton = event.target;
+function handleCaseAction(event, action, caseId) {
+    const actionButton = event.target.closest('button');
     actionButton.disabled = true;
-    actionButton.textContent = 'Processing...';
+    actionButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
 
     google.script.run
         .withSuccessHandler(response => {
             alert(response);
-            // Re-enable the button before refreshing.
-            actionButton.disabled = false;
-            actionButton.textContent = action.replace(/([A-Z])/g, ' $1').trim();
-
-            // Just refresh the data, don't close the modal.
             refreshSingleCaseView(caseId);
-            initializeBoard(); // Also refresh the main board in the background.
+            initializeBoard();
         })
         .withFailureHandler(err => {
-            alert('Error: ' + err.message);
-            actionButton.disabled = false;
-            actionButton.textContent = action.replace(/([A-Z])/g, ' $1').trim();
+            // The custom error from the backend (e.g., "Ups, Someone was faster...") will be displayed directly.
+            alert(err.message);
+            // Refresh the view to show the latest data, such as who claimed the case.
+            refreshSingleCaseView(caseId);
         })
         [action](caseId);
 }
@@ -719,12 +715,12 @@ function populateActionButtons(caseData) {
 
     // --- BUTTON DEFINITIONS ---
     const buttons = [
-        { text: 'Claim Case', icon: 'fa-solid fa-hand', className: 'btn-claim', condition: !caseData['Useremail'], action: () => handleCaseAction('claimCase', caseId) },
-        { text: 'Pause Case', icon: 'fa-solid fa-pause', className: 'btn-pause', condition: !isPaused, action: () => handleCaseAction('pauseCase', caseId) },
-        { text: 'Unpause', icon: 'fa-solid fa-play', className: 'btn-unpause', condition: isPaused, action: () => handleCaseAction('unpauseCase', caseId) },
-        { text: 'Escalate', icon: 'fa-solid fa-triangle-exclamation', className: 'btn-escalate', condition: !isEscalated, action: () => handleCaseAction('escalateCase', caseId) },
-        { text: 'De-Escalate', icon: 'fa-solid fa-arrow-down-triangle-square', className: 'btn-deescalate', condition: isEscalated, action: () => handleCaseAction('deEscalateCase', caseId) },
-        { text: 'End Case', icon: 'fa-solid fa-flag-checkered', className: 'btn-end', action: () => handleCaseAction('endCase', caseId) }
+        { text: 'Claim Case', icon: 'fa-solid fa-hand', className: 'btn-claim', condition: !caseData['Useremail'], action: (event) => handleCaseAction(event, 'claimCase', caseId) },
+        { text: 'Pause Case', icon: 'fa-solid fa-pause', className: 'btn-pause', condition: !isPaused, action: (event) => handleCaseAction(event, 'pauseCase', caseId) },
+        { text: 'Unpause', icon: 'fa-solid fa-play', className: 'btn-unpause', condition: isPaused, action: (event) => handleCaseAction(event, 'unpauseCase', caseId) },
+        { text: 'Escalate', icon: 'fa-solid fa-triangle-exclamation', className: 'btn-escalate', condition: !isEscalated, action: (event) => handleCaseAction(event, 'escalateCase', caseId) },
+        { text: 'De-Escalate', icon: 'fa-solid fa-arrow-down-triangle-square', className: 'btn-deescalate', condition: isEscalated, action: (event) => handleCaseAction(event, 'deEscalateCase', caseId) },
+        { text: 'End Case', icon: 'fa-solid fa-flag-checkered', className: 'btn-end', action: (event) => handleCaseAction(event, 'endCase', caseId) }
     ];
 
     buttons.forEach(btn => {
