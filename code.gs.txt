@@ -3328,6 +3328,29 @@ function sendMonthlyPerformanceReport() {
         .build();
     imageBlobs['ahtByRetailerChart'] = ahtByRetailerChart.getAs('image/png');
 
+    // h. AHT by Month Chart (Line Chart)
+    const ahtByMonthData = Charts.newDataTable()
+        .addColumn(Charts.ColumnType.STRING, 'Month');
+    const markets = Object.keys(productionSummary.ahtByMonth.marketData);
+    markets.forEach(market => ahtByMonthData.addColumn(Charts.ColumnType.NUMBER, market));
+
+    productionSummary.monthList.forEach(month => {
+        const row = [month];
+        markets.forEach(market => {
+            row.push(productionSummary.ahtByMonth.marketData[market][month] || 0);
+        });
+        ahtByMonthData.addRow(row);
+    });
+
+    const ahtByMonthChart = Charts.newLineChart()
+        .setDataTable(ahtByMonthData)
+        .setOption('title', 'AHT Trend by Market')
+        .setOption('width', 600)
+        .setOption('height', 350)
+        .setOption('legend', { position: 'top', maxLines: 3 })
+        .build();
+    imageBlobs['ahtByMonthChart'] = ahtByMonthChart.getAs('image/png');
+
 
     Logger.log("Generated Charts:", Object.keys(imageBlobs));
 
