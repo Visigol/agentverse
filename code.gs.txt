@@ -3370,6 +3370,7 @@ function sendMonthlyPerformanceReport() {
 
     MailApp.sendEmail({
       to: recipient,
+      cc: "inesa.Povar@cognizant.com, Jitesh.Amin@cognizant.com, Amelia.Kalamarska@cognizant.com",
       subject: subject,
       htmlBody: htmlBody,
       inlineImages: imageBlobs
