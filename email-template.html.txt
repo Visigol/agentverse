@@ -289,23 +289,7 @@
                     <!-- Leaderboard -->
                     <tr>
                         <td>
-                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0 10px;">Agent Leaderboard</h2>
-                            <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #E5E7EB; border-radius: 8px;">
-                                <tr style="background-color: #F0F8F5; font-weight: 700;">
-                                    <td style="padding: 12px 15px;">Rank</td>
-                                    <td style="padding: 12px 15px;">Agent Name</td>
-                                    <td style="padding: 12px 15px;">Cases Completed</td>
-                                    <td style="padding: 12px 15px;">Avg. Handling Time</td>
-                                </tr>
-                                <? for (var i = 0; i < leaderboardData.length; i++) { ?>
-                                    <tr>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= leaderboardData[i].rank ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= leaderboardData[i].agentName ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= leaderboardData[i].totalCases ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(leaderboardData[i].avgHandlingTime) ?></td>
-                                    </tr>
-                                <? } ?>
-                            </table>
+                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0 10px;">Top 10 Agents by Cases Completed</h2>
                             <div style="text-align: center; padding-top: 20px;">
                                 <img src="cid:leaderboardChart" style="max-width: 90%;" />
                             </div>
