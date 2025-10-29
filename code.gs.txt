@@ -3188,10 +3188,7 @@ function sendMonthlyPerformanceReport() {
     // a. Get Leaderboard Data
     const leaderboardData = getLeaderboardData(startDateStr, endDateStr);
 
-    // b. Get Manager Attendance Summary
-    const attendanceSummary = getManagerAttendanceSummary(startDateStr, endDateStr);
-
-    // c. Get Production Report Data
+    // b. Get Production Report Data
     const productionFilters = {
       startDateStr: startDateStr,
       endDateStr: endDateStr,
@@ -3208,7 +3205,6 @@ function sendMonthlyPerformanceReport() {
 
     // For now, I'll log the data to confirm it's being fetched.
     Logger.log("Leaderboard Data:", leaderboardData.length, "entries");
-    Logger.log("Attendance Summary:", attendanceSummary.length, "entries");
     Logger.log("Production Summary Total Cases:", productionSummary.totalCounts.GrandTotal);
 
     // --- 3. CREATE DYNAMIC CHARTS AS IMAGES ---
@@ -3282,6 +3278,57 @@ function sendMonthlyPerformanceReport() {
         .build();
     imageBlobs['leaderboardChart'] = leaderboardChart.getAs('image/png');
 
+    // e. TAT Bucket Chart (Bar Chart)
+    const tatBucketData = Charts.newDataTable()
+        .addColumn(Charts.ColumnType.STRING, 'Bucket')
+        .addColumn(Charts.ColumnType.NUMBER, 'Count');
+    const tatBucketTotal = productionSummary.tatBucket.grandTotal;
+    tatBucketData.addRow(['<24 hours', tatBucketTotal.under24 || 0]);
+    tatBucketData.addRow(['24-30 hours', tatBucketTotal.between24and30 || 0]);
+    tatBucketData.addRow(['30-48 hours', tatBucketTotal.between30and48 || 0]);
+    tatBucketData.addRow(['>48 hours', tatBucketTotal.over48 || 0]);
+    const tatBucketChart = Charts.newColumnChart()
+        .setDataTable(tatBucketData)
+        .setOption('title', 'TAT Bucket Distribution (All Markets)')
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build();
+    imageBlobs['tatBucketChart'] = tatBucketChart.getAs('image/png');
+
+    // f. Menu Complexity Chart (Bar Chart)
+    const menuComplexityData = Charts.newDataTable()
+        .addColumn(Charts.ColumnType.STRING, 'Metric')
+        .addColumn(Charts.ColumnType.NUMBER, 'Average');
+    const menuComplexityTotal = productionSummary.menuComplexity.grandTotal;
+    menuComplexityData.addRow(['Avg. Dishes', parseFloat((menuComplexityTotal.avgTotalDishes || 0).toFixed(1))]);
+    menuComplexityData.addRow(['Avg. Photos', parseFloat((menuComplexityTotal.avgMainDishesPhotos || 0).toFixed(1))]);
+    menuComplexityData.addRow(['Avg. Options', parseFloat((menuComplexityTotal.avgTotalOptions || 0).toFixed(1))]);
+    menuComplexityData.addRow(['Avg. Option Groups', parseFloat((menuComplexityTotal.avgTotalOptionGroups || 0).toFixed(1))]);
+    const menuComplexityChart = Charts.newColumnChart()
+        .setDataTable(menuComplexityData)
+        .setOption('title', 'Menu Complexity Analysis (All Markets)')
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build();
+    imageBlobs['menuComplexityChart'] = menuComplexityChart.getAs('image/png');
+
+    // g. AHT by Retailer Chart (Bar Chart)
+    const ahtByRetailerData = Charts.newDataTable()
+        .addColumn(Charts.ColumnType.STRING, 'Retailer Type')
+        .addColumn(Charts.ColumnType.NUMBER, 'Average AHT (Minutes)');
+    const ahtRetailerTotal = productionSummary.ahtByRetailer.grandTotal;
+    for (const retailerType in ahtRetailerTotal) {
+        ahtByRetailerData.addRow([retailerType, (ahtRetailerTotal[retailerType] || 0) / 60]);
+    }
+    const ahtByRetailerChart = Charts.newColumnChart()
+        .setDataTable(ahtByRetailerData)
+        .setOption('title', 'Average AHT by Retailer Type (All Markets)')
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build();
+    imageBlobs['ahtByRetailerChart'] = ahtByRetailerChart.getAs('image/png');
+
+
     Logger.log("Generated Charts:", Object.keys(imageBlobs));
 
     // --- 4. COMBINE DATA, CHARTS, AND TEMPLATE ---
@@ -3290,7 +3337,6 @@ function sendMonthlyPerformanceReport() {
     template.endDate = endDateStr;
     template.productionSummary = productionSummary;
     template.leaderboardData = leaderboardData;
-    template.attendanceSummary = attendanceSummary;
     template.formatDuration = formatDuration;
 
     const htmlBody = template.evaluate().getContent();

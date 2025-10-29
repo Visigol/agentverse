@@ -19,9 +19,9 @@
                     <tr>
                         <td>
                             <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Task Summary</h2>
+                            <? var scorecards = productionSummary.totalCounts; ?>
                             <table width="100%" border="0" cellspacing="0" cellpadding="10">
                                 <tr>
-                                    <? var scorecards = productionSummary.totalCounts; ?>
                                     <td align="center" style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px;">
                                         <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Completed</div>
                                         <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards.Completed || 0 ?></div>
@@ -34,48 +34,136 @@
                                         <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Escalated</div>
                                         <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards.Escalated || 0 ?></div>
                                     </td>
+                                    <td align="center" style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px;">
+                                        <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Grand Total</div>
+                                        <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards.GrandTotal || 0 ?></div>
+                                    </td>
+                                </tr>
+                                <tr style="height: 10px;"><td colspan="4"></td></tr>
+                                <tr>
+                                    <td align="center" style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px;">
+                                        <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Not Started</div>
+                                        <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards['Not Started'] || 0 ?></div>
+                                    </td>
+                                    <td align="center" style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px;">
+                                        <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Cancelled</div>
+                                        <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards.Cancelled || 0 ?></div>
+                                    </td>
+                                    <td align="center" style="border: 1px solid #E5E7EB; border-radius: 8px; padding: 15px;">
+                                        <div style="font-size: 1em; font-weight: 600; color: #6B7280;">Task Paused</div>
+                                        <div style="font-size: 2.5em; font-weight: 700; color: #111827;"><?= scorecards['Task Paused'] || 0 ?></div>
+                                    </td>
+                                    <td></td> <!-- Empty cell for alignment -->
                                 </tr>
                             </table>
                         </td>
                     </tr>
-                    <!-- Attendance Summary -->
+
+                    <!-- Total TAT Adherence -->
                     <tr>
                         <td>
-                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Attendance Summary</h2>
+                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Total TAT Adherence</h2>
+                            <? var tatGrandTotal = { adhered: 0, missed: 0 };
+                               for (var market in productionSummary.tatCounts) {
+                                   tatGrandTotal.adhered += productionSummary.tatCounts[market].adhered || 0;
+                                   tatGrandTotal.missed += productionSummary.tatCounts[market].missed || 0;
+                               } ?>
                             <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #E5E7EB; border-radius: 8px;">
                                 <tr style="background-color: #F0F8F5; font-weight: 700;">
-                                    <td style="padding: 12px 15px;">Agent Name</td>
-                                    <td style="padding: 12px 15px;">Total Work Duration</td>
-                                    <td style="padding: 12px 15px;">Total Break Duration</td>
-                                    <td style="padding: 12px 15px;">Total Meeting Duration</td>
+                                    <td style="padding: 12px 15px;">TAT Adhered</td>
+                                    <td style="padding: 12px 15px;">TAT Missed</td>
+                                    <td style="padding: 12px 15px;">Grand Total</td>
                                 </tr>
-                                <? for (var i = 0; i < attendanceSummary.length; i++) { ?>
-                                    <tr>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= attendanceSummary[i].agentName ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(attendanceSummary[i].totalWorkDurationSeconds) ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(attendanceSummary[i].totalBreakDurationSeconds) ?></td>
-                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(attendanceSummary[i].totalMeetingDurationSeconds) ?></td>
-                                    </tr>
-                                <? } ?>
+                                <tr>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatGrandTotal.adhered ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatGrandTotal.missed ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatGrandTotal.adhered + tatGrandTotal.missed ?></td>
+                                </tr>
                             </table>
+                            <div style="text-align: center; padding-top: 20px;">
+                                <img src="cid:tatChart" style="max-width: 90%;" />
+                            </div>
                         </td>
                     </tr>
-                    <!-- Charts -->
+
+                    <!-- TAT Bucket -->
                     <tr>
                         <td>
-                             <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Visual Insights</h2>
-                             <table width="100%" border="0" cellspacing="0" cellpadding="10">
+                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">TAT Bucket</h2>
+                             <? var tatBucketTotal = productionSummary.tatBucket.grandTotal; ?>
+                            <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #E5E7EB; border-radius: 8px;">
+                                <tr style="background-color: #F0F8F5; font-weight: 700;">
+                                    <td style="padding: 12px 15px;">&lt;24 hours</td>
+                                    <td style="padding: 12px 15px;">24-30 hours</td>
+                                    <td style="padding: 12px 15px;">30-48 hours</td>
+                                    <td style="padding: 12px 15px;">&gt;48 hours</td>
+                                    <td style="padding: 12px 15px;">Grand Total</td>
+                                </tr>
                                 <tr>
-                                    <td align="center"><img src="cid:marketChart" style="max-width: 100%;" /></td>
-                                    <td align="center"><img src="cid:tatChart" style="max-width: 100%;" /></td>
-                                 </tr>
-                                 <tr>
-                                     <td align="center"><img src="cid:ahtByCategoryChart" style="max-width: 100%;" /></td>
-                                     <td align="center"><img src="cid:leaderboardChart" style="max-width: 100%;" /></td>
-                                 </tr>
-                             </table>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatBucketTotal.under24 || 0 ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatBucketTotal.between24and30 || 0 ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatBucketTotal.between30and48 || 0 ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatBucketTotal.over48 || 0 ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= tatBucketTotal.total || 0 ?></td>
+                                </tr>
+                            </table>
+                             <div style="text-align: center; padding-top: 20px;">
+                                <img src="cid:tatBucketChart" style="max-width: 90%;" />
+                            </div>
                         </td>
                     </tr>
+
+                    <!-- Menu Complexity -->
+                    <tr>
+                        <td>
+                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Menu Complexity Analysis</h2>
+                             <? var menuComplexityTotal = productionSummary.menuComplexity.grandTotal; ?>
+                            <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #E5E7EB; border-radius: 8px;">
+                                <tr style="background-color: #F0F8F5; font-weight: 700;">
+                                    <td style="padding: 12px 15px;">Avg. AHT</td>
+                                    <td style="padding: 12px 15px;">Avg. Dishes</td>
+                                    <td style="padding: 12px 15px;">Avg. Photos</td>
+                                    <td style="padding: 12px 15px;">Avg. Options</td>
+                                    <td style="padding: 12px 15px;">Avg. Option Groups</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(menuComplexityTotal.avgAhtSeconds || 0) ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= (menuComplexityTotal.avgTotalDishes || 0).toFixed(1) ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= (menuComplexityTotal.avgMainDishesPhotos || 0).toFixed(1) ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= (menuComplexityTotal.avgTotalOptions || 0).toFixed(1) ?></td>
+                                    <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= (menuComplexityTotal.avgTotalOptionGroups || 0).toFixed(1) ?></td>
+                                </tr>
+                            </table>
+                             <div style="text-align: center; padding-top: 20px;">
+                                <img src="cid:menuComplexityChart" style="max-width: 90%;" />
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- AHT by Retailer -->
+                    <tr>
+                        <td>
+                            <h2 style="font-size: 1.6em; font-weight: 700; margin: 20px 0;">Average AHT By Retailer Provider Type</h2>
+                             <? var ahtRetailerTotal = productionSummary.ahtByRetailer.grandTotal;
+                                var retailerTypes = productionSummary.retailerTypeList; ?>
+                            <table width="100%" border="0" cellspacing="0" cellpadding="10" style="border: 1px solid #E5E7EB; border-radius: 8px;">
+                                <tr style="background-color: #F0F8F5; font-weight: 700;">
+                                    <? for (var i = 0; i < retailerTypes.length; i++) { ?>
+                                        <td style="padding: 12px 15px;"><?= retailerTypes[i] ?></td>
+                                    <? } ?>
+                                </tr>
+                                <tr>
+                                     <? for (var i = 0; i < retailerTypes.length; i++) { ?>
+                                        <td style="padding: 12px 15px; border-top: 1px solid #E5E7EB;"><?= formatDuration(ahtRetailerTotal[retailerTypes[i]] || 0) ?></td>
+                                     <? } ?>
+                                </tr>
+                            </table>
+                             <div style="text-align: center; padding-top: 20px;">
+                                <img src="cid:ahtByRetailerChart" style="max-width: 90%;" />
+                            </div>
+                        </td>
+                    </tr>
+
                     <!-- Leaderboard -->
                     <tr>
                         <td>
@@ -96,6 +184,9 @@
                                     </tr>
                                 <? } ?>
                             </table>
+                            <div style="text-align: center; padding-top: 20px;">
+                                <img src="cid:leaderboardChart" style="max-width: 90%;" />
+                            </div>
                         </td>
                     </tr>
                 </table>
