@@ -1648,12 +1648,26 @@ function calculateCorrectedHandlingTime_(caseId) {
     let allIntervals = [];
     logs.pausingLogs.forEach(log => {
         if (log['Pause Start Time'] && log['Pause End Time']) {
-            allIntervals.push({ start: new Date(log['Pause Start Time']), end: new Date(log['Pause End Time']) });
+            let start = new Date(log['Pause Start Time']);
+            let end = new Date(log['Pause End Time']);
+            // Clip the interval to the main task's time range
+            if (start < mainEndTime && end > mainStartTime) {
+                start = new Date(Math.max(start, mainStartTime));
+                end = new Date(Math.min(end, mainEndTime));
+                allIntervals.push({ start, end });
+            }
         }
     });
     logs.escalationLogs.forEach(log => {
         if (log['Escalation Start Time'] && log['Escalation End Time']) {
-            allIntervals.push({ start: new Date(log['Escalation Start Time']), end: new Date(log['Escalation End Time']) });
+            let start = new Date(log['Escalation Start Time']);
+            let end = new Date(log['Escalation End Time']);
+            // Clip the interval to the main task's time range
+            if (start < mainEndTime && end > mainStartTime) {
+                start = new Date(Math.max(start, mainStartTime));
+                end = new Date(Math.min(end, mainEndTime));
+                allIntervals.push({ start, end });
+            }
         }
     });
 
@@ -1664,8 +1678,10 @@ function calculateCorrectedHandlingTime_(caseId) {
     // Also get the currently stored (incorrect) value
     const currentAHTValue = caseRow[ahtCol];
     let currentAHTSeconds = 0;
-    if (!isNaN(parseFloat(currentAHTValue))) {
-      currentAHTSeconds = parseFloat(currentAHTValue) * 86400;
+    if (currentAHTValue instanceof Date) {
+        currentAHTSeconds = Math.round((currentAHTValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
+    } else if (!isNaN(parseFloat(currentAHTValue))) {
+        currentAHTSeconds = parseFloat(currentAHTValue) * 86400;
     }
 
 

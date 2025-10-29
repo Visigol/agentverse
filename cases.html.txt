@@ -633,9 +633,10 @@ function getOriginalLog(logId, logType) {
 }
 
     // --- MODAL & EDITING WORKFLOW ---
-    function openCaseModal(caseId) {
-    activeCaseData = caseDataStore[caseId];
-    if (!activeCaseData) { alert('Error: Could not find case data.'); return; }
+function renderModalContent(caseDetails) {
+    // Update the global data stores
+    caseDataStore[caseDetails['Main Task ID']] = caseDetails;
+    activeCaseData = caseDetails;
 
     const grid = document.getElementById('modal-details-grid');
     document.getElementById('modal-title').textContent = `Case Details: ${activeCaseData['Main Task ID']}`;
@@ -652,38 +653,51 @@ function getOriginalLog(logId, logType) {
             if (isDateTimeField(field)) {
                 displayValue = formatDisplayDate(displayValue);
             } else if (isDurationField(field)) {
-                displayValue = formatTime(displayValue); // Already in seconds
+                displayValue = formatTime(displayValue);
             }
             finalHtml = `<span class="field-value">${displayValue}</span>`;
         } else {
             finalHtml = `<span class="field-value"></span>`;
         }
-
         detailsHTML += `<div class="field"><strong>${field}</strong>${finalHtml}</div>`;
     });
     grid.innerHTML = detailsHTML;
 
+    // This resets the edit/save buttons to their default state
     cancelEdit(true);
 
+    // The caseDetails object from getCaseDetailsById already includes the logs
+    displayCaseLogs(caseDetails);
+
+    // Re-populate action buttons based on new state
+    populateActionButtons(caseDetails);
+}
+
+
+function openCaseModal(caseId) {
+    const modal = document.getElementById('case-modal');
+    const grid = document.getElementById('modal-details-grid');
+    const title = document.getElementById('modal-title');
+
+    // Show modal with a loading state
+    title.textContent = `Loading Case: ${caseId}...`;
+    grid.innerHTML = '<div class="loader" style="display:block; margin: 50px auto;"></div>';
     document.getElementById('escalation-logs-container').style.display = 'none';
     document.getElementById('pausing-logs-container').style.display = 'none';
     document.getElementById('cooperation-logs-container').style.display = 'none';
-    document.getElementById('escalation-logs-grid').innerHTML = '';
-    document.getElementById('pausing-logs-grid').innerHTML = '';
-    document.getElementById('cooperation-logs-grid').innerHTML = '';
+    document.getElementById('case-action-buttons').innerHTML = '';
+    modal.style.display = 'flex';
 
     google.script.run
-        .withSuccessHandler(logs => {
-            activeCaseData.escalationLogs = logs.escalationLogs;
-            activeCaseData.pausingLogs = logs.pausingLogs;
-            activeCaseData.cooperationLogs = logs.cooperationLogs;
-            displayCaseLogs(logs);
+        .withSuccessHandler(freshCaseData => {
+            renderModalContent(freshCaseData);
         })
-        .withFailureHandler(err => console.error('Could not load logs:', err))
-        .getLogsForCase(caseId);
-
-    document.getElementById('case-modal').style.display = 'flex';
-    populateActionButtons(activeCaseData);
+        .withFailureHandler(err => {
+            console.error('Could not load case details:', err);
+            title.textContent = `Error Loading Case: ${caseId}`;
+            grid.innerHTML = `<p class="error-message" style="padding: 20px;">${err.message}</p>`;
+        })
+        .getCaseDetailsById(caseId);
 }
 
 function handleCaseAction(event, action, caseId) {
@@ -984,52 +998,12 @@ function refreshSingleCaseView() {
         console.error("No active case to refresh.");
         return;
     }
-    // Show a subtle loading indicator in the modal
     const modalTitle = document.getElementById('modal-title');
     modalTitle.textContent += ' (Refreshing...)';
 
     google.script.run
         .withSuccessHandler(freshCaseData => {
-            // Update the global data stores
-            caseDataStore[caseId] = freshCaseData;
-
-            // Re-render the modal with the new data.
-            // This re-uses the existing openCaseModal logic but avoids the animation/display part.
-            activeCaseData = freshCaseData;
-            const grid = document.getElementById('modal-details-grid');
-            document.getElementById('modal-title').textContent = `Case Details: ${activeCaseData['Main Task ID']}`;
-
-            let detailsHTML = '';
-            const linkFields = ['Menu link', 'Dish Photos Link'];
-            ALL_FIELDS.forEach(field => {
-                let displayValue = activeCaseData[field] || '';
-                let finalHtml;
-
-                if (linkFields.includes(field) && displayValue) {
-                    finalHtml = `<a href="${displayValue}" target="_blank" class="truncate-link">${displayValue}</a>`;
-                } else if (displayValue) {
-                    if (isDateTimeField(field)) {
-                        displayValue = formatDisplayDate(displayValue);
-                } else if (isDurationField(field)) { // It's already in seconds from the server
-                    displayValue = formatTime(displayValue);
-                    }
-                    finalHtml = `<span class="field-value">${displayValue}</span>`;
-                } else {
-                    finalHtml = `<span class="field-value"></span>`;
-                }
-                detailsHTML += `<div class="field"><strong>${field}</strong>${finalHtml}</div>`;
-            });
-            grid.innerHTML = detailsHTML;
-
-            // This resets the edit/save buttons to their default state
-            cancelEdit(true);
-
-            // Re-display the logs with the fresh data
-            displayCaseLogs(freshCaseData);
-
-            // Re-populate action buttons based on new state
-            populateActionButtons(freshCaseData);
-
+            renderModalContent(freshCaseData);
             modalTitle.textContent = `Case Details: ${caseId}`; // Remove "Refreshing..."
         })
         .withFailureHandler(err => {
