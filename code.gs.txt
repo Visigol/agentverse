@@ -2021,8 +2021,31 @@ function getAgentDashboardSummary() {
 
     const emailCol = headers.indexOf("useremail");
     const statusCol = headers.indexOf("status");
-    const startTimeCol = headers.indexOf("main task start date/time");
     const endTimeCol = headers.indexOf("main task end date/time");
+    const caseIdCol = headers.indexOf("main task id");
+    const handlingTimeCol = headers.indexOf("stored agent handling time");
+
+    // Get cases the agent cooperated on today
+    const cooperationLogSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.COOPERATION_LOGS);
+    let cooperatedCasesToday = new Set();
+    if (cooperationLogSheet) {
+        const cooperationLogData = cooperationLogSheet.getDataRange().getValues();
+        const cooperationLogHeaders = cooperationLogData.shift().map(h => h.toString().trim().toLowerCase());
+        const cooperationCaseIdCol = cooperationLogHeaders.indexOf("related case id");
+        const cooperationEmailCol = cooperationLogHeaders.indexOf("user email");
+        const cooperationEndTimeCol = cooperationLogHeaders.indexOf("end time");
+
+        if (cooperationCaseIdCol !== -1 && cooperationEmailCol !== -1 && cooperationEndTimeCol !== -1) {
+            cooperationLogData.forEach(row => {
+                const rowEmail = (row[cooperationEmailCol] || "").toString().trim().toLowerCase();
+                const endTime = row[cooperationEndTimeCol] instanceof Date ? row[cooperationEndTimeCol] : null;
+
+                if (rowEmail === agentEmail.toLowerCase() && endTime && endTime >= todayStart && endTime <= todayEnd) {
+                    cooperatedCasesToday.add(row[cooperationCaseIdCol]);
+                }
+            });
+        }
+    }
 
     let summary = {
       closedToday: 0,
@@ -2033,24 +2056,34 @@ function getAgentDashboardSummary() {
 
     data.forEach(row => {
       const rowEmail = (row[emailCol] || "").toString().trim().toLowerCase();
-      if (rowEmail === agentEmail.toLowerCase()) {
-        const status = (row[statusCol] || "").toString();
-        const startTime = row[startTimeCol] instanceof Date ? row[startTimeCol] : null;
+      const status = (row[statusCol] || "").toString();
+      const endTime = row[endTimeCol] instanceof Date ? row[endTimeCol] : null;
+      const caseId = row[caseIdCol];
 
-        if (startTime && startTime >= todayStart && startTime <= todayEnd) {
-            if (status === 'Completed' || status === 'Finished') {
-                summary.closedToday++;
-                const endTime = row[endTimeCol] instanceof Date ? row[endTimeCol] : null;
-                if (endTime) {
-                    const durationSeconds = (endTime.getTime() - startTime.getTime()) / 1000;
-                    summary.totalHandlingTime += durationSeconds > 0 ? durationSeconds : 0;
-                }
-            } else if (status === 'In Progress') {
-                summary.inProgress++;
-            } else if (status === 'Escalated') {
-                summary.escalated++;
-            }
-        }
+      // Count all in-progress and escalated cases for the agent, regardless of date.
+      if (rowEmail === agentEmail.toLowerCase()) {
+          if (status === 'In Progress') {
+              summary.inProgress++;
+          } else if (status === 'Escalated') {
+              summary.escalated++;
+          }
+      }
+
+      // Handle "closed today" logic
+      if ((status === 'Completed' || status === 'Finished') && endTime && endTime >= todayStart && endTime <= todayEnd) {
+          if (rowEmail === agentEmail.toLowerCase() || (caseId && cooperatedCasesToday.has(caseId))) {
+              summary.closedToday++;
+              const handlingTimeValue = row[handlingTimeCol];
+              let handlingTimeSeconds = 0;
+              if (handlingTimeValue) {
+                  if (handlingTimeValue instanceof Date) {
+                      handlingTimeSeconds = (handlingTimeValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
+                  } else if (!isNaN(parseFloat(handlingTimeValue))) {
+                      handlingTimeSeconds = parseFloat(handlingTimeValue) * 86400;
+                  }
+              }
+              summary.totalHandlingTime += handlingTimeSeconds > 0 ? handlingTimeSeconds : 0;
+          }
       }
     });
 
