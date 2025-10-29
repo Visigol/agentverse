@@ -3157,3 +3157,170 @@ function checkUserCaseAccess() {
     return false;
   }
 }
+
+function sendDebugEmail() {
+  const recipient = "andre.homem@cognizant.com";
+  const subject = "testing email function";
+  const body = "testing email function";
+  MailApp.sendEmail(recipient, subject, body);
+}
+
+function sendMonthlyPerformanceReport() {
+  // This function will generate and email the automated performance summary.
+
+  // --- 1. DEFINE DATE RANGE ---
+  const today = new Date();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  // Helper function to format dates as YYYY-MM-DD strings
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const startDateStr = formatDate(startOfMonth);
+  const endDateStr = formatDate(today);
+
+  // --- 2. AGGREGATE DATA ---
+  try {
+    // a. Get Leaderboard Data
+    const leaderboardData = getLeaderboardData(startDateStr, endDateStr);
+
+    // b. Get Manager Attendance Summary
+    const attendanceSummary = getManagerAttendanceSummary(startDateStr, endDateStr);
+
+    // c. Get Production Report Data
+    const productionFilters = {
+      startDateStr: startDateStr,
+      endDateStr: endDateStr,
+      // Pass empty arrays for other filters to get all data
+      selectedStatus: [],
+      selectedMarket: [],
+      selectedCategory: [],
+      selectedTaskType: [],
+      selectedRetailerType: [],
+      selectedSlaReason: []
+    };
+    const productionReport = getProductionReport(productionFilters);
+    const productionSummary = productionReport.summary; // We need the summary part
+
+    // For now, I'll log the data to confirm it's being fetched.
+    Logger.log("Leaderboard Data:", leaderboardData.length, "entries");
+    Logger.log("Attendance Summary:", attendanceSummary.length, "entries");
+    Logger.log("Production Summary Total Cases:", productionSummary.totalCounts.GrandTotal);
+
+    // --- 3. CREATE DYNAMIC CHARTS AS IMAGES ---
+    const imageBlobs = {};
+
+    // a. Market Share Chart (Pie Chart)
+    const marketData = Charts.newDataTable()
+      .addColumn(Charts.ColumnType.STRING, "Market")
+      .addColumn(Charts.ColumnType.NUMBER, "Count");
+    for (const market in productionSummary.marketCounts) {
+      const total = Object.values(productionSummary.marketCounts[market]).reduce((a, b) => a + b, 0);
+      marketData.addRow([market, total]);
+    }
+    const marketChart = Charts.newPieChart()
+      .setDataTable(marketData)
+      .setOption('title', 'Task Distribution by Market')
+      .setOption('pieHole', 0.4)
+      .setOption('width', 500)
+      .setOption('height', 350)
+      .build();
+    imageBlobs['marketChart'] = marketChart.getAs('image/png');
+
+
+    // b. TAT Adherence Chart (Bar Chart)
+    const tatData = Charts.newDataTable()
+      .addColumn(Charts.ColumnType.STRING, 'Market')
+      .addColumn(Charts.ColumnType.NUMBER, 'Adhered')
+      .addColumn(Charts.ColumnType.NUMBER, 'Missed');
+    for (const market in productionSummary.tatCounts) {
+      tatData.addRow([market, productionSummary.tatCounts[market].adhered || 0, productionSummary.tatCounts[market].missed || 0]);
+    }
+    const tatChart = Charts.newBarChart()
+      .setDataTable(tatData)
+      .setOption('title', 'TAT Adherence by Market')
+      .setOption('isStacked', 'percent')
+      .setOption('width', 500)
+      .setOption('height', 350)
+      .setOption('hAxis', { format: 'percent' })
+      .build();
+    imageBlobs['tatChart'] = tatChart.getAs('image/png');
+
+    // c. AHT by Category Chart (Bar Chart)
+    const ahtByCategoryData = Charts.newDataTable()
+      .addColumn(Charts.ColumnType.STRING, 'Category')
+      .addColumn(Charts.ColumnType.NUMBER, 'Average Handling Time (Minutes)');
+    for (const category in productionSummary.ahtByCategory.categoryData) {
+        const ahtInMinutes = (productionSummary.ahtByCategory.categoryData[category] || 0) / 60;
+        ahtByCategoryData.addRow([category, ahtInMinutes]);
+    }
+    const ahtByCategoryChart = Charts.newColumnChart()
+        .setDataTable(ahtByCategoryData)
+        .setOption('title', 'Average Handling Time by Category')
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .setOption('vAxis', { title: 'Time (Minutes)' })
+        .build();
+    imageBlobs['ahtByCategoryChart'] = ahtByCategoryChart.getAs('image/png');
+
+    // d. Leaderboard Chart (Bar Chart)
+    const leaderboardChartData = Charts.newDataTable()
+        .addColumn(Charts.ColumnType.STRING, 'Agent')
+        .addColumn(Charts.ColumnType.NUMBER, 'Cases Completed');
+    leaderboardData.slice(0, 10).forEach(agent => { // Top 10 agents
+        leaderboardChartData.addRow([agent.agentName, agent.totalCases]);
+    });
+    const leaderboardChart = Charts.newBarChart()
+        .setDataTable(leaderboardChartData)
+        .setOption('title', 'Top 10 Agents by Cases Completed')
+        .setOption('width', 500)
+        .setOption('height', 350)
+        .build();
+    imageBlobs['leaderboardChart'] = leaderboardChart.getAs('image/png');
+
+    Logger.log("Generated Charts:", Object.keys(imageBlobs));
+
+    // --- 4. COMBINE DATA, CHARTS, AND TEMPLATE ---
+    const template = HtmlService.createTemplateFromFile('email-template.html.txt');
+    template.startDate = startDateStr;
+    template.endDate = endDateStr;
+    template.productionSummary = productionSummary;
+    template.leaderboardData = leaderboardData;
+    template.attendanceSummary = attendanceSummary;
+    template.formatDuration = formatDuration;
+
+    const htmlBody = template.evaluate().getContent();
+
+    // --- 5. IMPLEMENT EMAIL SENDING LOGIC ---
+    const recipient = "andre.homem@cognizant.com";
+    const subject = `Monthly Performance Report: ${startDateStr} to ${endDateStr}`;
+
+    MailApp.sendEmail({
+      to: recipient,
+      subject: subject,
+      htmlBody: htmlBody,
+      inlineImages: imageBlobs
+    });
+
+    Logger.log("Performance report sent successfully to", recipient);
+
+  } catch (e) {
+    Logger.log(`Error during data aggregation for performance report: ${e.toString()}`);
+    // Optional: Send a simple error email
+    MailApp.sendEmail("andre.homem@cognizant.com", "Error: Performance Report Generation Failed", `Failed to generate the report due to an error: ${e.message}\n\nStack: ${e.stack}`);
+  }
+}
+
+function formatDuration(totalSeconds) {
+    if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds)) {
+        return "00:00:00";
+    }
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
