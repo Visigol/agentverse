@@ -642,7 +642,7 @@ function renderModalContent(caseDetails) {
     document.getElementById('modal-title').textContent = `Case Details: ${activeCaseData['Main Task ID']}`;
 
     let detailsHTML = '';
-    const linkFields = ['Menu link', 'Dish Photos Link'];
+    const linkFields = ['Menu link', 'Dish Photos Link', 'Airtable Link', 'Linking Snapshot URL'];
     ALL_FIELDS.forEach(field => {
         let displayValue = activeCaseData[field] || '';
         let finalHtml;
@@ -762,22 +762,57 @@ function populateActionButtons(caseData) {
         grid.querySelectorAll('.field-value, .truncate-link').forEach(element => {
             const headerText = element.previousElementSibling.textContent;
             const value = activeCaseData[headerText] || '';
+
+            // Dropdown options
+            const statusOptions = ["Task Paused", "Not Started", "In Progress", "Escalated", "Completed", "Cancelled"];
+            const categoryOptions = ["Creation", "Update", "Linking"];
+            const countryOptions = ["Cyprus", "Czechia", "Poland", "Romania", "Slovakia", "Ukraine", "Estonia", "Ghana", "Kenya", "Malta", "Lithuania", "Latvia", "Portugal", "Bulgaria"];
+
             const isTextarea = ['Menu instructions', 'Onboarding instructions', 'Menu Comment', 'Comments', 'Event Summary', 'Escalated Comment', 'SLA Missed Comment'].includes(headerText);
             const inputType = (headerText.toLowerCase().includes('date') || headerText.toLowerCase().includes('time')) ? 'datetime-local' : 'text';
 
             let inputElement;
-            if (isTextarea) {
+
+            if (headerText === 'Status') {
+                inputElement = document.createElement('select');
+                statusOptions.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt;
+                    if (opt === value) option.selected = true;
+                    inputElement.appendChild(option);
+                });
+            } else if (headerText === 'Category') {
+                inputElement = document.createElement('select');
+                categoryOptions.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt;
+                    if (opt === value) option.selected = true;
+                    inputElement.appendChild(option);
+                });
+            } else if (headerText === 'Country') {
+                inputElement = document.createElement('select');
+                countryOptions.forEach(opt => {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt;
+                    if (opt === value) option.selected = true;
+                    inputElement.appendChild(option);
+                });
+            } else if (isTextarea) {
                 inputElement = document.createElement('textarea');
                 inputElement.textContent = value;
             } else {
                 inputElement = document.createElement('input');
                 inputElement.type = inputType;
                 if (inputType === 'datetime-local' && value) {
-                    try { inputElement.value = new Date(value).toISOString().substring(0, 16); } catch(e) {}
+                    try { inputElement.value = new Date(value).toISOString().substring(0, 16); } catch (e) {}
                 } else {
                     inputElement.value = value;
                 }
             }
+
             inputElement.dataset.header = headerText;
             if (isDateTimeField(headerText)) {
                 inputElement.onchange = handleTimestampChange;
@@ -835,7 +870,7 @@ function populateActionButtons(caseData) {
         grid.classList.remove('edit-mode');
         // This re-renders the main details grid to correctly restore special fields like links and formatted dates
         let detailsHTML = '';
-        const linkFields = ['Menu link', 'Dish Photos Link'];
+        const linkFields = ['Menu link', 'Dish Photos Link', 'Airtable Link', 'Linking Snapshot URL'];
         ALL_FIELDS.forEach(field => {
             let displayValue = activeCaseData[field] || '';
             let finalHtml;
@@ -894,7 +929,7 @@ logSections.forEach(gridId => {
     const updatedData = {};
     const modal = document.getElementById('case-modal');
 
-    modal.querySelectorAll('input, textarea').forEach(input => {
+    modal.querySelectorAll('input, textarea, select').forEach(input => {
         let value = input.value;
         // IMPORTANT: Convert datetime-local string to full ISO 8601 string for server
         if (input.type === 'datetime-local' && value) {
