@@ -1461,8 +1461,8 @@ function getAnomalies(startDateStr, endDateStr) {
         // In-line serialization logic to correctly interpret sheet durations
         let durationSeconds = 0;
         if (durationValue instanceof Date) {
-            const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00Z').getTime();
-            durationSeconds = Math.round((durationValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
+            const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
+            durationSeconds = Math.round((durationValue.getTime() - SPREADSHET_EPOCH_OFFSET_MS) / 1000);
         } else if (durationValue !== '' && !isNaN(parseFloat(durationValue))) {
             // Use parseFloat to handle numbers that might be stored as strings.
             durationSeconds = Math.round(parseFloat(durationValue) * 86400);
@@ -2935,7 +2935,7 @@ function isDurationField_(fieldName) {
 function serializeCaseData_(dataObject) {
     if (!dataObject) return null;
     const serialized = {};
-    const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00Z').getTime();
+    const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
 
     for (const key in dataObject) {
         let value = dataObject[key];
