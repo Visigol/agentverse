@@ -64,6 +64,9 @@ const CONFIG = {
 // IMPORTANT: Manually update this version number in the script before deploying a new version.
 const SCRIPT_APP_VERSION = "8.1";
 
+// Constant for converting Sheets duration values (which are Date objects relative to epoch) to seconds.
+const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
+
 // Fallback if Managers sheet is not found or has issues
 const MANAGER_EMAILS_FALLBACK = ["manager1@example.com", "your.manager.email@example.com"];
 
@@ -1461,8 +1464,7 @@ function getAnomalies(startDateStr, endDateStr) {
         // In-line serialization logic to correctly interpret sheet durations
         let durationSeconds = 0;
         if (durationValue instanceof Date) {
-            const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
-            durationSeconds = Math.round((durationValue.getTime() - SPREADSHET_EPOCH_OFFSET_MS) / 1000);
+            durationSeconds = Math.round((durationValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
         } else if (durationValue !== '' && !isNaN(parseFloat(durationValue))) {
             // Use parseFloat to handle numbers that might be stored as strings.
             durationSeconds = Math.round(parseFloat(durationValue) * 86400);
@@ -2935,7 +2937,6 @@ function isDurationField_(fieldName) {
 function serializeCaseData_(dataObject) {
     if (!dataObject) return null;
     const serialized = {};
-    const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
 
     for (const key in dataObject) {
         let value = dataObject[key];
