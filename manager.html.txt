@@ -386,7 +386,7 @@
         <div class="agent-box" id="activeAgentsBox">
           <h3>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            Active Agents
+            Active Agents <span id="activeAgentsCount"></span>
           </h3>
           <ul id="activeAgentsList">
             <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
@@ -395,7 +395,7 @@
         <div class="agent-box" id="inactiveAgentsBox">
           <h3 class="collapsible" onclick="toggleInactiveAgentsList()">
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="8"></line><line x1="19" y1="14" x2="19" y2="14"></line></svg>
-            Inactive Agents
+            Inactive Agents <span id="inactiveAgentsCount"></span>
           </h3>
           <ul id="inactiveAgentsList" class="collapsed">
             <li style="color:var(--text-secondary); font-style:italic;">Loading...</li>
@@ -655,28 +655,34 @@
     // --- DATA DISPLAY FUNCTIONS ---
     function displayActiveAgents(activeAgents) {
       const activeAgentsList = document.getElementById('activeAgentsList');
+      const activeAgentsCount = document.getElementById('activeAgentsCount');
       activeAgentsList.innerHTML = '';
       if (activeAgents && activeAgents.length > 0) {
+        activeAgentsCount.textContent = `(${activeAgents.length})`;
         activeAgents.forEach(agent => {
           const listItem = document.createElement('li');
           listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail})`;
           activeAgentsList.appendChild(listItem);
         });
       } else {
+        activeAgentsCount.textContent = '(0)';
         activeAgentsList.innerHTML = '<li style="color:var(--text-secondary); font-style:italic;">No agents currently active.</li>';
       }
     }
 
     function displayInactiveAgents(inactiveAgents) {
       const inactiveAgentsList = document.getElementById('inactiveAgentsList');
+      const inactiveAgentsCount = document.getElementById('inactiveAgentsCount');
       inactiveAgentsList.innerHTML = '';
       if (inactiveAgents && inactiveAgents.length > 0) {
+        inactiveAgentsCount.textContent = `(${inactiveAgents.length})`;
         inactiveAgents.forEach(agent => {
           const listItem = document.createElement('li');
           listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail})`;
           inactiveAgentsList.appendChild(listItem);
         });
       } else {
+        inactiveAgentsCount.textContent = '(0)';
         inactiveAgentsList.innerHTML = '<li style="color:var(--text-secondary); font-style:italic;">All agents are currently active.</li>';
       }
     }
