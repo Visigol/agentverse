@@ -954,6 +954,7 @@ function getAgentSummaryFromAvailableCases(agentEmail, dateStr) {
     const statusCol = headers.indexOf("status");
     const startTimeCol = headers.indexOf("main task start date/time");
     const endTimeCol = headers.indexOf("main task end date/time");
+    const escalationCol = headers.indexOf("stored escalation duration");
 
     if ([emailCol, caseIdCol, endTimeCol].includes(-1)) {
       throw new Error("Required columns (useremail, main task id, main task end date/time) not found in " + CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES + " sheet.");
@@ -970,7 +971,18 @@ function getAgentSummaryFromAvailableCases(agentEmail, dateStr) {
       const endTime = new Date(row[endTimeCol]);
       let durationSeconds = null;
       if (startTime && !isNaN(startTime.getTime())) {
-        durationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+        const grossDurationSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+
+        const escalationDurationValue = escalationCol !== -1 ? row[escalationCol] : 0;
+        let escalationSeconds = 0;
+        if (escalationDurationValue) {
+            if (escalationDurationValue instanceof Date) {
+                escalationSeconds = (escalationDurationValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
+            } else if (!isNaN(parseFloat(escalationDurationValue))) {
+                escalationSeconds = parseFloat(escalationDurationValue) * 86400;
+            }
+        }
+        durationSeconds = grossDurationSeconds - escalationSeconds;
       }
       return {
         caseId: row[caseIdCol],
@@ -2060,8 +2072,11 @@ function getAgentDashboardSummary() {
       const endTime = row[endTimeCol] instanceof Date ? row[endTimeCol] : null;
       const caseId = row[caseIdCol];
 
-      // Count all in-progress and escalated cases for the agent, regardless of date.
-      if (rowEmail === agentEmail.toLowerCase()) {
+      const isOwner = rowEmail === agentEmail.toLowerCase();
+      const isCooperator = caseId && cooperatedCasesToday.has(caseId);
+
+      // In-progress and Escalated cases are only counted if the user is the owner.
+      if (isOwner) {
           if (status === 'In Progress') {
               summary.inProgress++;
           } else if (status === 'Escalated') {
@@ -2069,21 +2084,22 @@ function getAgentDashboardSummary() {
           }
       }
 
-      // Handle "closed today" logic
-      if ((status === 'Completed' || status === 'Finished') && endTime && endTime >= todayStart && endTime <= todayEnd) {
-          if (rowEmail === agentEmail.toLowerCase() || (caseId && cooperatedCasesToday.has(caseId))) {
-              summary.closedToday++;
-              const handlingTimeValue = row[handlingTimeCol];
-              let handlingTimeSeconds = 0;
-              if (handlingTimeValue) {
-                  if (handlingTimeValue instanceof Date) {
-                      handlingTimeSeconds = (handlingTimeValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
-                  } else if (!isNaN(parseFloat(handlingTimeValue))) {
-                      handlingTimeSeconds = parseFloat(handlingTimeValue) * 86400;
-                  }
+      // A case is counted as "closed today" if it was completed today AND
+      // the user is either the owner OR a cooperator on that case.
+      const isClosedToday = (status === 'Completed' || status === 'Finished') && endTime && endTime >= todayStart && endTime <= todayEnd;
+
+      if (isClosedToday && (isOwner || isCooperator)) {
+          summary.closedToday++;
+          const handlingTimeValue = row[handlingTimeCol];
+          let handlingTimeSeconds = 0;
+          if (handlingTimeValue) {
+              if (handlingTimeValue instanceof Date) {
+                  handlingTimeSeconds = (handlingTimeValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
+              } else if (!isNaN(parseFloat(handlingTimeValue))) {
+                  handlingTimeSeconds = parseFloat(handlingTimeValue) * 86400;
               }
-              summary.totalHandlingTime += handlingTimeSeconds > 0 ? handlingTimeSeconds : 0;
           }
+          summary.totalHandlingTime += handlingTimeSeconds > 0 ? handlingTimeSeconds : 0;
       }
     });
 
