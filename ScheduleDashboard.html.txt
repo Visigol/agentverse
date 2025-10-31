@@ -372,16 +372,44 @@
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         summaryDiv.innerHTML = '';
         let summaryHtml = '';
+        const targetRatio = 2.0;
+
         days.forEach(day => {
-            summaryHtml += `<h4>${day}</h4><ul>`;
+            summaryHtml += `<h4>${day}</h4>`;
+            let dailyJustifications = '';
+            let busiestHour = { hour: null, workload: -1 };
+            let totalWorkload = 0;
+            let totalRecommendedStaff = 0;
+
             const hours = Object.keys(suggestions[day]).sort();
             hours.forEach(hour => {
                 const data = suggestions[day][hour];
+                const workload = fullData[day][hour].avgWorkload;
+                totalWorkload += workload;
+                totalRecommendedStaff += data.recommended;
+
+                if (workload > busiestHour.workload) {
+                    busiestHour = { hour, workload };
+                }
+
                 if (data.justification !== "No workload recorded for this hour on this day." && data.justification !== "Workload and staffing appear balanced.") {
-                     summaryHtml += `<li><strong>${hour}:00:</strong> ${data.justification} Recommending <strong>${data.recommended}</strong> agent(s).</li>`;
+                     dailyJustifications += `<li><strong>${hour}:00:</strong> ${data.justification} Recommending <strong>${data.recommended}</strong> agent(s).</li>`;
                 }
             });
-            summaryHtml += '</ul>';
+
+            if(dailyJustifications) {
+                summaryHtml += `<ul>${dailyJustifications}</ul>`;
+            }
+
+            summaryHtml += `<div style="padding: 10px; background-color: #f9fafb; border-radius: 8px; margin-top: 10px;">`;
+            summaryHtml += `<h5>${day} Summary</h5>`;
+            if (totalWorkload > 0) {
+                const avgWorkload = totalWorkload / hours.length;
+                summaryHtml += `<p>The day's activity peaks around <strong>${busiestHour.hour}:00</strong>. The schedule aims to maintain a staffing level that keeps the case-per-agent ratio near our target of <strong>${targetRatio.toFixed(1)}</strong>. Based on an average workload of <strong>${avgWorkload.toFixed(1)}</strong> cases per hour, a total of <strong>${totalRecommendedStaff}</strong> agent-hours are recommended for the day.</p>`;
+            } else {
+                summaryHtml += `<p>No workload data was available for ${day}, so no staff are recommended.</p>`;
+            }
+            summaryHtml += `</div>`;
         });
         summaryDiv.innerHTML = summaryHtml;
     }
