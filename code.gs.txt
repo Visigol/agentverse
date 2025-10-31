@@ -3447,16 +3447,19 @@ function getHourlyStaffing(startDateStr, endDateStr) {
     if (!sheet) throw new Error("AgentLog sheet not found.");
 
     const allData = sheet.getDataRange().getValues();
-    allData.shift();
+    const headers = allData.shift();
+    const tsIdx = headers.indexOf('Timestamp');
+    const emailIdx = headers.indexOf('Agent Email');
+    const actionIdx = headers.indexOf('Action');
 
     const agentSessions = {};
     const agentLogs = {};
     allData.forEach(row => {
-        const ts = new Date(row[1]);
+        const ts = new Date(row[tsIdx]);
         if (ts >= startDate && ts <= endDate) {
-            const email = row[2];
+            const email = row[emailIdx];
             if (!agentLogs[email]) agentLogs[email] = [];
-            agentLogs[email].push({ ts, action: row[4] });
+            agentLogs[email].push({ ts, action: row[actionIdx] });
         }
     });
 
@@ -3500,8 +3503,10 @@ function getHourlyStaffing(startDateStr, endDateStr) {
         const dayKey = currentDate.toISOString().split('T')[0];
 
         for (let hour = 7; hour < 20; hour++) {
-            const hourStart = new Date(currentDate.setHours(hour, 0, 0, 0));
-            const hourEnd = new Date(currentDate.setHours(hour, 59, 59, 999));
+            const hourStart = new Date(currentDate);
+            hourStart.setHours(hour, 0, 0, 0);
+            const hourEnd = new Date(currentDate);
+            hourEnd.setHours(hour, 59, 59, 999);
             let agentsThisHour = new Set();
 
             for (const email in agentSessions) {
@@ -3793,9 +3798,9 @@ function getHourlyWorkload(startDateStr, endDateStr) {
     if (!sheet) throw new Error("Main Tasks sheet not found.");
 
     const allData = sheet.getDataRange().getValues();
-    allData.shift();
-    const startIdx = 0; // Assuming start time is in the first column for simplicity
-    const endIdx = 1; // Assuming end time is in the second column
+    const headers = allData.shift();
+    const startIdx = headers.indexOf('Main Task Start Date/Time');
+    const endIdx = headers.indexOf('Main Task End Date/Time');
 
     const dailyHourlyCounts = {
         started: {0: {}, 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}},
