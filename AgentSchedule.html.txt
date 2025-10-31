@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Agent Weekly Schedule Application</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background-main: #F0F8F5;
+      --primary-accent: #00B14F;
+      --card-background: #FFFFFF;
+      --text-primary: #111827;
+      --text-secondary: #6B7280;
+      --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+    }
+    .container {
+      padding: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2em;
+      font-weight: 800;
+    }
+    .calendar-card {
+      background-color: var(--card-background);
+      border-radius: 12px;
+      box-shadow: 0 4px 8px var(--shadow-color);
+      padding: 25px;
+    }
+    .week-navigation {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .week-navigation h2 {
+      font-size: 1.5em;
+      color: var(--primary-accent);
+    }
+    .calendar {
+      display: grid;
+      grid-template-columns: 60px repeat(7, 1fr);
+      gap: 5px;
+    }
+    .time-slot, .day-header, .hour-label {
+      padding: 10px;
+      text-align: center;
+      border-radius: 6px;
+    }
+    .day-header {
+      font-weight: 600;
+      background-color: #F9FAFB;
+    }
+    .hour-label {
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.9em;
+    }
+    .time-slot {
+      background-color: var(--border-light);
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .time-slot:hover {
+      background-color: #d1d5db;
+    }
+    .time-slot.selected {
+      background-color: var(--primary-accent);
+      color: white;
+    }
+    .actions {
+      text-align: right;
+      margin-top: 25px;
+    }
+    .actions button {
+      background-color: var(--primary-accent);
+      color: white;
+      border: none;
+      padding: 12px 25px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 1.1em;
+      cursor: pointer;
+    }
+    .message-area {
+        text-align: center;
+        margin-top: 15px;
+        min-height: 20px;
+        font-weight: 600;
+    }
+    .error-message { color: #EF4444; }
+    .success-message { color: var(--primary-accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Apply for Next Week's Schedule</h1>
+    </div>
+    <div class="calendar-card">
+      <div class="week-navigation">
+        <h2 id="week-range-display"></h2>
+      </div>
+      <div class="calendar" id="schedule-calendar">
+        <!-- Calendar will be generated here -->
+      </div>
+      <div class="actions">
+        <button onclick="submitSchedule()">Submit Application</button>
+      </div>
+       <div id="userMessage" class="message-area"></div>
+    </div>
+  </div>
+
+  <script>
+    const selectedSlots = new Set();
+
+    function getNextMonday() {
+        const today = new Date();
+        const day = today.getDay();
+        const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust when today is Sunday
+        const monday = new Date(today.setDate(diff));
+        monday.setDate(monday.getDate() + 7); // Start with next week's Monday
+        monday.setHours(0, 0, 0, 0);
+        return monday;
+    }
+
+    function generateCalendar() {
+      const calendar = document.getElementById('schedule-calendar');
+      calendar.innerHTML = ''; // Clear previous content
+
+      const monday = getNextMonday();
+      const weekRangeDisplay = document.getElementById('week-range-display');
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      weekRangeDisplay.textContent = `Week of ${monday.toLocaleDateString()} - ${sunday.toLocaleDateString()}`;
+
+      // Create headers
+      calendar.innerHTML += '<div></div>'; // Empty corner
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        calendar.innerHTML += `<div class="day-header">${d.toLocaleDateString(undefined, { weekday: 'short' })}<br>${d.getDate()}</div>`;
+      }
+
+      // Create time slots
+      for (let hour = 7; hour < 20; hour++) {
+        calendar.innerHTML += `<div class="hour-label">${String(hour).padStart(2, '0')}:00</div>`;
+        for (let day = 0; day < 7; day++) {
+          const slotDate = new Date(monday);
+          slotDate.setDate(monday.getDate() + day);
+          slotDate.setHours(hour);
+          const slotId = slotDate.toISOString();
+          calendar.innerHTML += `<div class="time-slot" id="${slotId}" onclick="toggleSlot('${slotId}')"></div>`;
+        }
+      }
+    }
+
+    function toggleSlot(slotId) {
+      const slotElement = document.getElementById(slotId);
+      if (selectedSlots.has(slotId)) {
+        selectedSlots.delete(slotId);
+        slotElement.classList.remove('selected');
+      } else {
+        selectedSlots.add(slotId);
+        slotElement.classList.add('selected');
+      }
+    }
+
+    function setUserMessage(message, type) {
+        const msgEl = document.getElementById('userMessage');
+        msgEl.textContent = message;
+        msgEl.className = 'message-area';
+        if (type === "error") msgEl.classList.add('error-message');
+        else if (type === "success") msgEl.classList.add('success-message');
+    }
+
+    function submitSchedule() {
+      if (selectedSlots.size === 0) {
+        setUserMessage("Please select at least one time slot.", "error");
+        return;
+      }
+      setUserMessage("Submitting...", "status");
+      const slotsArray = Array.from(selectedSlots);
+      google.script.run
+        .withSuccessHandler(response => {
+          setUserMessage(response, "success");
+          selectedSlots.clear();
+          document.querySelectorAll('.time-slot.selected').forEach(el => el.classList.remove('selected'));
+        })
+        .withFailureHandler(err => {
+          setUserMessage(err.message, "error");
+        })
+        .submitScheduleApplication(slotsArray);
+    }
+
+    window.addEventListener('load', generateCalendar);
+  </script>
+</body>
+</html>

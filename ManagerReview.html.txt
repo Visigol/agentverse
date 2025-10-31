@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Manager Schedule Review</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --background-main: #F0F8F5;
+      --primary-accent: #00B14F;
+      --card-background: #FFFFFF;
+      --text-primary: #111827;
+      --text-secondary: #6B7280;
+      --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05);
+      --red: #EF4444;
+      --yellow: #F59E0B;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+    }
+    .container {
+      padding: 30px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2em;
+      font-weight: 800;
+    }
+    .calendar-card {
+      background-color: var(--card-background);
+      border-radius: 12px;
+      box-shadow: 0 4px 8px var(--shadow-color);
+      padding: 25px;
+    }
+    .week-navigation {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .week-navigation h2 {
+        font-size: 1.5em;
+        color: var(--primary-accent);
+    }
+    .calendar {
+      display: grid;
+      grid-template-columns: 60px repeat(7, 1fr);
+      gap: 5px;
+    }
+    .day-header, .hour-label {
+      padding: 10px;
+      text-align: center;
+      border-radius: 6px;
+    }
+    .day-header {
+      font-weight: 600;
+      background-color: #F9FAFB;
+    }
+    .hour-label {
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 0.9em;
+    }
+    .slot-data {
+      padding: 8px;
+      border-radius: 6px;
+      text-align: center;
+      border: 1px solid var(--border-light);
+    }
+    .slot-data strong {
+      display: block;
+      font-size: 1.4em;
+    }
+    .slot-data span {
+      font-size: 0.8em;
+      color: var(--text-secondary);
+    }
+    .slot-data.over-staffed { background-color: #DBEAFE; }
+    .slot-data.under-staffed { background-color: #FEF3C7; }
+    .slot-data.critically-under { background-color: #FEE2E2; }
+    .message-area {
+        text-align: center;
+        margin: 15px 0;
+        min-height: 20px;
+        font-weight: 600;
+    }
+    .error-message { color: var(--red); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Manager Review Calendar</h1>
+    </div>
+    <div class="calendar-card">
+      <div class="week-navigation">
+        <h2 id="week-range-display">Loading...</h2>
+      </div>
+       <div id="userMessage" class="message-area"></div>
+      <div class="calendar" id="review-calendar">
+        <!-- Calendar will be generated here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function getNextMonday() {
+      const today = new Date();
+      const day = today.getDay();
+      const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(today.setDate(diff));
+      monday.setDate(monday.getDate() + 7);
+      monday.setHours(0, 0, 0, 0);
+      return monday;
+    }
+
+    function setUserMessage(message, type) {
+        const msgEl = document.getElementById('userMessage');
+        msgEl.textContent = message;
+        msgEl.className = 'message-area';
+        if (type === "error") msgEl.classList.add('error-message');
+    }
+
+    function generateAndPopulateCalendar(data) {
+      const calendar = document.getElementById('review-calendar');
+      calendar.innerHTML = '';
+
+      const monday = getNextMonday();
+      const weekRangeDisplay = document.getElementById('week-range-display');
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      weekRangeDisplay.textContent = `Reviewing Schedule for: ${monday.toLocaleDateString()} - ${sunday.toLocaleDateString()}`;
+
+      // Create headers
+      calendar.innerHTML += '<div></div>'; // Empty corner
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        calendar.innerHTML += `<div class="day-header">${d.toLocaleDateString(undefined, { weekday: 'short' })}<br>${d.getDate()}</div>`;
+      }
+
+      // Create time slots with data
+      for (let hour = 7; hour < 20; hour++) {
+        calendar.innerHTML += `<div class="hour-label">${String(hour).padStart(2, '0')}:00</div>`;
+        for (let day = 0; day < 7; day++) {
+          const slotDate = new Date(monday);
+          slotDate.setDate(monday.getDate() + day);
+          slotDate.setHours(hour);
+          const slotId = slotDate.toISOString();
+          const slotData = data[slotId] || { recommended: 0, applied: 0 };
+
+          let statusClass = '';
+          if (slotData.applied > slotData.recommended) {
+            statusClass = 'over-staffed';
+          } else if (slotData.applied < slotData.recommended * 0.5) {
+            statusClass = 'critically-under';
+          } else if (slotData.applied < slotData.recommended) {
+            statusClass = 'under-staffed';
+          }
+
+          calendar.innerHTML += `
+            <div class="slot-data ${statusClass}">
+              <strong>${slotData.applied}</strong>
+              <span>applied / ${slotData.recommended} rec.</span>
+            </div>
+          `;
+        }
+      }
+    }
+
+    window.addEventListener('load', function() {
+      setUserMessage("Loading calendar data...", "status");
+      google.script.run
+        .withSuccessHandler(calendarData => {
+            setUserMessage("", "status");
+            generateAndPopulateCalendar(calendarData);
+        })
+        .withFailureHandler(err => {
+            setUserMessage(err.message, "error");
+        })
+        .getReviewCalendarData();
+    });
+  </script>
+</body>
+</html>
