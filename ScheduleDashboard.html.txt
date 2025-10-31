@@ -341,7 +341,7 @@
 
     function renderSuggestionChart(suggestions) {
         const ctx = document.getElementById('suggestionChart').getContext('2d');
-        const days = Object.keys(suggestions);
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         const hours = Object.keys(suggestions[days[0]]).sort();
 
         const datasets = days.map(day => {
@@ -369,18 +369,20 @@
 
     function renderSuggestionSummary(suggestions) {
         const summaryDiv = document.getElementById('suggestionSummary');
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
         summaryDiv.innerHTML = '';
         let summaryHtml = '';
-        for (const day in suggestions) {
+        days.forEach(day => {
             summaryHtml += `<h4>${day}</h4><ul>`;
-            for (const hour in suggestions[day]) {
+            const hours = Object.keys(suggestions[day]).sort();
+            hours.forEach(hour => {
                 const data = suggestions[day][hour];
                 if (data.justification !== "No workload recorded for this hour on this day." && data.justification !== "Workload and staffing appear balanced.") {
                      summaryHtml += `<li><strong>${hour}:00:</strong> ${data.justification} Recommending <strong>${data.recommended}</strong> agent(s).</li>`;
                 }
-            }
+            });
             summaryHtml += '</ul>';
-        }
+        });
         summaryDiv.innerHTML = summaryHtml;
     }
   </script>
