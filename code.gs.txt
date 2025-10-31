@@ -3750,7 +3750,12 @@ function getReviewCalendarData() {
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   suggestedData.forEach(row => {
     const dayName = row[0];
-    const hour = parseInt(row[1].split(':')[0]);
+    let hour;
+    if (row[1] instanceof Date) {
+        hour = row[1].getHours();
+    } else {
+        hour = parseInt(String(row[1]).split(':')[0]);
+    }
     const recommended = row[2];
     const dayIndex = daysOfWeek.indexOf(dayName);
 
