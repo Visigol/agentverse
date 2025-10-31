@@ -110,6 +110,20 @@
     }
     .error-message { color: #EF4444; }
     .success-message { color: var(--primary-accent); }
+
+    .sticky-col {
+      position: -webkit-sticky;
+      position: sticky;
+      left: 0;
+      background-color: var(--card-background);
+      z-index: 1;
+    }
+    #efficiencyTableHead .sticky-col {
+      background-color: #F9FAFB;
+    }
+    .day-separator {
+      border-right: 2px solid var(--border-light) !important;
+    }
   </style>
 </head>
 <body>
@@ -276,9 +290,9 @@
         tableBody.innerHTML = '';
 
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-        let headerHtml = '<tr><th>Hour</th>';
+        let headerHtml = '<tr><th class="sticky-col">Hour</th>';
         days.forEach(day => {
-            headerHtml += `<th>Agents (${day.substring(0,3)})</th><th>Workload (${day.substring(0,3)})</th><th>Ratio (${day.substring(0,3)})</th>`;
+            headerHtml += `<th>Agents (${day.substring(0,3)})</th><th>Workload (${day.substring(0,3)})</th><th class="day-separator">Ratio (${day.substring(0,3)})</th>`;
         });
         headerHtml += '</tr>';
         tableHead.innerHTML = headerHtml;
@@ -287,11 +301,15 @@
             const hourKey = String(hour).padStart(2, '0');
             const row = tableBody.insertRow();
             row.insertCell().textContent = hourKey + ':00';
+            row.cells[0].classList.add('sticky-col');
+
             days.forEach(day => {
                 const dayData = fullData[day][hourKey];
                 row.insertCell().textContent = dayData.avgAgents.toFixed(2);
                 row.insertCell().textContent = dayData.avgWorkload.toFixed(2);
-                row.insertCell().textContent = dayData.casePerAgentRatio.toFixed(2);
+                const ratioCell = row.insertCell();
+                ratioCell.textContent = dayData.casePerAgentRatio.toFixed(2);
+                ratioCell.classList.add('day-separator');
             });
         }
     }
