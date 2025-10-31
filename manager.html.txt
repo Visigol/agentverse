@@ -1192,12 +1192,14 @@
             .withSuccessHandler(response => {
                 alert(response);
                 closeFixModal();
-                loadAnomalies();
+                loadAnomalies(); // This will refresh the list of anomalies
+                btn.textContent = 'Confirm & Save Changes'; // Reset button text
+                btn.disabled = false; // Re-enable button
             })
             .withFailureHandler(err => {
                 alert('Error: ' + err.message);
-                btn.textContent = 'Confirm & Save Changes';
-                btn.disabled = false;
+                btn.textContent = 'Confirm & Save Changes'; // Reset button text
+                btn.disabled = false; // Re-enable button
             })
             .fixHandlingTimeAnomaly(caseIdToFix);
     }
