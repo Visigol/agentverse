@@ -1588,11 +1588,11 @@ function getAnomalies(startDateStr, endDateStr) {
 
 function previewHandlingTimeFix(caseId) {
     try {
-        const fixDetails = calculateCorrectedHandlingTime_(caseId);
+        const fixDetails = calculateCorrectedHandlingTime_(caseId, true); // Get full details for preview
 
         // Helper to format seconds into HH:MM:SS string
         const formatSeconds = (s) => {
-            if (isNaN(s)) return "Invalid";
+            if (isNaN(s) || s === null || s === undefined) return "N/A";
             const prefix = s < 0 ? "-" : "";
             s = Math.abs(s);
             const hours = Math.floor(s / 3600);
@@ -1604,8 +1604,13 @@ function previewHandlingTimeFix(caseId) {
         return {
             currentAHT: formatSeconds(fixDetails.currentAHTSeconds),
             proposedAHT: formatSeconds(fixDetails.newAHTSeconds),
+            currentPause: formatSeconds(fixDetails.currentPauseSeconds),
+            proposedPause: formatSeconds(fixDetails.newPauseSeconds),
+            currentEscalation: formatSeconds(fixDetails.currentEscalationSeconds),
+            proposedEscalation: formatSeconds(fixDetails.newEscalationSeconds),
             grossDuration: formatSeconds(fixDetails.grossDurationSeconds),
-            mergedDowntime: formatSeconds(fixDetails.totalDowntimeSeconds)
+            mergedDowntime: formatSeconds(fixDetails.totalDowntimeSeconds),
+            problematicLogs: fixDetails.problematicLogs || []
         };
     } catch (e) {
         Logger.log(`Error in previewHandlingTimeFix for case ${caseId}: ${e.toString()}`);
@@ -1615,8 +1620,7 @@ function previewHandlingTimeFix(caseId) {
 
 function fixHandlingTimeAnomaly(caseId) {
     try {
-        const fixDetails = calculateCorrectedHandlingTime_(caseId);
-        const newAHTSheetValue = fixDetails.newAHTSeconds > 0 ? fixDetails.newAHTSeconds / 86400 : 0;
+        const fixDetails = calculateCorrectedHandlingTime_(caseId, false); // Recalculate without preview details
 
         const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
         const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
@@ -1624,14 +1628,27 @@ function fixHandlingTimeAnomaly(caseId) {
         const headers = data[0];
         const caseIdCol = headers.indexOf('Main Task ID');
         const ahtCol = headers.indexOf('Stored Agent Handling Time');
+        const pauseCol = headers.indexOf('Stored Pause Duration');
+        const escalationCol = headers.indexOf('Stored Escalation Duration');
 
         for (let i = 1; i < data.length; i++) {
             if (data[i][caseIdCol] == caseId) {
-                const ahtCell = sheet.getRange(i + 1, ahtCol + 1);
-                ahtCell.setValue(newAHTSheetValue).setNumberFormat("[h]:mm:ss.SSS");
+                const rowToUpdate = i + 1;
+                // Update AHT
+                const newAHTSheetValue = fixDetails.newAHTSeconds > 0 ? fixDetails.newAHTSeconds / 86400 : 0;
+                sheet.getRange(rowToUpdate, ahtCol + 1).setValue(newAHTSheetValue).setNumberFormat("[h]:mm:ss.SSS");
+
+                // Update Pause Duration
+                const newPauseSheetValue = fixDetails.newPauseSeconds > 0 ? fixDetails.newPauseSeconds / 86400 : 0;
+                sheet.getRange(rowToUpdate, pauseCol + 1).setValue(newPauseSheetValue).setNumberFormat("[h]:mm:ss.SSS");
+
+                // Update Escalation Duration
+                const newEscalationSheetValue = fixDetails.newEscalationSeconds > 0 ? fixDetails.newEscalationSeconds / 86400 : 0;
+                sheet.getRange(rowToUpdate, escalationCol + 1).setValue(newEscalationSheetValue).setNumberFormat("[h]:mm:ss.SSS");
+
                 SpreadsheetApp.flush();
                 invalidateCasesCache();
-                return `Successfully corrected Agent Handling Time for case ${caseId}.`;
+                return `Successfully corrected calculations for case ${caseId}.`;
             }
         }
         throw new Error("Could not find the case to update after calculation.");
@@ -1641,7 +1658,7 @@ function fixHandlingTimeAnomaly(caseId) {
     }
 }
 
-function calculateCorrectedHandlingTime_(caseId) {
+function calculateCorrectedHandlingTime_(caseId, getDetails = false) {
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
     const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
     if (!sheet) throw new Error("Main Tasks sheet not found.");
@@ -1652,13 +1669,12 @@ function calculateCorrectedHandlingTime_(caseId) {
     const startCol = headers.indexOf('Main Task Start Date/Time');
     const endCol = headers.indexOf('Main Task End Date/Time');
     const ahtCol = headers.indexOf('Stored Agent Handling Time');
+    const pauseCol = headers.indexOf('Stored Pause Duration');
+    const escalationCol = headers.indexOf('Stored Escalation Duration');
 
     let caseRow = null;
     for (const row of data) {
-        if (row[caseIdCol] == caseId) {
-            caseRow = row;
-            break;
-        }
+        if (row[caseIdCol] == caseId) { caseRow = row; break; }
     }
     if (!caseRow) throw new Error(`Case ${caseId} not found.`);
 
@@ -1671,51 +1687,76 @@ function calculateCorrectedHandlingTime_(caseId) {
     const grossDurationSeconds = (mainEndTime - mainStartTime) / 1000;
 
     const logs = getLogsForCase(caseId);
-    let allIntervals = [];
+    let pauseIntervals = [];
+    let escalationIntervals = [];
+
     logs.pausingLogs.forEach(log => {
         if (log['Pause Start Time'] && log['Pause End Time']) {
-            let start = new Date(log['Pause Start Time']);
-            let end = new Date(log['Pause End Time']);
-            // Clip the interval to the main task's time range
+            let start = new Date(log['Pause Start Time']); let end = new Date(log['Pause End Time']);
             if (start < mainEndTime && end > mainStartTime) {
-                start = new Date(Math.max(start, mainStartTime));
-                end = new Date(Math.min(end, mainEndTime));
-                allIntervals.push({ start, end });
+                pauseIntervals.push({ start: new Date(Math.max(start, mainStartTime)), end: new Date(Math.min(end, mainEndTime)), type: 'Pause', id: log.ID });
             }
         }
     });
     logs.escalationLogs.forEach(log => {
         if (log['Escalation Start Time'] && log['Escalation End Time']) {
-            let start = new Date(log['Escalation Start Time']);
-            let end = new Date(log['Escalation End Time']);
-            // Clip the interval to the main task's time range
+            let start = new Date(log['Escalation Start Time']); let end = new Date(log['Escalation End Time']);
             if (start < mainEndTime && end > mainStartTime) {
-                start = new Date(Math.max(start, mainStartTime));
-                end = new Date(Math.min(end, mainEndTime));
-                allIntervals.push({ start, end });
+                escalationIntervals.push({ start: new Date(Math.max(start, mainStartTime)), end: new Date(Math.min(end, mainEndTime)), type: 'Escalation', id: log['Log ID'] });
             }
         }
     });
 
-    const mergedIntervals = mergeTimeIntervals_(allIntervals);
-    const totalDowntimeSeconds = mergedIntervals.reduce((acc, interval) => acc + (interval.end - interval.start) / 1000, 0);
+    const mergedEscalations = mergeTimeIntervals_(escalationIntervals);
+    const newEscalationSeconds = mergedEscalations.reduce((acc, iv) => acc + (iv.end - iv.start) / 1000, 0);
+
+    const pauseOnlyIntervals = [];
+    pauseIntervals.forEach(pauseIv => {
+        let currentStart = pauseIv.start;
+        for (const escIv of mergedEscalations) {
+            if (currentStart >= escIv.end) continue;
+            if (pauseIv.end <= escIv.start) break;
+            if (currentStart < escIv.start) {
+                pauseOnlyIntervals.push({ start: currentStart, end: escIv.start });
+            }
+            currentStart = new Date(Math.max(currentStart, escIv.end));
+            if (currentStart >= pauseIv.end) break;
+        }
+        if (currentStart < pauseIv.end) {
+            pauseOnlyIntervals.push({ start: currentStart, end: pauseIv.end });
+        }
+    });
+    const newPauseSeconds = pauseOnlyIntervals.reduce((acc, iv) => acc + (iv.end - iv.start) / 1000, 0);
+
+    const totalDowntimeSeconds = newEscalationSeconds + newPauseSeconds;
     const newAHTSeconds = grossDurationSeconds - totalDowntimeSeconds;
 
-    // Also get the currently stored (incorrect) value
-    const currentAHTValue = caseRow[ahtCol];
-    let currentAHTSeconds = 0;
-    if (currentAHTValue instanceof Date) {
-        currentAHTSeconds = Math.round((currentAHTValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000);
-    } else if (!isNaN(parseFloat(currentAHTValue))) {
-        currentAHTSeconds = parseFloat(currentAHTValue) * 86400;
+    let problematicLogs = [];
+    if (getDetails) {
+        const allIntervals = [...pauseIntervals, ...escalationIntervals].sort((a,b) => a.start - b.start);
+        const flaggedIds = new Set();
+        for (let i = 1; i < allIntervals.length; i++) {
+            const prev = allIntervals[i-1];
+            const curr = allIntervals[i];
+            if (curr.start < prev.end) {
+                if (!flaggedIds.has(prev.id)) { flaggedIds.add(prev.id); problematicLogs.push({...prev, reason: `Overlaps with ${curr.type} log ${curr.id}`}); }
+                if (!flaggedIds.has(curr.id)) { flaggedIds.add(curr.id); problematicLogs.push({...curr, reason: `Overlaps with ${prev.type} log ${prev.id}`}); }
+            }
+        }
     }
 
+    const getSecondsFromSheet = (value) => {
+        if (value instanceof Date) { return Math.round((value.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000); }
+        if (value !== '' && !isNaN(parseFloat(value))) { return parseFloat(value) * 86400; }
+        return 0;
+    };
 
     return {
-        currentAHTSeconds: currentAHTSeconds,
-        newAHTSeconds: newAHTSeconds,
-        grossDurationSeconds: grossDurationSeconds,
-        totalDowntimeSeconds: totalDowntimeSeconds
+        currentAHTSeconds: getSecondsFromSheet(caseRow[ahtCol]),
+        currentPauseSeconds: getSecondsFromSheet(caseRow[pauseCol]),
+        currentEscalationSeconds: getSecondsFromSheet(caseRow[escalationCol]),
+        newAHTSeconds, newPauseSeconds, newEscalationSeconds,
+        grossDurationSeconds, totalDowntimeSeconds, problematicLogs
     };
 }
 
@@ -3536,6 +3577,57 @@ function getHourlyStaffing(startDateStr, endDateStr) {
     }
 
     return averages;
+}
+
+function deleteLogEntries(logEntries) {
+    if (!logEntries || !Array.isArray(logEntries) || logEntries.length === 0) {
+        throw new Error("No log entries provided for deletion.");
+    }
+
+    try {
+        const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+        const pauseSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS);
+        const escalationSheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS);
+
+        const logsBySheet = {
+            [CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS]: { sheet: pauseSheet, ids: new Set(), pk: 'ID' },
+            [CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS]: { sheet: escalationSheet, ids: new Set(), pk: 'Log ID' }
+        };
+
+        logEntries.forEach(log => {
+            if (log.type === 'Pause') {
+                logsBySheet[CONFIG.PRODUCTION.SHEETS.PAUSING_LOGS].ids.add(log.id);
+            } else if (log.type === 'Escalation') {
+                logsBySheet[CONFIG.PRODUCTION.SHEETS.ESCALATION_LOGS].ids.add(log.id);
+            }
+        });
+
+        let totalDeleted = 0;
+        for (const sheetName in logsBySheet) {
+            const { sheet, ids, pk } = logsBySheet[sheetName];
+            if (!sheet || ids.size === 0) continue;
+
+            const data = sheet.getDataRange().getValues();
+            const headers = data[0];
+            const pkIndex = headers.indexOf(pk);
+            if (pkIndex === -1) continue;
+
+            // Find rows to delete, iterating backwards to not mess up indices
+            for (let i = data.length - 1; i >= 1; i--) {
+                if (ids.has(data[i][pkIndex])) {
+                    sheet.deleteRow(i + 1);
+                    totalDeleted++;
+                }
+            }
+        }
+
+        invalidateCasesCache();
+        return `Successfully deleted ${totalDeleted} log entries.`;
+
+    } catch (e) {
+        Logger.log(`Error in deleteLogEntries: ${e.toString()}`);
+        throw new Error(`Failed to delete log entries: ${e.message}`);
+    }
 }
 
 /**
