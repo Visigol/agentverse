@@ -16,6 +16,8 @@ const CONFIG = {
       AGENT_LOG: "AgentLog",
       CASE_LOG: "CaseLog",
       AGENTS: "Agents",
+      NEXT_WEEK_APPLICATIONS: "NextWeekApplications",
+      SUGGESTED_SCHEDULE: "SuggestedSchedule",
       MANAGERS: "Managers",
       REQUESTS: "Requests",
       IMPORTANT_LINKS: "Important Links",
@@ -98,7 +100,15 @@ function doGet(e) {
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
     // --- END ADDITION ---
-    else {
+    else if (e.parameter.page === 'schedule-dashboard') {
+        return HtmlService.createHtmlOutputFromFile('ScheduleDashboard.html')
+            .setTitle('Schedule Efficiency Dashboard')
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'manager-review') {
+        return HtmlService.createHtmlOutputFromFile('ManagerReview.html')
+            .setTitle('Manager Schedule Review')
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else {
       // Otherwise, show the default manager homepage.
       return HtmlService.createTemplateFromFile('manager').evaluate()
         .setTitle('Manager Dashboard')
@@ -114,6 +124,10 @@ function doGet(e) {
       return HtmlService.createTemplateFromFile('cases').evaluate()
         .setTitle('Case Management')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'agent-schedule') {
+        return HtmlService.createHtmlOutputFromFile('AgentSchedule.html')
+            .setTitle('Agent Schedule Application')
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else {
       // Default to the agent index page.
       return HtmlService.createTemplateFromFile('index').evaluate()
@@ -3409,4 +3423,361 @@ function formatDuration(totalSeconds) {
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = Math.floor(totalSeconds % 60);
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// =================================================================================
+// --- SCHEDULE EFFICIENCY & PLANNING FUNCTIONS ---
+// =================================================================================
+
+/**
+ * Analyzes the AgentLog to determine the average number of agents clocked in and working
+ * for each hour of the day within a specified date range.
+ * @param {string} startDateStr The start date in YYYY-MM-DD format.
+ * @param {string} endDateStr The end date in YYYY-MM-DD format.
+ * @returns {object} An object where keys are hours (e.g., "07") and values are the average agent count.
+ */
+function getHourlyStaffing(startDateStr, endDateStr) {
+  const startDate = new Date(startDateStr);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(endDateStr);
+  endDate.setHours(23, 59, 59, 999);
+
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const sheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENT_LOG);
+  if (!sheet) throw new Error("AgentLog sheet not found.");
+
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData.shift();
+  const tsIdx = headers.indexOf('Timestamp');
+  const emailIdx = headers.indexOf('Agent Email');
+  const actionIdx = headers.indexOf('Action');
+
+  const hourlyAgentCountPerDay = {}; // { 'YYYY-MM-DD': { '07': Set('a@a.com'), '08': Set(...) } }
+  const agentSessions = {}; // { 'agent@email.com': [{start: Date, end: Date}, ...] }
+
+  // 1. First pass: Reconstruct work sessions for all agents within the range
+  const agentLogs = {};
+  allData.forEach(row => {
+    const ts = new Date(row[tsIdx]);
+    if (ts >= startDate && ts <= endDate) {
+      const email = row[emailIdx];
+      if (!agentLogs[email]) agentLogs[email] = [];
+      agentLogs[email].push({ ts, action: row[actionIdx] });
+    }
+  });
+
+  for (const email in agentLogs) {
+    agentLogs[email].sort((a, b) => a.ts - b.ts); // Sort logs chronologically
+
+    let currentSession = null;
+    agentLogs[email].forEach(log => {
+      const action = log.action;
+      if (action.includes('Start') && !action.includes('Break') && !action.includes('Meeting')) {
+        if (currentSession) { // A new "Start Work" before an "End Work", close the previous one
+            currentSession.end = log.ts;
+            if (!agentSessions[email]) agentSessions[email] = [];
+            agentSessions[email].push(currentSession);
+        }
+        currentSession = { start: log.ts, end: null };
+      } else if (action.includes('End') && !action.includes('Break') && !action.includes('Meeting')) {
+        if (currentSession) {
+          currentSession.end = log.ts;
+          if (!agentSessions[email]) agentSessions[email] = [];
+          agentSessions[email].push(currentSession);
+          currentSession = null;
+        }
+      }
+      // Note: Breaks and meetings are ignored for this calculation as we just care about the main work session boundaries
+    });
+    // If a session is still open at the end of the logs, cap it at the end of the analysis period
+    if (currentSession) {
+        currentSession.end = endDate;
+        if (!agentSessions[email]) agentSessions[email] = [];
+        agentSessions[email].push(currentSession);
+    }
+  }
+
+  // 2. Second pass: Iterate through each hour of each day and count active sessions
+  let currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const dayKey = currentDate.toISOString().split('T')[0];
+    hourlyAgentCountPerDay[dayKey] = {};
+
+    for (let hour = 7; hour < 20; hour++) {
+      const hourKey = String(hour).padStart(2, '0');
+      hourlyAgentCountPerDay[dayKey][hourKey] = new Set();
+      const hourStart = new Date(currentDate);
+      hourStart.setHours(hour, 0, 0, 0);
+      const hourEnd = new Date(currentDate);
+      hourEnd.setHours(hour, 59, 59, 999);
+
+      for (const email in agentSessions) {
+        agentSessions[email].forEach(session => {
+          // Check if the session overlaps with the current hour
+          if (session.start < hourEnd && session.end > hourStart) {
+            hourlyAgentCountPerDay[dayKey][hourKey].add(email);
+          }
+        });
+      }
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  // 3. Average the counts
+  const totalCounts = {};
+  const dayCounts = {};
+  for (let hour = 7; hour < 20; hour++) {
+    const hourKey = String(hour).padStart(2, '0');
+    totalCounts[hourKey] = 0;
+    dayCounts[hourKey] = 0;
+  }
+
+  for (const day in hourlyAgentCountPerDay) {
+    for (const hour in hourlyAgentCountPerDay[day]) {
+      totalCounts[hour] += hourlyAgentCountPerDay[day][hour].size;
+      dayCounts[hour]++;
+    }
+  }
+
+  const averages = {};
+  for (const hour in totalCounts) {
+    averages[hour] = dayCounts[hour] > 0 ? totalCounts[hour] / dayCounts[hour] : 0;
+  }
+
+  return averages;
+}
+
+/**
+ * Orchestrator function that combines staffing and workload data for the efficiency dashboard.
+ * @param {string} startDateStr The start date in YYYY-MM-DD format.
+ * @param {string} endDateStr The end date in YYYY-MM-DD format.
+ * @returns {object} A combined data object with hourly staffing, workload, and efficiency ratios.
+ */
+function getScheduleEfficiencyData(startDateStr, endDateStr) {
+  const staffing = getHourlyStaffing(startDateStr, endDateStr);
+  const workload = getHourlyWorkload(startDateStr, endDateStr);
+  const combinedData = {};
+
+  for (let hour = 7; hour < 20; hour++) {
+    const hourKey = String(hour).padStart(2, '0');
+    const avgAgents = staffing[hourKey] || 0;
+    const avgStarted = workload.started[hourKey] || 0;
+    const avgClosed = workload.closed[hourKey] || 0;
+    const totalWorkload = avgStarted + avgClosed;
+
+    combinedData[hourKey] = {
+      avgAgents: avgAgents,
+      avgWorkload: totalWorkload,
+      casePerAgentRatio: avgAgents > 0 ? totalWorkload / avgAgents : 0
+    };
+  }
+  return combinedData;
+}
+
+/**
+ * Analyzes historical data to suggest an optimal number of agents per hour and saves it to a sheet.
+ * @returns {string} A success message.
+ */
+function generateSuggestedSchedule() {
+  const today = new Date();
+  const endDate = new Date(today);
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - 7); // Analyze the last 7 days
+
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  const efficiencyData = getScheduleEfficiencyData(startDateStr, endDateStr);
+
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const sheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.SUGGESTED_SCHEDULE);
+  if (!sheet) throw new Error("SuggestedSchedule sheet not found.");
+  sheet.clearContents(); // Clear old suggestions
+  sheet.appendRow(['DayOfWeek', 'Hour', 'RecommendedAgents', 'GeneratedTimestamp']);
+
+  const generatedTimestamp = new Date();
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  for (let hour = 7; hour < 20; hour++) {
+    const hourKey = String(hour).padStart(2, '0');
+    const data = efficiencyData[hourKey];
+
+    // Simple suggestion logic: Aim for a baseline of 2 cases per agent per hour.
+    // This can be made more sophisticated later.
+    const targetRatio = 2.0;
+    const recommendedAgents = Math.ceil(data.avgWorkload / targetRatio);
+
+    // For now, apply the same recommendation to all weekdays
+    for (let dayIndex = 1; dayIndex <= 5; dayIndex++) { // Monday to Friday
+      sheet.appendRow([
+        daysOfWeek[dayIndex],
+        hourKey + ':00',
+        recommendedAgents,
+        generatedTimestamp
+      ]);
+    }
+  }
+
+  return "Suggested schedule has been generated and saved to the 'SuggestedSchedule' sheet.";
+}
+
+/**
+ * Saves an agent's requested work slots for the next week to the spreadsheet.
+ * @param {Array<string>} requestedSlots An array of ISO 8601 formatted date/time strings.
+ * @returns {string} A success message.
+ */
+function submitScheduleApplication(requestedSlots) {
+  if (!requestedSlots || requestedSlots.length === 0) {
+    throw new Error("No schedule slots were submitted.");
+  }
+
+  const userEmail = Session.getActiveUser().getEmail();
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const sheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.NEXT_WEEK_APPLICATIONS);
+  if (!sheet) throw new Error("NextWeekApplications sheet not found.");
+
+  const submissionTimestamp = new Date();
+  const rowsToAdd = requestedSlots.map(slot => {
+    return [submissionTimestamp, userEmail, new Date(slot)];
+  });
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAdd.length, 3).setValues(rowsToAdd);
+
+  return `Successfully submitted ${rowsToAdd.length} schedule requests.`;
+}
+
+/**
+ * Fetches data for the manager's review calendar, combining suggested agent counts
+ * with the actual number of agent applications for each slot.
+ * @returns {object} An object where keys are ISO 8601 date/time strings for each slot,
+ *                   and values are objects containing { recommended: X, applied: Y }.
+ */
+function getReviewCalendarData() {
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const applicationsSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.NEXT_WEEK_APPLICATIONS);
+  const suggestedSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.SUGGESTED_SCHEDULE);
+
+  if (!applicationsSheet || !suggestedSheet) {
+    throw new Error("Required scheduling sheets not found.");
+  }
+
+  // Initialize data structure for the next week's calendar
+  const calendarData = {};
+  const today = new Date();
+  const day = today.getDay();
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(today.setDate(diff));
+  monday.setDate(monday.getDate() + 7);
+  monday.setHours(0, 0, 0, 0);
+
+  for (let d = 0; d < 7; d++) {
+    for (let h = 7; h < 20; h++) {
+      const slotDate = new Date(monday);
+      slotDate.setDate(monday.getDate() + d);
+      slotDate.setHours(h);
+      calendarData[slotDate.toISOString()] = { recommended: 0, applied: 0 };
+    }
+  }
+
+  // 1. Read suggested schedule
+  const suggestedData = suggestedSheet.getDataRange().getValues();
+  suggestedData.shift(); // Remove header
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  suggestedData.forEach(row => {
+    const dayName = row[0];
+    const hour = parseInt(row[1].split(':')[0]);
+    const recommended = row[2];
+    const dayIndex = daysOfWeek.indexOf(dayName);
+
+    if (dayIndex !== -1) {
+        for (const slotISO in calendarData) {
+            const slotDate = new Date(slotISO);
+            if (slotDate.getDay() === dayIndex && slotDate.getHours() === hour) {
+                calendarData[slotISO].recommended = recommended;
+            }
+        }
+    }
+  });
+
+
+  // 2. Read and count agent applications
+  const applicationsData = applicationsSheet.getDataRange().getValues();
+  applicationsData.shift(); // Remove header
+  applicationsData.forEach(row => {
+    const slot = new Date(row[2]);
+    slot.setMinutes(0,0,0);
+    const slotISO = slot.toISOString();
+    if (calendarData[slotISO]) {
+      calendarData[slotISO].applied++;
+    }
+  });
+
+  return calendarData;
+}
+
+/**
+ * Analyzes the Main Tasks sheet to determine the average number of cases started and closed
+ * for each hour of the day within a specified date range.
+ * @param {string} startDateStr The start date in YYYY-MM-DD format.
+ * @param {string} endDateStr The end date in YYYY-MM-DD format.
+ * @returns {object} An object with 'started' and 'closed' keys, each containing hourly averages.
+ */
+function getHourlyWorkload(startDateStr, endDateStr) {
+  const startDate = new Date(startDateStr);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(endDateStr);
+  endDate.setHours(23, 59, 59, 999);
+
+  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+  const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+  if (!sheet) throw new Error("Main Tasks sheet not found.");
+
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData.shift();
+  const startIdx = headers.indexOf('Main Task Start Date/Time');
+  const endIdx = headers.indexOf('Main Task End Date/Time');
+
+  const hourlyCounts = { started: {}, closed: {} };
+  const dayCounts = { started: {}, closed: {} };
+
+  for (let hour = 7; hour < 20; hour++) {
+    const hourKey = String(hour).padStart(2, '0');
+    hourlyCounts.started[hourKey] = 0;
+    hourlyCounts.closed[hourKey] = 0;
+  }
+
+  allData.forEach(row => {
+    const startTime = new Date(row[startIdx]);
+    const endTime = new Date(row[endIdx]);
+
+    if (startTime >= startDate && startTime <= endDate) {
+      const hourKey = String(startTime.getHours()).padStart(2, '0');
+      if (hourlyCounts.started.hasOwnProperty(hourKey)) {
+        hourlyCounts.started[hourKey]++;
+        const dayKey = startTime.toISOString().split('T')[0];
+        dayCounts.started[dayKey] = (dayCounts.started[dayKey] || 0) + 1;
+      }
+    }
+
+    if (endTime >= startDate && endTime <= endDate) {
+      const hourKey = String(endTime.getHours()).padStart(2, '0');
+      if (hourlyCounts.closed.hasOwnProperty(hourKey)) {
+        hourlyCounts.closed[hourKey]++;
+        const dayKey = endTime.toISOString().split('T')[0];
+        dayCounts.closed[dayKey] = (dayCounts.closed[dayKey] || 0) + 1;
+      }
+    }
+  });
+
+  const numDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+  const averages = { started: {}, closed: {} };
+
+  for (const hour in hourlyCounts.started) {
+    averages.started[hour] = hourlyCounts.started[hour] / numDays;
+  }
+  for (const hour in hourlyCounts.closed) {
+    averages.closed[hour] = hourlyCounts.closed[hour] / numDays;
+  }
+
+  return averages;
 }

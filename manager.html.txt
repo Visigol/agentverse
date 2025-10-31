@@ -361,7 +361,22 @@
     <button class="active" id="tab-homepage" onclick="showTab('homepage')">Homepage</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=production', '_blank')">Production</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
+    <button id="tab-scheduling" onclick="showTab('scheduling')">Scheduling</button>
     <button id="tab-settings" onclick="showTab('settings')">Settings</button>
+  </div>
+
+  <div id="scheduling-container" class="manager-container" style="display: none;">
+    <h2>Scheduling Tools</h2>
+    <div class="card">
+        <h3>Efficiency Dashboard</h3>
+        <p>Analyze historical staffing and workload data to identify scheduling inefficiencies.</p>
+        <button class="btn-view-cases" onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=schedule-dashboard', '_blank')">Open Dashboard</button>
+    </div>
+     <div class="card" style="margin-top: 20px;">
+        <h3>Review Next Week's Schedule</h3>
+        <p>Review agent applications for next week against the system's recommended staffing levels.</p>
+        <button class="btn-view-cases" onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=manager-review', '_blank')">Open Review Calendar</button>
+    </div>
   </div>
 
   <div id="homepage-container" class="manager-container">
@@ -578,6 +593,7 @@
     function showTab(tabName) {
       document.getElementById('homepage-container').style.display = tabName === 'homepage' ? 'block' : 'none';
       document.getElementById('settings-container').style.display = tabName === 'settings' ? 'block' : 'none';
+      document.getElementById('scheduling-container').style.display = tabName === 'scheduling' ? 'block' : 'none';
       document.querySelectorAll('.nav-tabs button').forEach(button => button.classList.remove('active'));
       document.getElementById(`tab-${tabName}`).classList.add('active');
       if (tabName === 'settings') {

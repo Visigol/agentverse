@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Schedule Efficiency Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --background-main: #F0F8F5;
+      --primary-accent: #00B14F;
+      --card-background: #FFFFFF;
+      --text-primary: #111827;
+      --text-secondary: #6B7280;
+      --border-light: #E5E7EB;
+      --shadow-color: rgba(0, 0, 0, 0.05);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+    }
+    .container {
+      padding: 30px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 2.2em;
+      font-weight: 800;
+    }
+    .card {
+      background-color: var(--card-background);
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 4px 8px var(--shadow-color);
+      padding: 25px;
+      margin-bottom: 30px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .controls label {
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .controls input[type="date"] {
+      background-color: var(--background-main);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 1em;
+    }
+    .controls button {
+      background-color: var(--primary-accent);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      padding: 12px 15px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+    }
+    th {
+      background-color: #F9FAFB;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .loader {
+      border: 4px solid var(--border-light);
+      border-top: 4px solid var(--primary-accent);
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .message-area {
+        text-align: center;
+        margin: 15px 0;
+        min-height: 20px;
+        font-weight: 600;
+    }
+    .error-message { color: #EF4444; }
+    .success-message { color: var(--primary-accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Schedule Efficiency Dashboard</h1>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <div class="control-group">
+          <label for="startDate">Start Date:</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="control-group">
+          <label for="endDate">End Date:</label>
+          <input type="date" id="endDate">
+        </div>
+        <button onclick="loadDashboardData()">Load Data</button>
+        <div id="loader" class="loader"></div>
+      </div>
+       <div id="userMessage" class="message-area"></div>
+    </div>
+
+    <div class="card">
+      <canvas id="efficiencyChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Hourly Data Breakdown</h2>
+      <table id="efficiencyTable">
+        <thead>
+          <tr>
+            <th>Hour</th>
+            <th>Avg. Agents Working</th>
+            <th>Avg. Workload (Cases Started/Closed)</th>
+            <th>Case-per-Agent Ratio</th>
+          </tr>
+        </thead>
+        <tbody id="efficiencyTableBody">
+          <tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">Select a date range and click "Load Data".</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Suggestion Engine</h2>
+      <p>Analyze the data from the selected period to generate a recommended staffing schedule for next week.</p>
+      <button onclick="generateSchedule()">Generate Suggested Schedule</button>
+      <div id="suggestionMessage" class="message-area" style="text-align: left;"></div>
+    </div>
+  </div>
+
+  <script>
+    let efficiencyChartInstance = null;
+
+    window.addEventListener('load', function() {
+        const today = new Date();
+        const aWeekAgo = new Date();
+        aWeekAgo.setDate(today.getDate() - 7);
+        document.getElementById('endDate').value = today.toISOString().split('T')[0];
+        document.getElementById('startDate').value = aWeekAgo.toISOString().split('T')[0];
+    });
+
+    function showLoader(show) {
+      document.getElementById('loader').style.display = show ? 'inline-block' : 'none';
+    }
+
+    function setUserMessage(message, type, areaId = 'userMessage') {
+        const msgEl = document.getElementById(areaId);
+        msgEl.textContent = message;
+        msgEl.className = 'message-area';
+        if (type === "error") msgEl.classList.add('error-message');
+        else if (type === "success") msgEl.classList.add('success-message');
+    }
+
+    function loadDashboardData() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      if (!startDate || !endDate) {
+        setUserMessage("Please select both a start and end date.", "error");
+        return;
+      }
+      showLoader(true);
+      setUserMessage("", "status");
+      document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
+
+      google.script.run
+        .withSuccessHandler(data => {
+          showLoader(false);
+          renderChart(data);
+          renderTable(data);
+        })
+        .withFailureHandler(err => {
+          showLoader(false);
+          setUserMessage(err.message, "error");
+          document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Could not load data.</td></tr>';
+        })
+        .getScheduleEfficiencyData(startDate, endDate);
+    }
+
+    function renderChart(data) {
+      const ctx = document.getElementById('efficiencyChart').getContext('2d');
+      const labels = Object.keys(data);
+      const agentData = labels.map(hour => data[hour].avgAgents);
+      const workloadData = labels.map(hour => data[hour].avgWorkload);
+
+      if (efficiencyChartInstance) {
+        efficiencyChartInstance.destroy();
+      }
+
+      efficiencyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels.map(h => h + ':00'),
+          datasets: [
+            {
+              label: 'Average Agents Working',
+              data: agentData,
+              backgroundColor: 'rgba(0, 177, 79, 0.6)',
+              borderColor: 'rgba(0, 177, 79, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'Average Workload (Cases)',
+              data: workloadData,
+              backgroundColor: 'rgba(107, 114, 128, 0.6)',
+              borderColor: 'rgba(107, 114, 128, 1)',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Count'
+              }
+            }
+          },
+          plugins: {
+            title: {
+                display: true,
+                text: 'Hourly Staffing vs. Workload',
+                font: { size: 18 }
+            }
+          }
+        }
+      });
+    }
+
+    function renderTable(data) {
+      const tableBody = document.getElementById('efficiencyTableBody');
+      tableBody.innerHTML = '';
+      for (const hour in data) {
+        const row = tableBody.insertRow();
+        const hourData = data[hour];
+        row.insertCell().textContent = hour + ':00';
+        row.insertCell().textContent = hourData.avgAgents.toFixed(2);
+        row.insertCell().textContent = hourData.avgWorkload.toFixed(2);
+        row.insertCell().textContent = hourData.casePerAgentRatio.toFixed(2);
+      }
+    }
+
+    function generateSchedule() {
+        setUserMessage("Generating schedule...", "status", "suggestionMessage");
+        google.script.run
+            .withSuccessHandler(response => {
+                setUserMessage(response, "success", "suggestionMessage");
+            })
+            .withFailureHandler(err => {
+                setUserMessage(err.message, "error", "suggestionMessage");
+            })
+            .generateSuggestedSchedule();
+    }
+  </script>
+</body>
+</html>
