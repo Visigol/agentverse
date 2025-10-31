@@ -1601,6 +1601,13 @@ function previewHandlingTimeFix(caseId) {
             return `${prefix}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         };
 
+        // --- FIX: Serialize Date objects in logs before sending to frontend ---
+        const serializableLogs = (fixDetails.problematicLogs || []).map(log => ({
+            ...log,
+            start: log.start instanceof Date ? log.start.toISOString() : log.start,
+            end: log.end instanceof Date ? log.end.toISOString() : log.end
+        }));
+
         return {
             currentAHT: formatSeconds(fixDetails.currentAHTSeconds),
             proposedAHT: formatSeconds(fixDetails.newAHTSeconds),
@@ -1610,7 +1617,7 @@ function previewHandlingTimeFix(caseId) {
             proposedEscalation: formatSeconds(fixDetails.newEscalationSeconds),
             grossDuration: formatSeconds(fixDetails.grossDurationSeconds),
             mergedDowntime: formatSeconds(fixDetails.totalDowntimeSeconds),
-            problematicLogs: fixDetails.problematicLogs || []
+            problematicLogs: serializableLogs
         };
     } catch (e) {
         Logger.log(`Error in previewHandlingTimeFix for case ${caseId}: ${e.toString()}`);

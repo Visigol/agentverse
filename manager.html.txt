@@ -1182,6 +1182,15 @@ function previewFix(caseId) {
 }
 
 function displayPreviewData(previewData) {
+    // Defensive check for null response from server
+    if (!previewData) {
+        document.getElementById('problematic-logs-container').innerHTML = `<p class="error-message">Error: Received no data from the server. The calculation preview could not be loaded.</p>`;
+        ['current-aht', 'proposed-aht', 'current-pause', 'proposed-pause', 'current-escalation', 'proposed-escalation'].forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.textContent = 'Error';
+        });
+        return;
+    }
     if (previewData.error) {
         document.getElementById('problematic-logs-container').innerHTML = `<p class="error-message">${previewData.error}</p>`;
         return;
