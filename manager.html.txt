@@ -540,18 +540,34 @@
     </div>
 
     <div id="fix-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content" style="max-width: 600px; flex-direction: column;">
+        <div class="modal-content" style="max-width: 900px; flex-direction: column;">
             <div class="modal-header">
-                <h2>Confirm Calculation Fix</h2>
+                <h2>Fix Calculation for Case ID: <strong id="fix-case-id"></strong></h2>
                 <button class="close-button" onclick="closeFixModal()">×</button>
             </div>
-            <div class="modal-body" style="padding: 20px;">
-                <p>You are about to correct the calculation for Case ID: <strong id="fix-case-id"></strong></p>
-                <div id="fix-details"></div>
+            <div class="modal-body" style="padding: 20px; max-height: 70vh; overflow-y: auto;">
+                <h4>Calculation Preview</h4>
+                <table class="simple-table" style="width:100%;">
+                    <thead><tr><th>Metric</th><th>Current Value</th><th>Proposed Value</th></tr></thead>
+                    <tbody>
+                        <tr><td>Agent Handling Time</td><td id="current-aht"></td><td id="proposed-aht"></td></tr>
+                        <tr><td>Pause Duration</td><td id="current-pause"></td><td id="proposed-pause"></td></tr>
+                        <tr><td>Escalation Duration</td><td id="current-escalation"></td><td id="proposed-escalation"></td></tr>
+                    </tbody>
+                </table>
+
+                <h4 style="margin-top: 20px;">Problematic Logs</h4>
+                <p style="font-size: 0.9em; color: var(--text-secondary);">The following log entries have been identified as overlapping or duplicated. Select the entries you wish to delete.</p>
+                <div id="problematic-logs-container"></div>
             </div>
-            <div class="modal-actions" style="margin-top: 20px;">
-                <button class="btn-secondary" onclick="closeFixModal()">Cancel</button>
-                <button class="btn-primary" id="confirm-fix-btn" onclick="applyFix()">Confirm & Save Changes</button>
+            <div class="modal-actions" style="margin-top: 20px; justify-content: space-between;">
+                <div>
+                    <button class="btn-deny" id="delete-logs-btn" onclick="deleteSelectedLogs()">Delete Selected Logs</button>
+                </div>
+                <div>
+                    <button class="btn-secondary" onclick="closeFixModal()">Cancel</button>
+                    <button class="btn-primary" id="confirm-fix-btn" onclick="applyFix()">Confirm & Save All Changes</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1146,36 +1162,91 @@
 
     let caseIdToFix = null;
 
-    function previewFix(caseId) {
-        caseIdToFix = caseId;
-        document.getElementById('fix-case-id').textContent = caseId;
-        const detailsDiv = document.getElementById('fix-details');
-        detailsDiv.innerHTML = '<div class="loader" style="display:block; margin: 10px auto;"></div><p>Calculating preview...</p>';
-        document.getElementById('fix-modal').style.display = 'flex';
+function previewFix(caseId) {
+    caseIdToFix = caseId;
+    document.getElementById('fix-case-id').textContent = caseId;
+    document.getElementById('fix-modal').style.display = 'flex';
+
+    // Reset state
+    document.getElementById('problematic-logs-container').innerHTML = '<div class="loader" style="display:block; margin: 10px auto;"></div>';
+    ['current-aht', 'proposed-aht', 'current-pause', 'proposed-pause', 'current-escalation', 'proposed-escalation'].forEach(id => {
+        document.getElementById(id).textContent = '...';
+    });
+
+    google.script.run
+        .withSuccessHandler(displayPreviewData)
+        .withFailureHandler(err => {
+            document.getElementById('problematic-logs-container').innerHTML = `<p class="error-message">Error loading preview: ${err.message}</p>`;
+        })
+        .previewHandlingTimeFix(caseId);
+}
+
+function displayPreviewData(previewData) {
+    if (previewData.error) {
+        document.getElementById('problematic-logs-container').innerHTML = `<p class="error-message">${previewData.error}</p>`;
+        return;
+    }
+
+    document.getElementById('current-aht').textContent = previewData.currentAHT;
+    document.getElementById('proposed-aht').textContent = previewData.proposedAHT;
+    document.getElementById('current-pause').textContent = previewData.currentPause;
+    document.getElementById('proposed-pause').textContent = previewData.proposedPause;
+    document.getElementById('current-escalation').textContent = previewData.currentEscalation;
+    document.getElementById('proposed-escalation').textContent = previewData.proposedEscalation;
+
+    const logsContainer = document.getElementById('problematic-logs-container');
+    logsContainer.innerHTML = '';
+    if (previewData.problematicLogs && previewData.problematicLogs.length > 0) {
+        let tableHtml = '<table class="simple-table"><thead><tr><th>Delete?</th><th>Type</th><th>Log ID</th><th>Start Time</th><th>End Time</th><th>Reason</th></tr></thead><tbody>';
+        previewData.problematicLogs.forEach(log => {
+            tableHtml += `
+                <tr>
+                    <td><input type="checkbox" class="log-checkbox" data-id="${log.id}" data-type="${log.type}"></td>
+                    <td>${log.type}</td>
+                    <td>${log.id}</td>
+                    <td>${new Date(log.start).toLocaleString()}</td>
+                    <td>${new Date(log.end).toLocaleString()}</td>
+                    <td>${log.reason}</td>
+                </tr>`;
+        });
+        tableHtml += '</tbody></table>';
+        logsContainer.innerHTML = tableHtml;
+    } else {
+        logsContainer.innerHTML = '<p>No specific overlapping logs found, but recalculation is recommended to fix stored values.</p>';
+    }
+    }
+
+    function deleteSelectedLogs() {
+        const checkboxes = document.querySelectorAll('.log-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert("Please select at least one log entry to delete.");
+            return;
+        }
+
+        const logsToDelete = Array.from(checkboxes).map(cb => ({
+            id: cb.dataset.id,
+            type: cb.dataset.type
+        }));
+
+        const btn = document.getElementById('delete-logs-btn');
+        btn.textContent = 'Deleting...';
+        btn.disabled = true;
 
         google.script.run
-            .withSuccessHandler(previewData => {
-                if (previewData.error) {
-                    detailsDiv.innerHTML = `<p class="error-message">${previewData.error}</p>`;
-                    document.getElementById('confirm-fix-btn').style.display = 'none';
-                } else {
-                    detailsDiv.innerHTML = `
-                        <p><strong>Current Stored AHT:</strong> <span style="color:var(--red-deny);">${previewData.currentAHT}</span></p>
-                        <p><strong>Proposed Corrected AHT:</strong> <span style="color:var(--primary-accent);">${previewData.proposedAHT}</span></p>
-                        <hr>
-                        <p><strong>Calculation Breakdown:</strong></p>
-                        <p>Total Case Duration: ${previewData.grossDuration}</p>
-                        <p>Total Non-Working Time (after merging overlaps): ${previewData.mergedDowntime}</p>
-                    `;
-                    document.getElementById('confirm-fix-btn').style.display = 'block';
-                }
+            .withSuccessHandler(response => {
+                alert(response);
+                // Refresh the preview to show the impact of the deletion
+                previewFix(caseIdToFix);
+                btn.textContent = 'Delete Selected Logs';
+                btn.disabled = false;
             })
             .withFailureHandler(err => {
-                detailsDiv.innerHTML = `<p class="error-message">${err.message}</p>`;
-                document.getElementById('confirm-fix-btn').style.display = 'none';
+                alert('Error deleting logs: ' + err.message);
+                btn.textContent = 'Delete Selected Logs';
+                btn.disabled = false;
             })
-            .previewHandlingTimeFix(caseId);
-    }
+            .deleteLogEntries(logsToDelete);
+}
 
     function closeFixModal() {
         document.getElementById('fix-modal').style.display = 'none';
