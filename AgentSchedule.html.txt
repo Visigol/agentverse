@@ -188,17 +188,11 @@
     }
 
     function submitSchedule() {
-      if (selectedSlots.size === 0) {
-        setUserMessage("Please select at least one time slot.", "error");
-        return;
-      }
       setUserMessage("Submitting...", "status");
       const slotsArray = Array.from(selectedSlots);
       google.script.run
         .withSuccessHandler(response => {
           setUserMessage(response, "success");
-          selectedSlots.clear();
-          document.querySelectorAll('.time-slot.selected').forEach(el => el.classList.remove('selected'));
         })
         .withFailureHandler(err => {
           setUserMessage(err.message, "error");
@@ -206,7 +200,27 @@
         .submitScheduleApplication(slotsArray);
     }
 
-    window.addEventListener('load', generateCalendar);
+    window.addEventListener('load', function() {
+        generateCalendar();
+        loadAgentSchedule();
+    });
+
+    function loadAgentSchedule() {
+        google.script.run
+            .withSuccessHandler(slots => {
+                slots.forEach(slotId => {
+                    const slotElement = document.getElementById(slotId);
+                    if (slotElement) {
+                        selectedSlots.add(slotId);
+                        slotElement.classList.add('selected');
+                    }
+                });
+            })
+            .withFailureHandler(err => {
+                setUserMessage("Could not load your existing schedule. " + err.message, "error");
+            })
+            .getAgentSchedule();
+    }
   </script>
 </body>
 </html>

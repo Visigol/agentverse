@@ -4,7 +4,7 @@
   <base target="_top">
   <title>Schedule Efficiency Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
   <style>
     :root {
       --background-main: #F0F8F5;
@@ -135,36 +135,41 @@
     </div>
 
     <div class="card">
+        <div class="control-group">
+          <label for="daySelector">Displaying data for:</label>
+          <select id="daySelector" onchange="renderChart()"></select>
+        </div>
       <canvas id="efficiencyChart"></canvas>
     </div>
 
     <div class="card">
-      <h2>Hourly Data Breakdown</h2>
-      <table id="efficiencyTable">
-        <thead>
-          <tr>
-            <th>Hour</th>
-            <th>Avg. Agents Working</th>
-            <th>Avg. Workload (Cases Started/Closed)</th>
-            <th>Case-per-Agent Ratio</th>
-          </tr>
-        </thead>
-        <tbody id="efficiencyTableBody">
-          <tr><td colspan="4" style="text-align:center; color: var(--text-secondary);">Select a date range and click "Load Data".</td></tr>
-        </tbody>
-      </table>
+      <h2>Hourly Data Breakdown (by Day of Week)</h2>
+      <div style="overflow-x: auto;">
+        <table id="efficiencyTable">
+            <thead id="efficiencyTableHead"></thead>
+            <tbody id="efficiencyTableBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="card">
       <h2>Suggestion Engine</h2>
       <p>Analyze the data from the selected period to generate a recommended staffing schedule for next week.</p>
       <button onclick="generateSchedule()">Generate Suggested Schedule</button>
-      <div id="suggestionMessage" class="message-area" style="text-align: left;"></div>
+      <div id="suggestionMessage" class="message-area"></div>
+
+      <div id="suggestion-container" style="display: none; margin-top: 20px;">
+        <h3>Recommended Staffing Levels</h3>
+        <canvas id="suggestionChart"></canvas>
+        <h3 style="margin-top: 20px;">Summary & Justification</h3>
+        <div id="suggestionSummary"></div>
+      </div>
     </div>
   </div>
 
   <script>
     let efficiencyChartInstance = null;
+    let fullData = null;
 
     window.addEventListener('load', function() {
         const today = new Date();
@@ -172,6 +177,7 @@
         aWeekAgo.setDate(today.getDate() - 7);
         document.getElementById('endDate').value = today.toISOString().split('T')[0];
         document.getElementById('startDate').value = aWeekAgo.toISOString().split('T')[0];
+        document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="16" style="text-align:center; color: var(--text-secondary);">Select a date range and click "Load Data".</td></tr>';
     });
 
     function showLoader(show) {
@@ -195,97 +201,169 @@
       }
       showLoader(true);
       setUserMessage("", "status");
-      document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
+      document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="16" style="text-align:center;">Loading...</td></tr>';
 
       google.script.run
         .withSuccessHandler(data => {
           showLoader(false);
-          renderChart(data);
-          renderTable(data);
+          fullData = data;
+          populateDaySelector();
+          renderChart();
+          renderTable();
         })
         .withFailureHandler(err => {
           showLoader(false);
           setUserMessage(err.message, "error");
-          document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center; color:red;">Could not load data.</td></tr>';
+          document.getElementById('efficiencyTableBody').innerHTML = '<tr><td colspan="16" style="text-align:center; color:red;">Could not load data.</td></tr>';
         })
         .getScheduleEfficiencyData(startDate, endDate);
     }
 
-    function renderChart(data) {
-      const ctx = document.getElementById('efficiencyChart').getContext('2d');
-      const labels = Object.keys(data);
-      const agentData = labels.map(hour => data[hour].avgAgents);
-      const workloadData = labels.map(hour => data[hour].avgWorkload);
+    function populateDaySelector() {
+        const selector = document.getElementById('daySelector');
+        selector.innerHTML = '';
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        days.forEach(day => {
+            const option = document.createElement('option');
+            option.value = day;
+            option.textContent = day;
+            selector.appendChild(option);
+        });
+    }
 
-      if (efficiencyChartInstance) {
-        efficiencyChartInstance.destroy();
-      }
+    function renderChart() {
+        if (!fullData) return;
+        const selectedDay = document.getElementById('daySelector').value;
+        const data = fullData[selectedDay];
 
-      efficiencyChartInstance = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: labels.map(h => h + ':00'),
-          datasets: [
-            {
-              label: 'Average Agents Working',
-              data: agentData,
-              backgroundColor: 'rgba(0, 177, 79, 0.6)',
-              borderColor: 'rgba(0, 177, 79, 1)',
-              borderWidth: 1
-            },
-            {
-              label: 'Average Workload (Cases)',
-              data: workloadData,
-              backgroundColor: 'rgba(107, 114, 128, 0.6)',
-              borderColor: 'rgba(107, 114, 128, 1)',
-              borderWidth: 1
-            }
-          ]
-        },
-        options: {
-          scales: {
-            y: {
-              beginAtZero: true,
-              title: {
-                display: true,
-                text: 'Count'
-              }
-            }
-          },
-          plugins: {
-            title: {
-                display: true,
-                text: 'Hourly Staffing vs. Workload',
-                font: { size: 18 }
-            }
-          }
+        const ctx = document.getElementById('efficiencyChart').getContext('2d');
+        const labels = Object.keys(data).sort();
+        const agentData = labels.map(hour => data[hour].avgAgents);
+        const workloadData = labels.map(hour => data[hour].avgWorkload);
+
+        if (efficiencyChartInstance) {
+            efficiencyChartInstance.destroy();
         }
-      });
+
+        efficiencyChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.map(h => h + ':00'),
+                datasets: [
+                    {
+                        label: 'Average Agents Working',
+                        data: agentData,
+                        backgroundColor: 'rgba(0, 177, 79, 0.6)'
+                    },
+                    {
+                        label: 'Average Workload (Cases)',
+                        data: workloadData,
+                        backgroundColor: 'rgba(107, 114, 128, 0.6)'
+                    }
+                ]
+            },
+            options: {
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'Count' } } },
+                plugins: { title: { display: true, text: `Hourly Staffing vs. Workload for ${selectedDay}`, font: { size: 18 } } }
+            }
+        });
     }
 
-    function renderTable(data) {
-      const tableBody = document.getElementById('efficiencyTableBody');
-      tableBody.innerHTML = '';
-      for (const hour in data) {
-        const row = tableBody.insertRow();
-        const hourData = data[hour];
-        row.insertCell().textContent = hour + ':00';
-        row.insertCell().textContent = hourData.avgAgents.toFixed(2);
-        row.insertCell().textContent = hourData.avgWorkload.toFixed(2);
-        row.insertCell().textContent = hourData.casePerAgentRatio.toFixed(2);
-      }
+    function renderTable() {
+        const tableHead = document.getElementById('efficiencyTableHead');
+        const tableBody = document.getElementById('efficiencyTableBody');
+        tableHead.innerHTML = '';
+        tableBody.innerHTML = '';
+
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+        let headerHtml = '<tr><th>Hour</th>';
+        days.forEach(day => {
+            headerHtml += `<th>Agents (${day.substring(0,3)})</th><th>Workload (${day.substring(0,3)})</th><th>Ratio (${day.substring(0,3)})</th>`;
+        });
+        headerHtml += '</tr>';
+        tableHead.innerHTML = headerHtml;
+
+        for (let hour = 7; hour < 20; hour++) {
+            const hourKey = String(hour).padStart(2, '0');
+            const row = tableBody.insertRow();
+            row.insertCell().textContent = hourKey + ':00';
+            days.forEach(day => {
+                const dayData = fullData[day][hourKey];
+                row.insertCell().textContent = dayData.avgAgents.toFixed(2);
+                row.insertCell().textContent = dayData.avgWorkload.toFixed(2);
+                row.insertCell().textContent = dayData.casePerAgentRatio.toFixed(2);
+            });
+        }
     }
+    let suggestionChartInstance = null;
 
     function generateSchedule() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        if (!startDate || !endDate) {
+            setUserMessage("Please select a date range first.", "error", "suggestionMessage");
+            return;
+        }
+
         setUserMessage("Generating schedule...", "status", "suggestionMessage");
+        document.getElementById('suggestion-container').style.display = 'none';
+
         google.script.run
-            .withSuccessHandler(response => {
-                setUserMessage(response, "success", "suggestionMessage");
+            .withSuccessHandler(suggestions => {
+                setUserMessage("Suggestions generated successfully.", "success", "suggestionMessage");
+                document.getElementById('suggestion-container').style.display = 'block';
+                renderSuggestionChart(suggestions);
+                renderSuggestionSummary(suggestions);
             })
             .withFailureHandler(err => {
                 setUserMessage(err.message, "error", "suggestionMessage");
             })
-            .generateSuggestedSchedule();
+            .generateSuggestedSchedule(startDate, endDate);
+    }
+
+    function renderSuggestionChart(suggestions) {
+        const ctx = document.getElementById('suggestionChart').getContext('2d');
+        const days = Object.keys(suggestions);
+        const hours = Object.keys(suggestions[days[0]]).sort();
+
+        const datasets = days.map(day => {
+            return {
+                label: day,
+                data: hours.map(hour => suggestions[day][hour].recommended),
+                // Add styling for each day's line
+            };
+        });
+
+        if (suggestionChartInstance) {
+            suggestionChartInstance.destroy();
+        }
+        suggestionChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: hours.map(h => h + ':00'),
+                datasets: datasets
+            },
+            options: {
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'Recommended Agents' } } }
+            }
+        });
+    }
+
+    function renderSuggestionSummary(suggestions) {
+        const summaryDiv = document.getElementById('suggestionSummary');
+        summaryDiv.innerHTML = '';
+        let summaryHtml = '';
+        for (const day in suggestions) {
+            summaryHtml += `<h4>${day}</h4><ul>`;
+            for (const hour in suggestions[day]) {
+                const data = suggestions[day][hour];
+                if (data.justification !== "No workload recorded for this hour on this day." && data.justification !== "Workload and staffing appear balanced.") {
+                     summaryHtml += `<li><strong>${hour}:00:</strong> ${data.justification} Recommending <strong>${data.recommended}</strong> agent(s).</li>`;
+                }
+            }
+            summaryHtml += '</ul>';
+        }
+        summaryDiv.innerHTML = summaryHtml;
     }
   </script>
 </body>
