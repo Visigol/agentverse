@@ -3628,69 +3628,59 @@ function getHourlyStaffing(startDateStr, endDateStr) {
 }
 
 function getSheetHeaders(sheetName) {
-  try {
-    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sheet = ss.getSheetByName(sheetName);
-    if (!sheet) {
-      throw new Error(`Sheet "${sheetName}" not found.`);
-    }
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    return headers.filter(header => header); // Filter out empty header cells
-  } catch (e) {
-    Logger.log(`Error in getSheetHeaders: ${e.toString()}`);
-    throw new Error(`Could not retrieve headers for sheet "${sheetName}".`);
-  }
+  return query_engine.getSheetHeaders(sheetName);
 }
 
 function getAllSheetNames() {
-  try {
-    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sheets = ss.getSheets();
-    return sheets.map(sheet => sheet.getName());
-  } catch (e) {
-    Logger.log(`Error in getAllSheetNames: ${e.toString()}`);
-    throw new Error("Could not retrieve sheet names.");
-  }
+  return query_engine.getAllSheetNames();
 }
 
 function saveQueryToLibrary(name, description, queryJson) {
-  try {
-    if (!name || !queryJson) {
-      throw new Error("Query name and JSON are required to save to the library.");
-    }
-    const userEmail = Session.getActiveUser().getEmail();
-    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-    const librarySheet = ss.getSheetByName("QueryLibrary");
-    if (!librarySheet) {
-      throw new Error("QueryLibrary sheet not found.");
-    }
-    librarySheet.appendRow([name, description || "", queryJson, userEmail]);
-    return `Query "${name}" was successfully saved to your library.`;
-  } catch (e) {
-    Logger.log(`Error in saveQueryToLibrary: ${e.toString()}`);
-    throw new Error(`Could not save query: ${e.message}`);
-  }
+  return query_engine.saveQueryToLibrary(name, description, queryJson);
 }
 
 function getQueriesFromLibrary() {
+  return query_engine.getQueriesFromLibrary();
+}
+
+function submitQueryToQueue(query) {
+  return query_engine.submitQueryToQueue(query);
+}
+
+function scheduleQuery(query, scheduleTime) {
   try {
-    const userEmail = Session.getActiveUser().getEmail();
-    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-    const librarySheet = ss.getSheetByName("QueryLibrary");
-    if (!librarySheet || librarySheet.getLastRow() < 2) {
-      return [];
-    }
-    const data = librarySheet.getRange(2, 1, librarySheet.getLastRow() - 1, 4).getValues();
-    return data
-      .filter(row => row[3] === userEmail) // Filter by user's email in the 4th column
-      .map(row => ({
-        name: row[0],
-        description: row[1],
-        queryJson: row[2]
-      }));
+    const trigger = ScriptApp.newTrigger('runQueryEngineBatch')
+      .timeBased()
+      .at(new Date(scheduleTime))
+      .create();
+
+    PropertiesService.getScriptProperties().setProperty(trigger.getUniqueId(), JSON.stringify(query));
+
+    return `Query scheduled successfully for ${new Date(scheduleTime).toLocaleString()}. Trigger ID: ${trigger.getUniqueId()}`;
   } catch (e) {
-    Logger.log(`Error in getQueriesFromLibrary: ${e.toString()}`);
-    return []; // Return empty on error to not break the UI
+    Logger.log(`Error in scheduleQuery: ${e.toString()}`);
+    throw new Error(`Could not schedule query: ${e.message}`);
+  }
+}
+
+function scheduleRecurringQuery(query, cronString) {
+  try {
+    // Basic cron validation
+    if (cronString.split(' ').length !== 5 && cronString.split(' ').length !== 6) {
+      throw new Error("Invalid cron string format.");
+    }
+
+    const trigger = ScriptApp.newTrigger('runQueryEngineBatch')
+      .timeBased()
+      .cron(cronString)
+      .create();
+
+    PropertiesService.getScriptProperties().setProperty(trigger.getUniqueId(), JSON.stringify(query));
+
+    return `Query scheduled successfully with cron: "${cronString}". Trigger ID: ${trigger.getUniqueId()}`;
+  } catch (e) {
+    Logger.log(`Error in scheduleRecurringQuery: ${e.toString()}`);
+    throw new Error(`Could not schedule recurring query: ${e.message}`);
   }
 }
 
