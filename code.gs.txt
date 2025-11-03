@@ -3433,7 +3433,7 @@ function sendMonthlyPerformanceReport() {
     Logger.log("Generated Charts:", Object.keys(imageBlobs));
 
     // --- 4. COMBINE DATA, CHARTS, AND TEMPLATE ---
-    const template = HtmlService.createTemplateFromFile('email-template.html.txt');
+    const template = HtmlService.createTemplateFromFile('email-template.html');
     template.startDate = startDateStr;
     template.endDate = endDateStr;
     template.productionSummary = productionSummary;
