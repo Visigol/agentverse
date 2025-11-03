@@ -73,6 +73,30 @@ const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
 const MANAGER_EMAILS_FALLBACK = ["manager1@example.com", "your.manager.email@example.com"];
 
 // =================================================================================
+// --- SPREADSHEET UI & TRIGGERS ---
+// =================================================================================
+
+/**
+ * Creates a custom menu in the Google Sheet UI when the spreadsheet is opened.
+ */
+function onOpen(e) {
+  SpreadsheetApp.getUi()
+      .createMenu('Query Engine')
+      .addItem('Show', 'showQueryBuilder')
+      .addToUi();
+}
+
+/**
+ * Renders the Query Builder UI as a modal dialog in the Google Sheet.
+ */
+function showQueryBuilder() {
+  const html = HtmlService.createHtmlOutputFromFile('QueryBuilderUI.html')
+      .setWidth(1200)
+      .setHeight(800);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Dynamic Query Engine');
+}
+
+// =================================================================================
 // --- WEB APP ROUTER ---
 // =================================================================================
 
@@ -108,6 +132,10 @@ function doGet(e) {
         return HtmlService.createHtmlOutputFromFile('ManagerReview.html')
             .setTitle('Manager Schedule Review')
             .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'query_engine') {
+        return HtmlService.createHtmlOutputFromFile('QueryBuilderUI.html')
+            .setTitle('Dynamic Query Engine')
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else {
       // Otherwise, show the default manager homepage.
       return HtmlService.createTemplateFromFile('manager').evaluate()
@@ -128,12 +156,49 @@ function doGet(e) {
         return HtmlService.createHtmlOutputFromFile('AgentSchedule.html')
             .setTitle('Agent Schedule Application')
             .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'query_engine') {
+        return HtmlService.createHtmlOutputFromFile('QueryBuilderUI.html')
+            .setTitle('Dynamic Query Engine')
+            .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else {
       // Default to the agent index page.
       return HtmlService.createTemplateFromFile('index').evaluate()
         .setTitle('Agent Status Tracker')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
+  }
+}
+
+function createSheetWithData(data, headers, fileName) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    throw new Error("No data provided to create the sheet.");
+  }
+  if (!headers || !Array.isArray(headers) || headers.length === 0) {
+    throw new Error("No column headers were specified for the export.");
+  }
+
+  try {
+    const spreadsheetName = fileName || `Query Result - ${new Date().toLocaleString()}`;
+    const newSs = SpreadsheetApp.create(spreadsheetName);
+    const sheet = newSs.getSheets()[0];
+    sheet.setName("Result Data");
+
+    const rows = data.map(obj => headers.map(header => obj[header]));
+    const outputData = [headers, ...rows];
+
+    sheet.getRange(1, 1, outputData.length, headers.length).setValues(outputData);
+
+    headers.forEach((_, i) => {
+      sheet.autoResizeColumn(i + 1);
+    });
+
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+
+    return newSs.getUrl();
+
+  } catch (e) {
+    Logger.log(`Error in createSheetWithData: ${e.toString()}`);
+    throw new Error("Failed to create the spreadsheet. " + e.message);
   }
 }
 
@@ -3584,6 +3649,509 @@ function getHourlyStaffing(startDateStr, endDateStr) {
     }
 
     return averages;
+}
+
+function getSheetHeaders(sheetName) {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      throw new Error(`Sheet "${sheetName}" not found.`);
+    }
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    return headers.filter(header => header); // Filter out empty header cells
+  } catch (e) {
+    Logger.log(`Error in getSheetHeaders: ${e.toString()}`);
+    throw new Error(`Could not retrieve headers for sheet "${sheetName}".`);
+  }
+}
+
+function getAllSheetNames() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    const sheets = ss.getSheets();
+    return sheets.map(sheet => sheet.getName());
+  } catch (e) {
+    Logger.log(`Error in getAllSheetNames: ${e.toString()}`);
+    throw new Error("Could not retrieve sheet names.");
+  }
+}
+
+function saveQueryToLibrary(name, description, queryJson) {
+  try {
+    if (!name || !queryJson) {
+      throw new Error("Query name and JSON are required to save to the library.");
+    }
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet) {
+      throw new Error("QueryLibrary sheet not found.");
+    }
+    librarySheet.appendRow([name, description || "", queryJson]);
+    return `Query "${name}" was successfully saved to the library.`;
+  } catch (e) {
+    Logger.log(`Error in saveQueryToLibrary: ${e.toString()}`);
+    throw new Error(`Could not save query: ${e.message}`);
+  }
+}
+
+function getQueriesFromLibrary() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet || librarySheet.getLastRow() < 2) {
+      return [];
+    }
+    const data = librarySheet.getRange(2, 1, librarySheet.getLastRow() - 1, 3).getValues();
+    return data.map(row => ({
+      name: row[0],
+      description: row[1],
+      queryJson: row[2]
+    }));
+  } catch (e) {
+    Logger.log(`Error in getQueriesFromLibrary: ${e.toString()}`);
+    return []; // Return empty on error to not break the UI
+  }
+}
+
+
+// =================================================================================
+// --- DYNAMIC QUERY ENGINE FUNCTIONS ---
+// =================================================================================
+
+/**
+ * Sets up the required sheets for the Dynamic Query Engine if they don't exist.
+ * This function should be run manually once or called from an onOpen trigger.
+ */
+function setupQueryEngineSheets() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+
+    // Setup QueryQueue Sheet
+    let queueSheet = ss.getSheetByName("QueryQueue");
+    if (!queueSheet) {
+      queueSheet = ss.insertSheet("QueryQueue");
+      const queueHeaders = ["QueryID", "SubmittedBy", "Status", "QueryJSON", "StartTime", "EndTime", "OutputSheetURL", "ErrorMessage"];
+      queueSheet.appendRow(queueHeaders);
+      queueSheet.getRange("A1:H1").setFontWeight("bold");
+    }
+
+    // Setup QueryLibrary Sheet
+    let librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet) {
+      librarySheet = ss.insertSheet("QueryLibrary");
+      const libraryHeaders = ["QueryName", "Description", "QueryJSON"];
+      librarySheet.appendRow(libraryHeaders);
+      librarySheet.getRange("A1:C1").setFontWeight("bold");
+    }
+
+    return "Query Engine sheets are set up successfully.";
+  } catch (e) {
+    Logger.log(`Error in setupQueryEngineSheets: ${e.toString()}`);
+    throw new Error("Could not set up Query Engine sheets.");
+  }
+}
+
+/**
+ * Submits a query to the asynchronous queue.
+ * This is the entry point called from the frontend.
+ */
+function submitQueryToQueue(queryJSON) {
+  try {
+    setupQueryEngineSheets(); // Ensure sheets exist
+
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const queueSheet = ss.getSheetByName("QueryQueue");
+
+    const userEmail = Session.getActiveUser().getEmail();
+    const queryId = `${new Date().getTime()}_${userEmail}`;
+
+    queueSheet.appendRow([
+      queryId,
+      userEmail,
+      "Pending",
+      JSON.stringify(queryJSON, null, 2), // Pretty print the JSON
+      "", // StartTime
+      "", // EndTime
+      "", // OutputSheetURL
+      ""  // ErrorMessage
+    ]);
+
+    return `Query submitted successfully with ID: ${queryId}. It will be processed shortly.`;
+  } catch (e) {
+    Logger.log(`Error in submitQueryToQueue: ${e.toString()}`);
+    throw new Error("Could not submit query to the queue.");
+  }
+}
+
+/**
+ * Creates a time-based trigger for the query engine if one doesn't already exist.
+ */
+function createHeartbeatTrigger() {
+  // Delete existing triggers to prevent duplicates
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getHandlerFunction() === "processQueryQueue") {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  }
+
+  // Create a new trigger
+  ScriptApp.newTrigger("processQueryQueue")
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+
+  Logger.log("Heartbeat trigger created successfully.");
+}
+
+/**
+ * The main "heartbeat" function that processes the query queue.
+ * This is triggered every 1-2 minutes.
+ */
+function processQueryQueue() {
+  const properties = PropertiesService.getScriptProperties();
+  const isEngineBusy = properties.getProperty('isEngineBusy');
+
+  if (isEngineBusy === 'true') {
+    // Engine is busy, so we'll continue processing the current job.
+    Logger.log("Engine is busy, continuing with the current query.");
+    runQueryBatch();
+    return;
+  }
+
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const queueSheet = ss.getSheetByName("QueryQueue");
+  const data = queueSheet.getDataRange().getValues();
+  const headers = data.shift();
+
+  const statusCol = headers.indexOf("Status");
+  let pendingQueryRow = -1;
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][statusCol] === "Pending") {
+      pendingQueryRow = i + 2; // Sheet rows are 1-based, and we shifted the header
+      break;
+    }
+  }
+
+  if (pendingQueryRow !== -1) {
+    // Found a pending query. Lock the engine and start processing.
+    properties.setProperty('isEngineBusy', 'true');
+    const queryId = queueSheet.getRange(pendingQueryRow, headers.indexOf("QueryID") + 1).getValue();
+    const queryJSON = queueSheet.getRange(pendingQueryRow, headers.indexOf("QueryJSON") + 1).getValue();
+
+    // Store current query info in PropertiesService for the batch processor
+    properties.setProperties({
+        'currentQueryID': queryId,
+        'currentQueryJSON': queryJSON,
+        'currentSheetIndex': 0, // Start with the first sheet
+        'lastRowProcessed': 0,
+        'processedResults': '[]',
+        'aggregationMap': '{}'
+    });
+
+    // Update status in the sheet
+    queueSheet.getRange(pendingQueryRow, statusCol + 1).setValue("Running");
+    queueSheet.getRange(pendingQueryRow, headers.indexOf("StartTime") + 1).setValue(new Date());
+
+    Logger.log(`Picked up new query: ${queryId}. Engine is now locked.`);
+
+    runQueryBatch();
+  } else {
+    Logger.log("No pending queries found.");
+  }
+}
+
+/**
+ * The stateful "workhorse" function that processes a chunk of data.
+ * It's called by the heartbeat trigger.
+ */
+function runQueryBatch() {
+  const properties = PropertiesService.getScriptProperties();
+  const queryId = properties.getProperty('currentQueryID');
+
+  if (!queryId) {
+    Logger.log("runQueryBatch called but no active query found. Engine might have been unlocked. Exiting.");
+    return;
+  }
+
+  try {
+    const queryJSON = properties.getProperty('currentQueryJSON');
+    let lastRowProcessed = parseInt(properties.getProperty('lastRowProcessed'), 10);
+    let currentSheetIndex = parseInt(properties.getProperty('currentSheetIndex'), 10);
+    const query = JSON.parse(queryJSON);
+
+    // Load current state from PropertiesService
+    let currentResults = JSON.parse(properties.getProperty('processedResults'));
+    let aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
+
+    const CHUNK_SIZE = 500;
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+
+    let sourceSheet;
+    let maxRows = 0;
+
+    if (currentSheetIndex < query.from.length) {
+        sourceSheet = ss.getSheetByName(query.from[currentSheetIndex]);
+        if (!sourceSheet) throw new Error(`Source sheet "${query.from[currentSheetIndex]}" not found.`);
+        maxRows = sourceSheet.getLastRow() - 1;
+    }
+
+    const startRow = lastRowProcessed + 1;
+    const numRowsToProcess = Math.min(CHUNK_SIZE, maxRows - lastRowProcessed);
+
+    if (numRowsToProcess <= 0) {
+      if (currentSheetIndex >= query.from.length - 1) {
+        // --- COMPLETION LOGIC ---
+        let finalResults;
+        if (query.groupBy && query.groupBy.length > 0) {
+          const aggMap = JSON.parse(properties.getProperty('aggregationMap'));
+          finalResults = Object.values(aggMap).map(group => {
+            query.select.forEach(sel => {
+              if (sel.includes('AVG(')) {
+                const col = sel.substring(sel.indexOf('(') + 1, sel.lastIndexOf(')'));
+                const sumCol = `SUM(${col})`;
+                const countCol = `COUNT(${col})`;
+                if (group[countCol] > 0) {
+                  group[sel] = group[sumCol] / group[countCol];
+                } else {
+                  group[sel] = 0;
+                }
+              }
+            });
+            return group;
+          });
+        } else {
+          finalResults = JSON.parse(properties.getProperty('processedResults'));
+        }
+
+        if (query.orderBy && query.orderBy.length > 0) {
+          finalResults.sort((a, b) => {
+            for (const sort of query.orderBy) {
+              const aVal = a[sort.column];
+              const bVal = b[sort.column];
+              if (aVal < bVal) return sort.direction === 'ASC' ? -1 : 1;
+              if (aVal > bVal) return sort.direction === 'ASC' ? 1 : -1;
+            }
+            return 0;
+          });
+        }
+
+        Logger.log(`Query ${queryId} finished processing. Total rows: ${finalResults.length}.`);
+        let outputUrl = "";
+        if (finalResults.length > 0) {
+          const resultHeaders = query.select.map(s => s.includes('(') ? s : s);
+          outputUrl = createSheetWithData(finalResults, resultHeaders, `QueryResult_${queryId}`);
+        }
+
+        const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
+        const data = queueSheet.getDataRange().getValues();
+        const headers = data.shift();
+        const queryIdCol = headers.indexOf("QueryID");
+        for (let i = 0; i < data.length; i++) {
+          if (data[i][queryIdCol] === queryId) {
+            queueSheet.getRange(i + 2, headers.indexOf("Status") + 1).setValue("Complete");
+            queueSheet.getRange(i + 2, headers.indexOf("EndTime") + 1).setValue(new Date());
+            queueSheet.getRange(i + 2, headers.indexOf("OutputSheetURL") + 1).setValue(outputUrl);
+            break;
+          }
+        }
+
+        properties.deleteProperty('isEngineBusy');
+        properties.deleteProperty('currentQueryID');
+        properties.deleteProperty('currentQueryJSON');
+        properties.deleteProperty('lastRowProcessed');
+        properties.deleteProperty('processedResults');
+        properties.deleteProperty('aggregationMap');
+        properties.deleteProperty('currentSheetIndex');
+        Logger.log(`Query ${queryId} complete. Engine unlocked.`);
+        return;
+      } else {
+        // --- TRANSITION TO NEXT SHEET ---
+        Logger.log(`Finished processing sheet #${currentSheetIndex}: ${query.from[currentSheetIndex]}.`);
+        properties.setProperties({
+          'currentSheetIndex': currentSheetIndex + 1,
+          'lastRowProcessed': 0
+        });
+        runQueryBatch();
+        return;
+      }
+    }
+
+    // --- DATA PROCESSING LOGIC ---
+    const sheetData = sourceSheet.getRange(startRow + 1, 1, numRowsToProcess, sourceSheet.getLastColumn()).getValues();
+    const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+
+    const filteredData = sheetData.filter(row => evaluateWhereClause(row, headers, query.where));
+
+    if (query.groupBy && query.groupBy.length > 0) {
+        const groupByIndices = query.groupBy.map(col => headers.indexOf(col));
+        filteredData.forEach(row => {
+            const groupKey = groupByIndices.map(idx => row[idx]).join('||');
+            if (!aggregationMap[groupKey]) {
+                aggregationMap[groupKey] = {};
+                query.groupBy.forEach((col, i) => {
+                    aggregationMap[groupKey][col] = row[groupByIndices[i]];
+                });
+            }
+            query.select.forEach(sel => {
+                if (sel.includes('(')) {
+                    const aggType = sel.substring(0, sel.indexOf('('));
+                    const colName = sel.substring(sel.indexOf('(') + 1, sel.lastIndexOf(')'));
+                    const colIndex = headers.indexOf(colName);
+                    const value = parseFloat(row[colIndex]) || 0;
+                    if (aggType === 'COUNT') {
+                        aggregationMap[groupKey][sel] = (aggregationMap[groupKey][sel] || 0) + 1;
+                    } else if (aggType === 'SUM') {
+                        aggregationMap[groupKey][sel] = (aggregationMap[groupKey][sel] || 0) + value;
+                    } else if (aggType === 'AVG') {
+                        const sumCol = `SUM(${colName})`;
+                        const countCol = `COUNT(${colName})`;
+                        aggregationMap[groupKey][sumCol] = (aggregationMap[groupKey][sumCol] || 0) + value;
+                        aggregationMap[groupKey][countCol] = (aggregationMap[groupKey][countCol] || 0) + 1;
+                    }
+                }
+            });
+        });
+    } else {
+        const selectColumns = query.select.length > 0 ? query.select : headers;
+        const selectIndices = selectColumns.map(col => headers.indexOf(col));
+        const chunkResults = filteredData.map(row => {
+            let selectedRow = {};
+            selectIndices.forEach((idx, i) => {
+                if (idx !== -1) {
+                    selectedRow[selectColumns[i]] = row[idx];
+                }
+            });
+            return selectedRow;
+        });
+        currentResults = currentResults.concat(chunkResults);
+    }
+
+    // Save the new state
+    properties.setProperties({
+        'lastRowProcessed': lastRowProcessed + numRowsToProcess,
+        'processedResults': JSON.stringify(currentResults),
+        'aggregationMap': JSON.stringify(aggregationMap)
+    });
+    Logger.log(`State saved for sheet ${query.from[currentSheetIndex]}. Processed up to row ${lastRowProcessed + numRowsToProcess}.`);
+
+  } catch (e) {
+    // --- ERROR HANDLING ---
+    Logger.log(`Error processing query ${queryId}: ${e.toString()}`);
+    // Update queue with error
+    const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
+    const data = queueSheet.getDataRange().getValues();
+    const headers = data.shift();
+    const queryIdCol = headers.indexOf("QueryID");
+
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][queryIdCol] === queryId) {
+        queueSheet.getRange(i + 2, headers.indexOf("Status") + 1).setValue("Failed");
+        queueSheet.getRange(i + 2, headers.indexOf("ErrorMessage") + 1).setValue(e.message);
+        break;
+      }
+    }
+
+    // Unlock the engine
+    properties.deleteProperty('isEngineBusy');
+    Logger.log(`Query ${queryId} failed. Engine unlocked.`);
+  }
+}
+
+function evaluateWhereClause(row, headers, where) {
+  if (!where || !where.groups || where.groups.length === 0) {
+    return true; // If no WHERE clause, all rows pass
+  }
+
+  const rootLogic = where.logic; // AND or OR
+
+  for (let i = 0; i < where.groups.length; i++) {
+    const group = where.groups[i];
+    const groupResult = evaluateGroup(row, headers, group);
+
+    if (rootLogic === 'AND' && !groupResult) {
+      return false; // For AND, if any group is false, the whole thing is false
+    }
+    if (rootLogic === 'OR' && groupResult) {
+      return true; // For OR, if any group is true, the whole thing is true
+    }
+  }
+
+  return rootLogic === 'AND'; // If AND and we haven't returned false, it's true. If OR and we haven't returned true, it's false.
+}
+
+function evaluateGroup(row, headers, group) {
+  if (!group.rules || group.rules.length === 0) {
+    return true;
+  }
+
+  const groupLogic = group.logic; // AND or OR
+
+  for (let i = 0; i < group.rules.length; i++) {
+    const rule = group.rules[i];
+    const ruleResult = applyRule(row, headers, rule);
+
+    if (groupLogic === 'AND' && !ruleResult) {
+      return false;
+    }
+    if (groupLogic === 'OR' && ruleResult) {
+      return true;
+    }
+  }
+
+  return groupLogic === 'AND';
+}
+
+function applyRule(row, headers, rule) {
+  const colIndex = headers.indexOf(rule.column);
+  if (colIndex === -1) {
+    return false; // Column not found
+  }
+
+  const cellValue = row[colIndex];
+  const ruleValue = rule.value;
+
+  switch (rule.operator) {
+    case 'is': return cellValue == ruleValue;
+    case 'is_not': return cellValue != ruleValue;
+    case 'contains': return String(cellValue).includes(ruleValue);
+    case 'does_not_contain': return !String(cellValue).includes(ruleValue);
+    case 'starts_with': return String(cellValue).startsWith(ruleValue);
+    case 'does_not_start_with': return !String(cellValue).startsWith(ruleValue);
+    case 'ends_with': return String(cellValue).endsWith(ruleValue);
+    case 'does_not_end_with': return !String(cellValue).endsWith(ruleValue);
+    case 'is_blank': return cellValue === '' || cellValue === null || cellValue === undefined;
+    case 'is_not_blank': return cellValue !== '' && cellValue !== null && cellValue !== undefined;
+    // Basic numeric/date comparison. Assumes clean data.
+    case 'is_greater_than': return cellValue > ruleValue;
+    case 'is_less_than': return cellValue < ruleValue;
+    case 'is_greater_than_or_equal_to': return cellValue >= ruleValue;
+    case 'is_less_than_or_equal_to': return cellValue <= ruleValue;
+    // More complex operators
+    case 'is_one_of': return ruleValue.split(',').map(v => v.trim()).includes(String(cellValue));
+    case 'is_not_one_of': return !ruleValue.split(',').map(v => v.trim()).includes(String(cellValue));
+    case 'is_between':
+      const parts = ruleValue.split(',').map(v => v.trim());
+      return cellValue >= parts[0] && cellValue <= parts[1];
+    case 'is_not_between':
+        const notParts = ruleValue.split(',').map(v => v.trim());
+        return cellValue < notParts[0] || cellValue > notParts[1];
+    case 'matches_regex':
+      try {
+        return new RegExp(ruleValue).test(cellValue);
+      } catch (e) {
+        return false;
+      }
+    case 'does_not_match_regex':
+      try {
+        return !new RegExp(ruleValue).test(cellValue);
+      } catch (e) {
+        return false;
+      }
+    default: return false;
+  }
 }
 
 function deleteLogEntries(logEntries) {
