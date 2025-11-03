@@ -73,30 +73,6 @@ const SPREADSHEET_EPOCH_OFFSET_MS = new Date('1899-12-30T00:00:00').getTime();
 const MANAGER_EMAILS_FALLBACK = ["manager1@example.com", "your.manager.email@example.com"];
 
 // =================================================================================
-// --- SPREADSHEET UI & TRIGGERS ---
-// =================================================================================
-
-/**
- * Creates a custom menu in the Google Sheet UI when the spreadsheet is opened.
- */
-function onOpen(e) {
-  SpreadsheetApp.getUi()
-      .createMenu('Query Engine')
-      .addItem('Show', 'showQueryBuilder')
-      .addToUi();
-}
-
-/**
- * Renders the Query Builder UI as a modal dialog in the Google Sheet.
- */
-function showQueryBuilder() {
-  const html = HtmlService.createHtmlOutputFromFile('QueryBuilderUI.html')
-      .setWidth(1200)
-      .setHeight(800);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Dynamic Query Engine');
-}
-
-// =================================================================================
 // --- WEB APP ROUTER ---
 // =================================================================================
 
