@@ -363,6 +363,7 @@
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
     <button id="tab-scheduling" onclick="showTab('scheduling')">Scheduling</button>
     <button id="tab-settings" onclick="showTab('settings')">Settings</button>
+    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=query_engine', '_blank')">Query Engine</button>
   </div>
 
   <div id="scheduling-container" class="manager-container" style="display: none;">

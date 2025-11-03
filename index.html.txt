@@ -207,6 +207,7 @@
     <button class="active">Attendance</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=agent-schedule', '_blank')">Apply for Schedule</button>
     <button id="cases-tab" style="display:none;" onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
+    <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=query_engine', '_blank')">Query Engine</button>
   </div>
 
   <div class="dashboard-container">
