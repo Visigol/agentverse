@@ -3810,6 +3810,7 @@ function runQueryBatch() {
 
   const cache = CacheService.getScriptCache();
   const stateJSON = cache.get(queryId);
+  const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
 
   try {
     if (!stateJSON) {
@@ -3844,15 +3845,14 @@ function runQueryBatch() {
         let outputUrl = ''; // Initialize outputUrl
 
         // Get outputUrl from QueryQueue sheet
-        const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
-        const data = queueSheet.getDataRange().getValues();
-        const headers = data.shift();
-        const queryIdCol = headers.indexOf("QueryID");
-        const urlCol = headers.indexOf("OutputSheetURL");
+        let queueData = queueSheet.getDataRange().getValues();
+        const queueHeaders = queueData.shift();
+        const queryIdCol = queueHeaders.indexOf("QueryID");
+        const urlCol = queueHeaders.indexOf("OutputSheetURL");
 
-        for (let i = 0; i < data.length; i++) {
-          if (data[i][queryIdCol] === queryId) {
-            outputUrl = data[i][urlCol];
+        for (let i = 0; i < queueData.length; i++) {
+          if (queueData[i][queryIdCol] === queryId) {
+            outputUrl = queueData[i][urlCol];
             break;
           }
         }
@@ -3899,15 +3899,14 @@ function runQueryBatch() {
 
         Logger.log(`Query ${queryId} finished processing.`);
 
-        const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
-        const data = queueSheet.getDataRange().getValues();
-        const headers = data.shift();
-        const queryIdCol = headers.indexOf("QueryID");
-        for (let i = 0; i < data.length; i++) {
-          if (data[i][queryIdCol] === queryId) {
-            queueSheet.getRange(i + 2, headers.indexOf("Status") + 1).setValue("Complete");
-            queueSheet.getRange(i + 2, headers.indexOf("EndTime") + 1).setValue(new Date());
-            queueSheet.getRange(i + 2, headers.indexOf("OutputSheetURL") + 1).setValue(outputUrl);
+        let finalQueueData = queueSheet.getDataRange().getValues();
+        const finalQueueHeaders = finalQueueData.shift();
+        const finalQueryIdCol = finalQueueHeaders.indexOf("QueryID");
+        for (let i = 0; i < finalQueueData.length; i++) {
+          if (finalQueueData[i][finalQueryIdCol] === queryId) {
+            queueSheet.getRange(i + 2, finalQueueHeaders.indexOf("Status") + 1).setValue("Complete");
+            queueSheet.getRange(i + 2, finalQueueHeaders.indexOf("EndTime") + 1).setValue(new Date());
+            queueSheet.getRange(i + 2, finalQueueHeaders.indexOf("OutputSheetURL") + 1).setValue(outputUrl);
             break;
           }
         }
@@ -3998,13 +3997,12 @@ function runQueryBatch() {
         });
 
         if (rowsToWrite.length > 0) {
-            const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
-            const data = queueSheet.getDataRange().getValues();
-            const urlCol = data[0].indexOf("OutputSheetURL");
+            const queueData = queueSheet.getDataRange().getValues();
+            const urlCol = queueData[0].indexOf("OutputSheetURL");
             let outputUrl = '';
-            for (let i = 1; i < data.length; i++) {
-                if (data[i][0] === queryId) {
-                    outputUrl = data[i][urlCol];
+            for (let i = 1; i < queueData.length; i++) {
+                if (queueData[i][0] === queryId) {
+                    outputUrl = queueData[i][urlCol];
                     break;
                 }
             }

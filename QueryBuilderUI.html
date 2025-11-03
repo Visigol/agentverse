@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #query-builder { display: flex; gap: 20px; }
+    .left-panel { flex: 2; }
+    .right-panel { flex: 1; }
+    .tab { overflow: hidden; border: 1px solid #ccc; background-color: #f1f1f1; }
+    .tab button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; }
+    .tab button:hover { background-color: #ddd; }
+    .tab button.active { background-color: #ccc; }
+    .tab-content { display: none; padding: 6px 12px; border: 1px solid #ccc; border-top: none; }
+    #where-builder { border: 1px solid #ccc; padding: 10px; }
+    .filter-group { border: 1px dashed #aaa; padding: 10px; margin-top: 10px; }
+    .filter-rule { margin-bottom: 5px; }
+    textarea { width: 100%; height: 150px; }
+  </style>
+</head>
+<body>
+  <h1>Dynamic Query Engine</h1>
+  <div id="query-builder">
+    <div class="left-panel">
+      <div class="tab">
+        <button class="tab-links" onclick="openTab(event, 'select')">SELECT</button>
+        <button class="tab-links" onclick="openTab(event, 'where')">WHERE</button>
+        <button class="tab-links" onclick="openTab(event, 'groupby')">GROUP BY</button>
+        <button class="tab-links" onclick="openTab(event, 'orderby')">ORDER BY</button>
+      </div>
+
+      <div id="select" class="tab-content">
+        <h3>SELECT Columns</h3>
+        <div id="select-columns"></div>
+      </div>
+
+      <div id="where" class="tab-content">
+        <h3>WHERE Clause</h3>
+        <div id="where-builder">
+          <div class="root-logic">
+            <label>Combine groups with:</label>
+            <select id="root-logic-select">
+              <option value="AND">AND (Match All)</option>
+              <option value="OR">OR (Match Any)</option>
+            </select>
+          </div>
+          <div id="filter-groups-container"></div>
+          <button onclick="addFilterGroup()">Add Filter Group</button>
+        </div>
+      </div>
+
+      <div id="groupby" class="tab-content">
+        <h3>GROUP BY</h3>
+        <div id="groupby-columns"></div>
+      </div>
+
+      <div id="orderby" class="tab-content">
+        <h3>ORDER BY</h3>
+        <div id="orderby-rules-container"></div>
+        <button onclick="addOrderByRule()">Add Sort Rule</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <h3>Query Formula (JSON)</h3>
+      <textarea id="query-formula" readonly></textarea>
+      <h3>Load from Formula</h3>
+      <textarea id="load-formula"></textarea>
+      <button onclick="loadFromFormula()">Load</button>
+      <hr>
+      <button onclick="saveToLibrary()">Save to Library</button>
+      <button onclick="runQuery()">Run Query</button>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      openTab(null, 'select'); // Open the first tab by default
+      google.script.run.withSuccessHandler(populateSheetData).getAllSheetNames();
+    });
+
+    function openTab(evt, tabName) {
+      var i, tabcontent, tablinks;
+      tabcontent = document.getElementsByClassName("tab-content");
+      for (i = 0; i < tabcontent.length; i++) {
+        tabcontent[i].style.display = "none";
+      }
+      tablinks = document.getElementsByClassName("tab-links");
+      for (i = 0; i < tablinks.length; i++) {
+        tablinks[i].className = tablinks[i].className.replace(" active", "");
+      }
+      document.getElementById(tabName).style.display = "block";
+      if(evt) evt.currentTarget.className += " active";
+    }
+
+    function populateSheetData(sheetNames) {
+      const selectColumnsDiv = document.getElementById('select-columns');
+      sheetNames.forEach(name => {
+        // For simplicity, we'll fetch headers for the first sheet to populate columns
+        // In a real app, you might have a sheet selector
+      });
+      google.script.run.withSuccessHandler(populateColumns).getSheetHeaders(sheetNames[0]);
+    }
+
+    let allColumns = [];
+    function populateColumns(headers) {
+      allColumns = headers;
+      const selectColumnsDiv = document.getElementById('select-columns');
+      const groupbyColumnsDiv = document.getElementById('groupby-columns');
+      headers.forEach(header => {
+        selectColumnsDiv.innerHTML += `<div><input type="checkbox" onchange="updateQueryFormula()" name="select-column" value="${header}">${header}</div>`;
+        groupbyColumnsDiv.innerHTML += `<div><input type="checkbox" onchange="updateQueryFormula()" name="groupby-column" value="${header}">${header}</div>`;
+      });
+    }
+
+    function addFilterGroup() {
+      const container = document.getElementById('filter-groups-container');
+      const groupId = 'group-' + new Date().getTime();
+      const groupHtml = `
+        <div class="filter-group" id="${groupId}">
+          <select onchange="updateQueryFormula()">
+            <option value="AND">AND</option>
+            <option value="OR">OR</option>
+          </select>
+          <div class="filter-rules-container"></div>
+          <button onclick="addFilterRule('${groupId}')">Add Rule</button>
+          <button onclick="removeElement('${groupId}')">Remove Group</button>
+        </div>
+      `;
+      container.innerHTML += groupHtml;
+      addFilterRule(groupId);
+    }
+
+    function addFilterRule(groupId) {
+      const container = document.querySelector(`#${groupId} .filter-rules-container`);
+      const ruleId = 'rule-' + new Date().getTime();
+      const ruleHtml = `
+        <div class="filter-rule" id="${ruleId}">
+          <select onchange="updateQueryFormula()">${allColumns.map(c => `<option>${c}</option>`).join('')}</select>
+          <select onchange="updateQueryFormula()">
+            <option value="is">is</option>
+            <option value="is_not">is_not</option>
+            <option value="contains">contains</option>
+            <option value="does_not_contain">does_not_contain</option>
+            <option value="starts_with">starts_with</option>
+            <option value="ends_with">ends_with</option>
+            <option value="is_blank">is_blank</option>
+            <option value="is_not_blank">is_not_blank</option>
+            <option value="is_greater_than">is_greater_than</option>
+            <option value="is_less_than">is_less_than</option>
+          </select>
+          <input type="text" oninput="updateQueryFormula()">
+          <button onclick="removeElement('${ruleId}')">Remove Rule</button>
+        </div>
+      `;
+      container.innerHTML += ruleHtml;
+    }
+
+    function addOrderByRule() {
+      const container = document.getElementById('orderby-rules-container');
+      const ruleId = 'orderby-' + new Date().getTime();
+      const ruleHtml = `
+        <div class="orderby-rule" id="${ruleId}">
+          <select onchange="updateQueryFormula()">${allColumns.map(c => `<option>${c}</option>`).join('')}</select>
+          <select onchange="updateQueryFormula()">
+            <option value="ASC">ASC</option>
+            <option value="DESC">DESC</option>
+          </select>
+          <button onclick="removeElement('${ruleId}')">Remove Rule</button>
+        </div>
+      `;
+      container.innerHTML += ruleHtml;
+    }
+
+    function removeElement(id) {
+      document.getElementById(id).remove();
+      updateQueryFormula();
+    }
+
+    function updateQueryFormula() {
+      const query = {
+        select: [],
+        from: [], // Will be populated from a sheet selector eventually
+        where: {
+          logic: document.getElementById('root-logic-select').value,
+          groups: []
+        },
+        groupBy: [],
+        orderBy: []
+      };
+
+      // SELECT
+      document.querySelectorAll('input[name="select-column"]:checked').forEach(cb => {
+        query.select.push(cb.value);
+      });
+
+      // WHERE
+      document.querySelectorAll('.filter-group').forEach(groupEl => {
+        const group = {
+          logic: groupEl.querySelector('select').value,
+          rules: []
+        };
+        groupEl.querySelectorAll('.filter-rule').forEach(ruleEl => {
+          const inputs = ruleEl.querySelectorAll('select, input');
+          group.rules.push({
+            column: inputs[0].value,
+            operator: inputs[1].value,
+            value: inputs[2].value
+          });
+        });
+        query.where.groups.push(group);
+      });
+
+      // GROUP BY
+      document.querySelectorAll('input[name="groupby-column"]:checked').forEach(cb => {
+        query.groupBy.push(cb.value);
+      });
+
+      // ORDER BY
+      document.querySelectorAll('.orderby-rule').forEach(ruleEl => {
+        const selects = ruleEl.querySelectorAll('select');
+        query.orderBy.push({
+          column: selects[0].value,
+          direction: selects[1].value
+        });
+      });
+
+
+      document.getElementById('query-formula').value = JSON.stringify(query, null, 2);
+    }
+
+    function loadFromFormula() {
+        const jsonString = document.getElementById('load-formula').value;
+        try {
+            const query = JSON.parse(jsonString);
+            // This is a simplified loader. A full implementation would be more complex.
+            alert('Loading from formula is not fully implemented in this prototype.');
+        } catch (e) {
+            alert('Invalid JSON formula.');
+        }
+    }
+
+    function saveToLibrary() {
+        const queryJson = document.getElementById('query-formula').value;
+        const name = prompt("Enter a name for this query:");
+        if(name) {
+            google.script.run.withSuccessHandler(alert).saveQueryToLibrary(name, "", queryJson);
+        }
+    }
+
+    function runQuery() {
+        const queryJson = document.getElementById('query-formula').value;
+        google.script.run.withSuccessHandler(response => {
+            alert(response.message);
+            if(response.outputUrl) {
+                window.open(response.outputUrl, '_blank');
+            }
+        }).withFailureHandler(err => {
+            alert('Error: ' + err.message);
+        }).submitQueryToQueue(queryJson);
+    }
+
+  </script>
+</body>
+</html>

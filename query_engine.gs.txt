@@ -1,0 +1,374 @@
+// =================================================================================
+// --- DYNAMIC QUERY ENGINE FUNCTIONS ---
+// =================================================================================
+
+/**
+ * Sets up the required sheets for the Dynamic Query Engine if they don't exist.
+ * This function should be run manually once or called from an onOpen trigger.
+ */
+function setupQueryEngineSheets() {
+  try {
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+
+    // Setup QueryQueue Sheet
+    let queueSheet = ss.getSheetByName("QueryQueue");
+    if (!queueSheet) {
+      queueSheet = ss.insertSheet("QueryQueue");
+      const queueHeaders = ["QueryID", "SubmittedBy", "Status", "QueryJSON", "StartTime", "EndTime", "OutputSheetURL", "ErrorMessage"];
+      queueSheet.appendRow(queueHeaders);
+      queueSheet.getRange("A1:H1").setFontWeight("bold");
+    }
+
+    // Setup QueryLibrary Sheet
+    let librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet) {
+      librarySheet = ss.insertSheet("QueryLibrary");
+      const libraryHeaders = ["QueryName", "Description", "QueryJSON", "SubmittedBy"];
+      librarySheet.appendRow(libraryHeaders);
+      librarySheet.getRange("A1:D1").setFontWeight("bold");
+    }
+
+    return "Query Engine sheets are set up successfully.";
+  } catch (e) {
+    Logger.log(`Error in setupQueryEngineSheets: ${e.toString()}`);
+    throw new Error("Could not set up Query Engine sheets.");
+  }
+}
+
+/**
+ * Submits a query to the asynchronous queue.
+ * This is the entry point called from the frontend.
+ */
+function submitQueryToQueue(queryJSON) {
+  try {
+    setupQueryEngineSheets();
+
+    const userEmail = Session.getActiveUser().getEmail();
+    const queryId = `${new Date().getTime()}_${userEmail}`;
+
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const queueSheet = ss.getSheetByName("QueryQueue");
+
+    queueSheet.appendRow([
+      queryId,
+      userEmail,
+      "Pending",
+      queryJSON,
+      new Date(), // StartTime
+      "", // EndTime
+      "", // OutputSheetURL
+      ""  // ErrorMessage
+    ]);
+
+    // For now, we'll just return a success message. Triggering will be added next.
+    return {
+      message: `Query submitted successfully with ID: ${queryId}. It will be processed shortly.`
+    };
+
+  } catch (e) {
+    Logger.log(`Error in submitQueryToQueue: ${e.toString()}`);
+    throw new Error("Could not submit query to the queue.");
+  }
+}
+
+/**
+ * Creates a single, persistent time-based trigger for the query engine.
+ */
+function setupQueryEngineTrigger() {
+  // Delete any existing triggers to ensure only one is running
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getHandlerFunction() === 'processQueryQueue') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  }
+
+  // Create a new trigger that runs every 1 minute
+  ScriptApp.newTrigger('processQueryQueue')
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+
+  return "Query Engine trigger has been set up to run every minute.";
+}
+
+/**
+ * The "Heartbeat" function that processes the query queue.
+ * This is called by the time-based trigger.
+ */
+function processQueryQueue() {
+  const properties = PropertiesService.getScriptProperties();
+  const isEngineBusy = properties.getProperty('isEngineBusy');
+
+  if (isEngineBusy === 'true') {
+    Logger.log("Engine is busy. Skipping this run.");
+    // If a query is already running, we'll let the batch processor handle it.
+    // We might add a timeout check here later to prevent stuck queries.
+    return;
+  }
+
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const queueSheet = ss.getSheetByName("QueryQueue");
+  const data = queueSheet.getDataRange().getValues();
+  const headers = data.shift();
+
+  const statusCol = headers.indexOf("Status");
+  const queryIdCol = headers.indexOf("QueryID");
+
+  let pendingQueryRow = -1;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][statusCol] === "Pending") {
+      pendingQueryRow = i + 2; // Sheet rows are 1-based, plus header offset
+      break;
+    }
+  }
+
+  if (pendingQueryRow !== -1) {
+    // A query is found, so lock the engine and start processing
+    properties.setProperty('isEngineBusy', 'true');
+    const queryId = queueSheet.getRange(pendingQueryRow, queryIdCol + 1).getValue();
+
+    // Update status to "Running"
+    queueSheet.getRange(pendingQueryRow, statusCol + 1).setValue("Running");
+
+    // Store current query details in PropertiesService for the batch processor
+    properties.setProperty('currentQueryID', queryId);
+
+    // Call the batch processor to start Chunk 1
+    runQueryBatch(); // This function will be created in the next step
+  }
+}
+
+/**
+ * The stateful "workhorse" function that processes a chunk of data.
+ * It's called by the heartbeat trigger.
+ */
+function runQueryBatch() {
+  const properties = PropertiesService.getScriptProperties();
+  const queryId = properties.getProperty('currentQueryID');
+
+  if (!queryId) {
+    Logger.log("runQueryBatch called but no active query found. Exiting.");
+    return;
+  }
+
+  // Retrieve state or initialize it
+  let state = {};
+  const stateJSON = properties.getProperty(`state_${queryId}`);
+  if (stateJSON) {
+    state = JSON.parse(stateJSON);
+  } else {
+    // First run for this query
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const queueSheet = ss.getSheetByName("QueryQueue");
+    const data = queueSheet.getDataRange().getValues();
+    const headers = data.shift();
+    const queryJsonCol = headers.indexOf("QueryJSON");
+    const queryIdCol = headers.indexOf("QueryID");
+
+    let queryJSONString = "";
+    for(let i=0; i < data.length; i++) {
+        if(data[i][queryIdCol] === queryId) {
+            queryJSONString = data[i][queryJsonCol];
+            break;
+        }
+    }
+
+    state = {
+      queryJSON: queryJSONString,
+      lastRowProcessed: 0,
+      processedResults: []
+    };
+  }
+
+  const query = JSON.parse(state.queryJSON);
+  const CHUNK_SIZE = 500; // Process 500 rows at a time
+
+  const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+  const sourceSheet = ss.getSheetByName(query.from[0]); // Simple, assumes one sheet for now
+
+  if (!sourceSheet) {
+    // Handle error: sheet not found
+    // (For brevity, skipping full error handling in this step)
+    return;
+  }
+
+  const maxRows = sourceSheet.getLastRow() - 1;
+  const startRow = state.lastRowProcessed + 1;
+  const numRowsToProcess = Math.min(CHUNK_SIZE, maxRows - state.lastRowProcessed);
+
+  if (numRowsToProcess > 0) {
+    const sheetData = sourceSheet.getRange(startRow + 1, 1, numRowsToProcess, sourceSheet.getLastColumn()).getValues();
+    const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+
+    const filteredData = sheetData.filter(row => evaluateWhereClause(row, headers, query.where));
+
+    // For now, we'll just collect all columns. SELECT logic will be added later.
+    state.processedResults = state.processedResults.concat(filteredData);
+    state.lastRowProcessed += numRowsToProcess;
+
+    // Save the new state
+    properties.setProperty(`state_${queryId}`, JSON.stringify(state));
+
+    // The trigger will call processQueryQueue again, which will call this function.
+    // We don't need to re-trigger here.
+
+  } else {
+    // --- COMPLETION LOGIC ---
+    // Create a new sheet for the results
+    const outputSs = SpreadsheetApp.create(`QueryResult_${queryId}`);
+    const outputSheet = outputSs.getSheets()[0];
+    const outputUrl = outputSs.getUrl();
+
+    if (state.processedResults.length > 0) {
+        const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+        outputSheet.appendRow(headers);
+        outputSheet.getRange(2, 1, state.processedResults.length, state.processedResults[0].length).setValues(state.processedResults);
+    }
+
+    // Update the queue sheet
+    const queueSs = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const queueSheet = queueSs.getSheetByName("QueryQueue");
+    // (Logic to find the row and update status, endtime, url)
+
+    // Clean up properties
+    properties.deleteProperty('isEngineBusy');
+    properties.deleteProperty('currentQueryID');
+    properties.deleteProperty(`state_${queryId}`);
+  }
+}
+
+function evaluateWhereClause(row, headers, where) {
+  if (!where || !where.groups || where.groups.length === 0) {
+    return true; // If no WHERE clause, all rows pass
+  }
+
+  const rootLogic = where.logic; // AND or OR
+
+  for (let i = 0; i < where.groups.length; i++) {
+    const group = where.groups[i];
+    const groupResult = evaluateGroup(row, headers, group);
+
+    if (rootLogic === 'AND' && !groupResult) {
+      return false; // For AND, if any group is false, the whole thing is false
+    }
+    if (rootLogic === 'OR' && groupResult) {
+      return true; // For OR, if any group is true, the whole thing is true
+    }
+  }
+
+  return rootLogic === 'AND'; // If AND and we haven't returned false, it's true. If OR and we haven't returned true, it's false.
+}
+
+function evaluateGroup(row, headers, group) {
+  if (!group.rules || group.rules.length === 0) {
+    return true;
+  }
+
+  const groupLogic = group.logic; // AND or OR
+
+  for (let i = 0; i < group.rules.length; i++) {
+    const rule = group.rules[i];
+    const ruleResult = applyRule(row, headers, rule);
+
+    if (groupLogic === 'AND' && !ruleResult) {
+      return false;
+    }
+    if (groupLogic === 'OR' && ruleResult) {
+      return true;
+    }
+  }
+
+  return groupLogic === 'AND';
+}
+
+function applyRule(row, headers, rule) {
+  const colIndex = headers.indexOf(rule.column);
+  if (colIndex === -1) {
+    return false; // Column not found
+  }
+
+  const cellValue = row[colIndex];
+  const ruleValue = rule.value;
+
+  switch (rule.operator) {
+    case 'is': return cellValue == ruleValue;
+    case 'is_not': return cellValue != ruleValue;
+    case 'contains': return String(cellValue).includes(ruleValue);
+    case 'does_not_contain': return !String(cellValue).includes(ruleValue);
+    case 'starts_with': return String(cellValue).startsWith(ruleValue);
+    case 'does_not_start_with': return !String(cellValue).startsWith(ruleValue);
+    case 'ends_with': return String(cellValue).endsWith(ruleValue);
+    case 'does_not_end_with': return !String(cellValue).endsWith(ruleValue);
+    case 'is_blank': return cellValue === '' || cellValue === null || cellValue === undefined;
+    case 'is_not_blank': return cellValue !== '' && cellValue !== null && cellValue !== undefined;
+    // Basic numeric/date comparison. Assumes clean data.
+    case 'is_greater_than': return cellValue > ruleValue;
+    case 'is_less_than': return cellValue < ruleValue;
+    case 'is_greater_than_or_equal_to': return cellValue >= ruleValue;
+    case 'is_less_than_or_equal_to': return cellValue <= ruleValue;
+    // More complex operators
+    case 'is_one_of': return ruleValue.split(',').map(v => v.trim()).includes(String(cellValue));
+    case 'is_not_one_of': return !ruleValue.split(',').map(v => v.trim()).includes(String(cellValue));
+    case 'is_between':
+      const parts = ruleValue.split(',').map(v => v.trim());
+      return cellValue >= parts[0] && cellValue <= parts[1];
+    case 'is_not_between':
+        const notParts = ruleValue.split(',').map(v => v.trim());
+        return cellValue < notParts[0] || cellValue > notParts[1];
+    case 'matches_regex':
+      try {
+        return new RegExp(ruleValue).test(cellValue);
+      } catch (e) {
+        return false;
+      }
+    case 'does_not_match_regex':
+      try {
+        return !new RegExp(ruleValue).test(cellValue);
+      } catch (e) {
+        return false;
+      }
+    default: return false;
+  }
+}
+
+function saveQueryToLibrary(name, description, queryJson) {
+  try {
+    if (!name || !queryJson) {
+      throw new Error("Query name and JSON are required to save to the library.");
+    }
+    const userEmail = Session.getActiveUser().getEmail();
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet) {
+      throw new Error("QueryLibrary sheet not found.");
+    }
+    librarySheet.appendRow([name, description || "", queryJson, userEmail]);
+    return `Query "${name}" was successfully saved to your library.`;
+  } catch (e) {
+    Logger.log(`Error in saveQueryToLibrary: ${e.toString()}`);
+    throw new Error(`Could not save query: ${e.message}`);
+  }
+}
+
+function getQueriesFromLibrary() {
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const librarySheet = ss.getSheetByName("QueryLibrary");
+    if (!librarySheet || librarySheet.getLastRow() < 2) {
+      return [];
+    }
+    const data = librarySheet.getRange(2, 1, librarySheet.getLastRow() - 1, 4).getValues();
+    return data
+      .filter(row => row[3] === userEmail) // Filter by user's email in the 4th column
+      .map(row => ({
+        name: row[0],
+        description: row[1],
+        queryJson: row[2]
+      }));
+  } catch (e) {
+    Logger.log(`Error in getQueriesFromLibrary: ${e.toString()}`);
+    return []; // Return empty on error to not break the UI
+  }
+}
