@@ -3758,26 +3758,34 @@ function setupQueryEngineSheets() {
  */
 function submitQueryToQueue(queryJSON) {
   try {
-    setupQueryEngineSheets(); // Ensure sheets exist
-
-    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-    const queueSheet = ss.getSheetByName("QueryQueue");
+    setupQueryEngineSheets();
+    createHeartbeatTrigger();
 
     const userEmail = Session.getActiveUser().getEmail();
     const queryId = `${new Date().getTime()}_${userEmail}`;
+
+    const newSheet = SpreadsheetApp.create(`QueryResult_${queryId}`);
+    const outputUrl = newSheet.getUrl();
+
+    const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+    const queueSheet = ss.getSheetByName("QueryQueue");
 
     queueSheet.appendRow([
       queryId,
       userEmail,
       "Pending",
-      JSON.stringify(queryJSON, null, 2), // Pretty print the JSON
+      JSON.stringify(queryJSON, null, 2),
       "", // StartTime
       "", // EndTime
-      "", // OutputSheetURL
+      outputUrl, // Pre-filled OutputSheetURL
       ""  // ErrorMessage
     ]);
 
-    return `Query submitted successfully with ID: ${queryId}. It will be processed shortly.`;
+    return {
+      message: `Query submitted successfully with ID: ${queryId}.`,
+      outputUrl: outputUrl
+    };
+
   } catch (e) {
     Logger.log(`Error in submitQueryToQueue: ${e.toString()}`);
     throw new Error("Could not submit query to the queue.");

@@ -595,14 +595,25 @@
           return;
         }
 
-        // Disable button to prevent multiple submissions
         const runButton = event.target;
         runButton.disabled = true;
         runButton.textContent = "Submitting...";
 
         google.script.run
             .withSuccessHandler(response => {
-                alert(response);
+                const message = `${response.message} Your results will appear in the sheet linked below as soon as processing is complete.`;
+                const link = `<a href="${response.outputUrl}" target="_blank">Click here to view the results sheet.</a>`;
+
+                // For a better user experience, we can create a small notification element.
+                const notification = document.createElement('div');
+                notification.innerHTML = `${message}<br>${link}`;
+                notification.style.cssText = "position:fixed; top:20px; right:20px; background-color: #007B5F; color:white; padding:15px; border-radius:8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index:1001;";
+                document.body.appendChild(notification);
+
+                setTimeout(() => {
+                    notification.remove();
+                }, 15000); // The notification will disappear after 15 seconds
+
                 runButton.disabled = false;
                 runButton.textContent = "Run Query";
             })
@@ -615,6 +626,11 @@
 
       } catch (e) {
         alert("Error parsing the query JSON. Please check the formula.");
+        const runButton = document.querySelector('.btn-primary');
+        if(runButton) {
+          runButton.disabled = false;
+          runButton.textContent = "Run Query";
+        }
       }
     }
   </script>
