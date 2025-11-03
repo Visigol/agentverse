@@ -3763,7 +3763,6 @@ function setupQueryEngineSheets() {
 function submitQueryToQueue(queryJSON) {
   try {
     setupQueryEngineSheets();
-    createHeartbeatTrigger();
 
     const userEmail = Session.getActiveUser().getEmail();
     const queryId = `${new Date().getTime()}_${userEmail}`;
@@ -3774,16 +3773,28 @@ function submitQueryToQueue(queryJSON) {
     const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
     const queueSheet = ss.getSheetByName("QueryQueue");
 
-    queueSheet.appendRow([
+    const row = queueSheet.appendRow([
       queryId,
       userEmail,
-      "Pending",
+      "Running",
       JSON.stringify(queryJSON, null, 2),
-      "", // StartTime
+      new Date(), // StartTime
       "", // EndTime
       outputUrl, // Pre-filled OutputSheetURL
       ""  // ErrorMessage
     ]);
+
+    const properties = PropertiesService.getScriptProperties();
+    properties.setProperties({
+        'currentQueryID': queryId,
+        'currentQueryJSON': JSON.stringify(queryJSON),
+        'currentSheetIndex': 0,
+        'lastRowProcessed': 0,
+        'processedResults': '[]',
+        'aggregationMap': '{}'
+    });
+
+    runQueryBatch();
 
     return {
       message: `Query submitted successfully with ID: ${queryId}.`,
@@ -3793,85 +3804,6 @@ function submitQueryToQueue(queryJSON) {
   } catch (e) {
     Logger.log(`Error in submitQueryToQueue: ${e.toString()}`);
     throw new Error("Could not submit query to the queue.");
-  }
-}
-
-/**
- * Creates a time-based trigger for the query engine if one doesn't already exist.
- */
-function createHeartbeatTrigger() {
-  // Delete existing triggers to prevent duplicates
-  const allTriggers = ScriptApp.getProjectTriggers();
-  for (const trigger of allTriggers) {
-    if (trigger.getHandlerFunction() === "processQueryQueue") {
-      ScriptApp.deleteTrigger(trigger);
-    }
-  }
-
-  // Create a new trigger
-  ScriptApp.newTrigger("processQueryQueue")
-    .timeBased()
-    .everyMinutes(1)
-    .create();
-
-  Logger.log("Heartbeat trigger created successfully.");
-}
-
-/**
- * The main "heartbeat" function that processes the query queue.
- * This is triggered every 1-2 minutes.
- */
-function processQueryQueue() {
-  const properties = PropertiesService.getScriptProperties();
-  const isEngineBusy = properties.getProperty('isEngineBusy');
-
-  if (isEngineBusy === 'true') {
-    // Engine is busy, so we'll continue processing the current job.
-    Logger.log("Engine is busy, continuing with the current query.");
-    runQueryBatch();
-    return;
-  }
-
-  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-  const queueSheet = ss.getSheetByName("QueryQueue");
-  const data = queueSheet.getDataRange().getValues();
-  const headers = data.shift();
-
-  const statusCol = headers.indexOf("Status");
-  let pendingQueryRow = -1;
-
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][statusCol] === "Pending") {
-      pendingQueryRow = i + 2; // Sheet rows are 1-based, and we shifted the header
-      break;
-    }
-  }
-
-  if (pendingQueryRow !== -1) {
-    // Found a pending query. Lock the engine and start processing.
-    properties.setProperty('isEngineBusy', 'true');
-    const queryId = queueSheet.getRange(pendingQueryRow, headers.indexOf("QueryID") + 1).getValue();
-    const queryJSON = queueSheet.getRange(pendingQueryRow, headers.indexOf("QueryJSON") + 1).getValue();
-
-    // Store current query info in PropertiesService for the batch processor
-    properties.setProperties({
-        'currentQueryID': queryId,
-        'currentQueryJSON': queryJSON,
-        'currentSheetIndex': 0, // Start with the first sheet
-        'lastRowProcessed': 0,
-        'processedResults': '[]',
-        'aggregationMap': '{}'
-    });
-
-    // Update status in the sheet
-    queueSheet.getRange(pendingQueryRow, statusCol + 1).setValue("Running");
-    queueSheet.getRange(pendingQueryRow, headers.indexOf("StartTime") + 1).setValue(new Date());
-
-    Logger.log(`Picked up new query: ${queryId}. Engine is now locked.`);
-
-    runQueryBatch();
-  } else {
-    Logger.log("No pending queries found.");
   }
 }
 
@@ -3898,7 +3830,7 @@ function runQueryBatch() {
     let currentResults = JSON.parse(properties.getProperty('processedResults'));
     let aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
 
-    const CHUNK_SIZE = 1000;
+    const CHUNK_SIZE = 500;
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
 
     let sourceSheet;
@@ -4068,6 +4000,12 @@ function runQueryBatch() {
     });
     Logger.log(`State saved for sheet ${query.from[currentSheetIndex]}. Processed up to row ${lastRowProcessed + numRowsToProcess}.`);
 
+    // Create a trigger for the next batch
+    ScriptApp.newTrigger('continueQueryBatch')
+        .timeBased()
+        .after(5 * 1000) // 5 seconds from now
+        .create();
+
   } catch (e) {
     // --- ERROR HANDLING ---
     Logger.log(`Error processing query ${queryId}: ${e.toString()}`);
@@ -4122,6 +4060,10 @@ function scheduleRecurringQuery(query, cronString) {
     return `Query scheduled to run based on cron string: ${cronString}`;
 }
 
+
+function continueQueryBatch() {
+    runQueryBatch();
+}
 
 function runScheduledQuery(e) {
     const triggerId = e.triggerUid;
