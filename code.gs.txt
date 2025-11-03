@@ -3743,17 +3743,27 @@ function submitQueryToQueue(queryJSON) {
     const userEmail = Session.getActiveUser().getEmail();
     const queryId = `${new Date().getTime()}_${userEmail}`;
 
-    const newSheet = SpreadsheetApp.create(`QueryResult_${queryId}`);
-    const outputUrl = newSheet.getUrl();
+    const query = JSON.parse(queryJSON); // Parse the query to get headers
+
+    const newSs = SpreadsheetApp.create(`QueryResult_${queryId}`);
+    const outputUrl = newSs.getUrl();
+    const outputSheet = newSs.getSheets()[0];
+
+    // Write headers immediately
+    const resultHeaders = query.select.map(s => s.includes('(') ? s : s);
+    if (resultHeaders.length > 0) {
+        outputSheet.appendRow(resultHeaders);
+        outputSheet.getRange(1, 1, 1, resultHeaders.length).setFontWeight("bold");
+    }
 
     const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
     const queueSheet = ss.getSheetByName("QueryQueue");
 
-    const row = queueSheet.appendRow([
+    queueSheet.appendRow([
       queryId,
       userEmail,
       "Running",
-      JSON.stringify(queryJSON, null, 2),
+      queryJSON, // Store the original JSON string
       new Date(), // StartTime
       "", // EndTime
       outputUrl, // Pre-filled OutputSheetURL
@@ -3761,14 +3771,16 @@ function submitQueryToQueue(queryJSON) {
     ]);
 
     const properties = PropertiesService.getScriptProperties();
-    properties.setProperties({
-        'currentQueryID': queryId,
-        'currentQueryJSON': JSON.stringify(queryJSON),
-        'currentSheetIndex': 0,
-        'lastRowProcessed': 0,
-        'processedResults': '[]',
-        'aggregationMap': '{}'
-    });
+    properties.setProperty('currentQueryID', queryId);
+
+    const cache = CacheService.getScriptCache();
+    const initialState = {
+        queryJSON: queryJSON,
+        currentSheetIndex: 0,
+        lastRowProcessed: 0,
+        aggregationMap: {} // Only store aggregation map
+    };
+    cache.put(queryId, JSON.stringify(initialState), 21600); // Cache for 6 hours
 
     runQueryBatch();
 
@@ -3792,19 +3804,23 @@ function runQueryBatch() {
   const queryId = properties.getProperty('currentQueryID');
 
   if (!queryId) {
-    Logger.log("runQueryBatch called but no active query found. Engine might have been unlocked. Exiting.");
+    Logger.log("runQueryBatch called but no active query found. Exiting.");
     return;
   }
 
-  try {
-    const queryJSON = properties.getProperty('currentQueryJSON');
-    let lastRowProcessed = parseInt(properties.getProperty('lastRowProcessed'), 10);
-    let currentSheetIndex = parseInt(properties.getProperty('currentSheetIndex'), 10);
-    const query = JSON.parse(queryJSON);
+  const cache = CacheService.getScriptCache();
+  const stateJSON = cache.get(queryId);
 
-    // Load current state from PropertiesService
-    let currentResults = JSON.parse(properties.getProperty('processedResults'));
-    let aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
+  try {
+    if (!stateJSON) {
+      throw new Error(`Query state for ID ${queryId} not found in cache. It may have expired. Please resubmit.`);
+    }
+    const state = JSON.parse(stateJSON);
+
+    const query = JSON.parse(state.queryJSON);
+    let lastRowProcessed = state.lastRowProcessed;
+    let currentSheetIndex = state.currentSheetIndex;
+    let aggregationMap = state.aggregationMap;
 
     const CHUNK_SIZE = 500;
     const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
@@ -3824,10 +3840,25 @@ function runQueryBatch() {
     if (numRowsToProcess <= 0) {
       if (currentSheetIndex >= query.from.length - 1) {
         // --- COMPLETION LOGIC ---
-        let finalResults;
+        let finalResults = [];
+        let outputUrl = ''; // Initialize outputUrl
+
+        // Get outputUrl from QueryQueue sheet
+        const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
+        const data = queueSheet.getDataRange().getValues();
+        const headers = data.shift();
+        const queryIdCol = headers.indexOf("QueryID");
+        const urlCol = headers.indexOf("OutputSheetURL");
+
+        for (let i = 0; i < data.length; i++) {
+          if (data[i][queryIdCol] === queryId) {
+            outputUrl = data[i][urlCol];
+            break;
+          }
+        }
+
         if (query.groupBy && query.groupBy.length > 0) {
-          const aggMap = JSON.parse(properties.getProperty('aggregationMap'));
-          finalResults = Object.values(aggMap).map(group => {
+          finalResults = Object.values(aggregationMap).map(group => {
             query.select.forEach(sel => {
               if (sel.includes('AVG(')) {
                 const col = sel.substring(sel.indexOf('(') + 1, sel.lastIndexOf(')'));
@@ -3842,28 +3873,31 @@ function runQueryBatch() {
             });
             return group;
           });
-        } else {
-          finalResults = JSON.parse(properties.getProperty('processedResults'));
-        }
 
-        if (query.orderBy && query.orderBy.length > 0) {
-          finalResults.sort((a, b) => {
-            for (const sort of query.orderBy) {
-              const aVal = a[sort.column];
-              const bVal = b[sort.column];
-              if (aVal < bVal) return sort.direction === 'ASC' ? -1 : 1;
-              if (aVal > bVal) return sort.direction === 'ASC' ? 1 : -1;
-            }
-            return 0;
-          });
-        }
+          if (query.orderBy && query.orderBy.length > 0) {
+            finalResults.sort((a, b) => {
+              for (const sort of query.orderBy) {
+                const aVal = a[sort.column];
+                const bVal = b[sort.column];
+                if (aVal < bVal) return sort.direction === 'ASC' ? -1 : 1;
+                if (aVal > bVal) return sort.direction === 'ASC' ? 1 : -1;
+              }
+              return 0;
+            });
+          }
 
-        Logger.log(`Query ${queryId} finished processing. Total rows: ${finalResults.length}.`);
-        let outputUrl = "";
-        if (finalResults.length > 0) {
-          const resultHeaders = query.select.map(s => s.includes('(') ? s : s);
-          outputUrl = createSheetWithData(finalResults, resultHeaders, `QueryResult_${queryId}`);
+          // Write aggregated results to the pre-created sheet
+          if (finalResults.length > 0 && outputUrl) {
+              const resultHeaders = query.select.map(s => s.includes('(') ? s : s);
+              const rowsToWrite = finalResults.map(obj => resultHeaders.map(header => obj[header]));
+              const outputSs = SpreadsheetApp.openByUrl(outputUrl);
+              const outputSheet = outputSs.getSheets()[0];
+              outputSheet.getRange(outputSheet.getLastRow() + 1, 1, rowsToWrite.length, resultHeaders.length).setValues(rowsToWrite);
+          }
         }
+        // For non-aggregated queries, the data is already written. No final action needed here.
+
+        Logger.log(`Query ${queryId} finished processing.`);
 
         const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
         const data = queueSheet.getDataRange().getValues();
@@ -3878,13 +3912,8 @@ function runQueryBatch() {
           }
         }
 
-        properties.deleteProperty('isEngineBusy');
         properties.deleteProperty('currentQueryID');
-        properties.deleteProperty('currentQueryJSON');
-        properties.deleteProperty('lastRowProcessed');
-        properties.deleteProperty('processedResults');
-        properties.deleteProperty('aggregationMap');
-        properties.deleteProperty('currentSheetIndex');
+        cache.remove(queryId);
         Logger.log(`Query ${queryId} complete. Engine unlocked.`);
 
         if (query.action && query.action.type === 'email' && query.action.recipient) {
@@ -3909,11 +3938,14 @@ function runQueryBatch() {
       } else {
         // --- TRANSITION TO NEXT SHEET ---
         Logger.log(`Finished processing sheet #${currentSheetIndex}: ${query.from[currentSheetIndex]}.`);
-        properties.setProperties({
-          'currentSheetIndex': currentSheetIndex + 1,
-          'lastRowProcessed': 0
-        });
-        runQueryBatch();
+        state.currentSheetIndex = currentSheetIndex + 1;
+        state.lastRowProcessed = 0;
+        cache.put(queryId, JSON.stringify(state), 21600);
+
+        ScriptApp.newTrigger('continueQueryBatch')
+            .timeBased()
+            .after(100) // Run next batch almost immediately
+            .create();
         return;
       }
     }
@@ -3954,26 +3986,42 @@ function runQueryBatch() {
             });
         });
     } else {
+        // --- BATCH WRITE LOGIC FOR NON-AGGREGATED QUERIES ---
         const selectColumns = query.select.length > 0 ? query.select : headers;
         const selectIndices = selectColumns.map(col => headers.indexOf(col));
-        const chunkResults = filteredData.map(row => {
-            let selectedRow = {};
-            selectIndices.forEach((idx, i) => {
-                if (idx !== -1) {
-                    selectedRow[selectColumns[i]] = row[idx];
-                }
+
+        const rowsToWrite = filteredData.map(row => {
+            return selectColumns.map(colName => {
+                const index = headers.indexOf(colName);
+                return index !== -1 ? row[index] : null;
             });
-            return selectedRow;
         });
-        currentResults = currentResults.concat(chunkResults);
+
+        if (rowsToWrite.length > 0) {
+            const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
+            const data = queueSheet.getDataRange().getValues();
+            const urlCol = data[0].indexOf("OutputSheetURL");
+            let outputUrl = '';
+            for (let i = 1; i < data.length; i++) {
+                if (data[i][0] === queryId) {
+                    outputUrl = data[i][urlCol];
+                    break;
+                }
+            }
+            if (outputUrl) {
+                const outputSs = SpreadsheetApp.openByUrl(outputUrl);
+                const outputSheet = outputSs.getSheets()[0];
+                outputSheet.getRange(outputSheet.getLastRow() + 1, 1, rowsToWrite.length, rowsToWrite[0].length).setValues(rowsToWrite);
+            }
+        }
+        // No need to update `currentResults` in the cache anymore for these queries
     }
 
-    // Save the new state
-    properties.setProperties({
-        'lastRowProcessed': lastRowProcessed + numRowsToProcess,
-        'processedResults': JSON.stringify(currentResults),
-        'aggregationMap': JSON.stringify(aggregationMap)
-    });
+    // Save the new state back to the cache
+    state.lastRowProcessed = lastRowProcessed + numRowsToProcess;
+    state.aggregationMap = aggregationMap; // Only aggregationMap is needed now for GROUP BY
+    cache.put(queryId, JSON.stringify(state), 21600); // Re-cache the updated state
+
     Logger.log(`State saved for sheet ${query.from[currentSheetIndex]}. Processed up to row ${lastRowProcessed + numRowsToProcess}.`);
 
     // Create a trigger for the next batch
@@ -4000,7 +4048,8 @@ function runQueryBatch() {
     }
 
     // Unlock the engine
-    properties.deleteProperty('isEngineBusy');
+    properties.deleteProperty('currentQueryID');
+    cache.remove(queryId); // Clear the failed query's cache
     Logger.log(`Query ${queryId} failed. Engine unlocked.`);
   }
 }
