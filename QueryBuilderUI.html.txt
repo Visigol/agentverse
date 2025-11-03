@@ -245,30 +245,33 @@
     }
 
     function handleSheetSelectionChange() {
-        const selectedSheets = getSelectedSheets();
-        const promises = [];
+        return new Promise((resolve, reject) => {
+            const selectedSheets = getSelectedSheets();
+            const promises = [];
 
-        selectedSheets.forEach(sheetName => {
-            if (!allSheetHeaders[sheetName]) {
-                promises.push(new Promise((resolve, reject) => {
-                    google.script.run
-                        .withSuccessHandler(headers => {
-                            allSheetHeaders[sheetName] = headers;
-                            resolve();
-                        })
-                        .withFailureHandler(reject)
-                        .getSheetHeaders(sheetName);
-                }));
-            }
+            selectedSheets.forEach(sheetName => {
+                if (!allSheetHeaders[sheetName]) {
+                    promises.push(new Promise((resolve, reject) => {
+                        google.script.run
+                            .withSuccessHandler(headers => {
+                                allSheetHeaders[sheetName] = headers;
+                                resolve();
+                            })
+                            .withFailureHandler(reject)
+                            .getSheetHeaders(sheetName);
+                    }));
+                }
+            });
+
+            Promise.all(promises)
+                .then(() => {
+                    updateAvailableColumns();
+                    updateAllColumnDropdowns();
+                    updateQueryJson();
+                    resolve();
+                })
+                .catch(reject);
         });
-
-        Promise.all(promises)
-            .then(() => {
-                updateAvailableColumns();
-                updateAllColumnDropdowns();
-                updateQueryJson();
-            })
-            .catch(handleError);
     }
 
     function getSelectedSheets() {
@@ -504,17 +507,17 @@
         }
     }
 
-    function loadQueryFromJson() {
+    async function loadQueryFromJson() {
         const jsonString = document.getElementById('load-formula-json').value;
         try {
             const query = JSON.parse(jsonString);
-            rebuildUiFromQuery(query);
+            await rebuildUiFromQuery(query);
         } catch (e) {
             alert("Invalid JSON format. Please check the pasted formula.");
         }
     }
 
-    function rebuildUiFromQuery(query) {
+    async function rebuildUiFromQuery(query) {
         // Clear existing UI state
         document.querySelectorAll('.filter-group').forEach(g => g.remove());
         document.querySelectorAll('#groupby-container .sortable-item').forEach(i => i.remove());
@@ -525,103 +528,101 @@
             cb.checked = query.from.includes(cb.value);
         });
 
-        // This is async, so we need to handle it carefully.
-        handleSheetSelectionChange();
+        // Wait for the async column loading to complete
+        await handleSheetSelectionChange();
 
-        // The rest of the UI rebuild needs to happen AFTER handleSheetSelectionChange is complete.
-        // We'll use a small timeout to wait for the async column loading.
-        setTimeout(() => {
-            // Set SELECT
-            if (query.groupBy && query.groupBy.length > 0) {
-                toggleAggregationUI(true); // Ensures the UI container is visible
+        // Now that columns are loaded, proceed with the rest of the UI
 
-                const aggContainer = document.getElementById('aggregation-rules-container');
-                aggContainer.innerHTML = ''; // Clear any default rules
+        // Set SELECT
+        if (query.groupBy && query.groupBy.length > 0) {
+            toggleAggregationUI(true); // Ensures the UI container is visible
 
-                const aggregations = query.select.filter(s => s.includes('('));
-                const aggRegex = /(\w+)\((.*?)\)/;
+            const aggContainer = document.getElementById('aggregation-rules-container');
+            aggContainer.innerHTML = ''; // Clear any default rules
 
-                aggregations.forEach(aggString => {
-                    const match = aggString.match(aggRegex);
-                    if (match) {
-                        const func = match[1];
-                        const col = match[2];
+            const aggregations = query.select.filter(s => s.includes('('));
+            const aggRegex = /(\w+)\((.*?)\)/;
 
-                        addAggregationRule(); // Add a new row
+            aggregations.forEach(aggString => {
+                const match = aggString.match(aggRegex);
+                if (match) {
+                    const func = match[1];
+                    const col = match[2];
 
-                        const allAggRules = aggContainer.querySelectorAll('.aggregation-rule');
-                        const newRule = allAggRules[allAggRules.length - 1]; // Get the one we just added
+                    addAggregationRule(); // Add a new row
 
-                        newRule.querySelector('.aggregation-function-selector').value = func;
-                        newRule.querySelector('.column-selector').value = col;
-                    }
-                });
+                    const allAggRules = aggContainer.querySelectorAll('.aggregation-rule');
+                    const newRule = allAggRules[allAggRules.length - 1]; // Get the one we just added
 
-                // If there were no aggregations in the query, add one blank one for the user
-                if (aggregations.length === 0) {
-                    addAggregationRule();
+                    newRule.querySelector('.aggregation-function-selector').value = func;
+                    newRule.querySelector('.column-selector').value = col;
                 }
+            });
 
-            } else {
-                toggleAggregationUI(false);
-                document.querySelectorAll('[name="selectColumn"]').forEach(cb => {
-                    cb.checked = query.select.includes(cb.value);
+            // If there were no aggregations in the query, add one blank one for the user
+            if (aggregations.length === 0) {
+                addAggregationRule();
+            }
+
+        } else {
+            toggleAggregationUI(false);
+            document.querySelectorAll('[name="selectColumn"]').forEach(cb => {
+                cb.checked = query.select.includes(cb.value);
+            });
+        }
+
+        // Set WHERE
+        if(query.where && query.where.groups){
+            query.where.groups.forEach(groupData => {
+                addGroup();
+                const allGroups = document.querySelectorAll('.filter-group');
+                const newGroup = allGroups[allGroups.length - 1];
+                newGroup.querySelector('select').value = groupData.logic;
+                // Remove the default rule that addGroup creates
+                newGroup.querySelector('.filter-rule').remove();
+                groupData.rules.forEach(ruleData => {
+                    addRule(newGroup.id);
+                    const allRules = newGroup.querySelectorAll('.filter-rule');
+                    const newRule = allRules[allRules.length - 1];
+                    newRule.querySelector('.column-selector').value = ruleData.column;
+                    newRule.querySelector('.operator-selector').value = ruleData.operator;
+                    newRule.querySelector('input[type="text"]').value = ruleData.value;
                 });
-            }
-
-            // Set WHERE
-            if(query.where && query.where.groups){
-                query.where.groups.forEach(groupData => {
-                    addGroup();
-                    const allGroups = document.querySelectorAll('.filter-group');
-                    const newGroup = allGroups[allGroups.length - 1];
-                    newGroup.querySelector('select').value = groupData.logic;
-                    // Remove the default rule that addGroup creates
-                    newGroup.querySelector('.filter-rule').remove();
-                    groupData.rules.forEach(ruleData => {
-                        addRule(newGroup.id);
-                        const allRules = newGroup.querySelectorAll('.filter-rule');
-                        const newRule = allRules[allRules.length - 1];
-                        newRule.querySelector('.column-selector').value = ruleData.column;
-                        newRule.querySelector('.operator-selector').value = ruleData.operator;
-                        newRule.querySelector('input[type="text"]').value = ruleData.value;
-                    });
-                });
-            }
+            });
+        }
 
 
-            // Set GROUP BY
-            if(query.groupBy){
-                query.groupBy.forEach(col => {
-                    addSortableItem('groupby-container', 'Group By');
-                    const allItems = document.querySelectorAll('#groupby-container .sortable-item');
-                    allItems[allItems.length - 1].querySelector('.column-selector').value = col;
-                });
-            }
+        // Set GROUP BY
+        if(query.groupBy){
+            query.groupBy.forEach(col => {
+                addSortableItem('groupby-container', 'Group By');
+                const allItems = document.querySelectorAll('#groupby-container .sortable-item');
+                allItems[allItems.length - 1].querySelector('.column-selector').value = col;
+            });
+        }
 
-            // Set ORDER BY
-             if(query.orderBy){
-                query.orderBy.forEach(sort => {
-                    addSortableItem('orderby-container', 'Order By');
-                    const allItems = document.querySelectorAll('#orderby-container .sortable-item');
-                    const newItem = allItems[allItems.length - 1];
-                    newItem.querySelector('.column-selector').value = sort.column;
-                    newItem.querySelector('.direction-selector').value = sort.direction;
-                });
-            }
+        // Set ORDER BY
+         if(query.orderBy){
+            query.orderBy.forEach(sort => {
+                addSortableItem('orderby-container', 'Order By');
+                const allItems = document.querySelectorAll('#orderby-container .sortable-item');
+                const newItem = allItems[allItems.length - 1];
+                newItem.querySelector('.column-selector').value = sort.column;
+                newItem.querySelector('.direction-selector').value = sort.direction;
+            });
+        }
 
-            if (query.action && query.action.type === 'email') {
-                document.getElementById('email-notification-checkbox').checked = true;
-                document.getElementById('email-recipient').value = query.action.recipient || '';
-                document.getElementById('email-cc').value = query.action.cc || '';
-                toggleEmailInputs();
-            } else {
-                document.getElementById('email-notification-checkbox').checked = false;
-                toggleEmailInputs();
-            }
+        if (query.action && query.action.type === 'email') {
+            document.getElementById('email-notification-checkbox').checked = true;
+            document.getElementById('email-recipient').value = query.action.recipient || '';
+            document.getElementById('email-cc').value = query.action.cc || '';
+            toggleEmailInputs();
+        } else {
+            document.getElementById('email-notification-checkbox').checked = false;
+            toggleEmailInputs();
+        }
 
-            updateQueryJson();
-        }, 500); // 500ms delay to allow columns to load
+        updateQueryJson();
     }
 
     function openSaveToLibraryModal() {
