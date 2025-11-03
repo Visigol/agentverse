@@ -88,134 +88,253 @@ function submitQueryToQueue(queryJSON) {
 }
 
 function runQueryEngineBatch() {
-  const properties = PropertiesService.getScriptProperties();
-  let queryId = properties.getProperty('currentQueryID');
-  const startTime = new Date().getTime();
-
-  while (new Date().getTime() - startTime < 270000) { // Time-aware loop
-    if (!queryId) {
-      const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-      const queueSheet = ss.getSheetByName("QueryQueue");
-      const data = queueSheet.getDataRange().getValues();
-      const headers = data.shift();
-      const statusCol = headers.indexOf("Status");
-      const queryIdCol = headers.indexOf("QueryID");
-
-      let pendingQueryRow = -1;
-      for (let i = 0; i < data.length; i++) {
-        if (data[i][statusCol] === "Pending") {
-          pendingQueryRow = i + 2;
-          break;
-        }
-      }
-
-      if (pendingQueryRow === -1) {
-        Logger.log("No pending queries found. Engine is going to sleep.");
-        return; // Self-terminate
-      }
-
-      queryId = queueSheet.getRange(pendingQueryRow, queryIdCol + 1).getValue();
-      queueSheet.getRange(pendingQueryRow, statusCol + 1).setValue("Running");
-      properties.setProperty('currentQueryID', queryId);
+    const properties = PropertiesService.getScriptProperties();
+    let queryId = properties.getProperty('currentQueryID');
+    const startTime = new Date().getTime();
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) {
+        Logger.log("Could not acquire lock, another instance is likely running. Exiting.");
+        return;
     }
 
-    // Initialize or retrieve state
-    let state = {};
-    const stateJSON = properties.getProperty(`state_${queryId}`);
-    if (stateJSON) {
-      state = JSON.parse(stateJSON);
-    } else {
-      const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-      const queueSheet = ss.getSheetByName("QueryQueue");
-      const data = queueSheet.getDataRange().getValues();
-      const headers = data.shift();
-      const queryJsonCol = headers.indexOf("QueryJSON");
-      const queryIdCol = headers.indexOf("QueryID");
-      let queryJSONString = "";
-      for(let i=0; i < data.length; i++) {
-          if(data[i][queryIdCol] === queryId) {
-              queryJSONString = data[i][queryJsonCol];
-              break;
-          }
-      }
-      state = { queryJSON: queryJSONString, lastRowProcessed: 0, aggregationMap: {}, processedResults: [] };
-    }
+    try {
+        while (new Date().getTime() - startTime < 270000) { // Time-aware loop
+            if (!queryId) {
+                const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+                const queueSheet = ss.getSheetByName("QueryQueue");
+                const data = queueSheet.getDataRange().getValues();
+                const headers = data.shift();
+                const statusCol = headers.indexOf("Status");
+                const queryIdCol = headers.indexOf("QueryID");
 
-    const query = JSON.parse(state.queryJSON);
-    const CHUNK_SIZE = 500;
-    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sourceSheet = ss.getSheetByName(query.from[0]);
+                let pendingQueryRow = -1;
+                for (let i = 0; i < data.length; i++) {
+                    if (data[i][statusCol] === "Pending") {
+                        pendingQueryRow = i + 2;
+                        break;
+                    }
+                }
 
-    if (!sourceSheet) {
-      // Handle error
-      return;
-    }
+                if (pendingQueryRow === -1) {
+                    Logger.log("No pending queries found. Engine is going to sleep.");
+                    return; // Self-terminate
+                }
 
-    const maxRows = sourceSheet.getLastRow() - 1;
-    const startRow = state.lastRowProcessed + 1;
-    const numRowsToProcess = Math.min(CHUNK_SIZE, maxRows - state.lastRowProcessed);
-
-    if (numRowsToProcess > 0) {
-      const sheetData = sourceSheet.getRange(startRow + 1, 1, numRowsToProcess, sourceSheet.getLastColumn()).getValues();
-      const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
-      const filteredData = sheetData.filter(row => evaluateWhereClause(row, headers, query.where));
-
-      if (query.groupBy && query.groupBy.length > 0) {
-        // GROUP BY logic will be added here
-      } else {
-        // Populate-as-you-go logic
-        state.processedResults = state.processedResults.concat(filteredData);
-      }
-
-      state.lastRowProcessed += numRowsToProcess;
-      properties.setProperty(`state_${queryId}`, JSON.stringify(state));
-    } else {
-      // --- COMPLETION LOGIC ---
-      const outputSs = SpreadsheetApp.create(`QueryResult_${queryId}`);
-      const outputSheet = outputSs.getSheets()[0];
-      const outputUrl = outputSs.getUrl();
-
-      if (query.groupBy && query.groupBy.length > 0) {
-        // Write aggregated results to sheet
-      } else {
-        if (state.processedResults.length > 0) {
-          const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
-          outputSheet.appendRow(headers);
-          outputSheet.getRange(2, 1, state.processedResults.length, state.processedResults[0].length).setValues(state.processedResults);
-        }
-      }
-
-      const queueSs = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
-      const queueSheet = queueSs.getSheetByName("QueryQueue");
-      // Logic to update the queue sheet will be improved later
-
-        if (query.action && query.action.type === 'email' && query.action.recipient) {
-            try {
-                MailApp.sendEmail({
-                    to: query.action.recipient,
-                    cc: query.action.cc || '',
-                    subject: `Query Engine Result: ${queryId}`,
-                    body: `Your query has completed. You can view the results at the following URL:\n\n${outputUrl}`
-                });
-                Logger.log(`Sent email notification for query ${queryId} to ${query.action.recipient}`);
-            } catch (e) {
-                Logger.log(`Failed to send email for query ${queryId}: ${e.toString()}`);
+                queryId = queueSheet.getRange(pendingQueryRow, queryIdCol + 1).getValue();
+                queueSheet.getRange(pendingQueryRow, statusCol + 1).setValue("Running");
+                properties.setProperty('currentQueryID', queryId);
+                SpreadsheetApp.flush();
             }
+
+            // Initialize or retrieve state
+            let state = {};
+            const stateJSON = properties.getProperty(`state_${queryId}`);
+            if (stateJSON) {
+                state = JSON.parse(stateJSON);
+            } else {
+                const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+                const queueSheet = ss.getSheetByName("QueryQueue");
+                const data = queueSheet.getDataRange().getValues();
+                const headers = data.shift();
+                const queryJsonCol = headers.indexOf("QueryJSON");
+                const queryIdCol = headers.indexOf("QueryID");
+                let queryJSONString = "";
+                let queryRowIndex = -1;
+
+                for(let i=0; i < data.length; i++) {
+                    if(data[i][queryIdCol] === queryId) {
+                        queryJSONString = data[i][queryJsonCol];
+                        queryRowIndex = i + 2;
+                        break;
+                    }
+                }
+
+                const outputSs = SpreadsheetApp.create(`QueryResult_${queryId}`);
+                const outputUrl = outputSs.getUrl();
+                const outputSheetId = outputSs.getId();
+
+                const query = JSON.parse(queryJSONString);
+                const sourceSs = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+                const sourceSheet = sourceSs.getSheetByName(query.from[0]); // Assuming one sheet for now
+                const sourceHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+
+                const outputSheet = outputSs.getSheets()[0];
+                const headersToWrite = (query.select && query.select.length > 0 && query.select[0] !== '*') ? query.select : sourceHeaders;
+                outputSheet.appendRow(headersToWrite);
+
+                state = {
+                    queryJSON: queryJSONString,
+                    lastRowProcessed: 0,
+                    aggregationMap: {},
+                    outputSheetId: outputSheetId
+                };
+
+                const urlCol = headers.indexOf("OutputSheetURL");
+                queueSheet.getRange(queryRowIndex, urlCol + 1).setValue(outputUrl);
+                SpreadsheetApp.flush();
+            }
+
+            const query = JSON.parse(state.queryJSON);
+            const CHUNK_SIZE = 500;
+            const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+            const sourceSheet = ss.getSheetByName(query.from[0]);
+
+            if (!sourceSheet) {
+              // Handle error: Update queue and terminate for this query
+              return;
+            }
+
+            const maxRows = sourceSheet.getLastRow();
+            const startRow = state.lastRowProcessed + 1;
+            if (startRow > maxRows) { // Check if we are already done
+              // Query is finished, move to completion logic
+            } else {
+                const numRowsToProcess = Math.min(CHUNK_SIZE, maxRows - state.lastRowProcessed);
+
+                if (numRowsToProcess > 0) {
+                    const sheetData = sourceSheet.getRange(startRow + 1, 1, numRowsToProcess, sourceSheet.getLastColumn()).getValues();
+                    const headers = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0];
+                    const filteredData = sheetData.filter(row => evaluateWhereClause(row, headers, query.where));
+
+                    if (query.groupBy && query.groupBy.length > 0) {
+                        const cache = CacheService.getScriptCache();
+                        let aggregationMap = JSON.parse(cache.get(queryId) || '{}');
+
+                        const groupByCols = query.groupBy;
+                        const selectCols = query.select;
+                        const aggRegex = /(\w+)\((.*?)\)/;
+
+                        filteredData.forEach(row => {
+                            const groupKey = groupByCols.map(col => row[headers.indexOf(col)]).join('||');
+
+                            if (!aggregationMap[groupKey]) {
+                                aggregationMap[groupKey] = {};
+                                groupByCols.forEach(col => {
+                                    aggregationMap[groupKey][col] = row[headers.indexOf(col)];
+                                });
+                            }
+
+                            selectCols.forEach(selectCol => {
+                                const match = selectCol.match(aggRegex);
+                                if (match) {
+                                    const func = match[1].toUpperCase();
+                                    const col = match[2];
+                                    const colIndex = headers.indexOf(col);
+                                    const val = parseFloat(row[colIndex]) || 0;
+
+                                    if (!aggregationMap[groupKey][selectCol]) {
+                                        aggregationMap[groupKey][selectCol] = { sum: 0, count: 0 };
+                                    }
+
+                                    aggregationMap[groupKey][selectCol].sum += val;
+                                    aggregationMap[groupKey][selectCol].count++;
+                                }
+                            });
+                        });
+
+                        cache.put(queryId, JSON.stringify(aggregationMap), 21600); // 6 hours expiration
+
+                    } else {
+                        if (filteredData.length > 0) {
+                            const outputSs = SpreadsheetApp.openById(state.outputSheetId);
+                            const outputSheet = outputSs.getSheets()[0];
+                            const headersToWrite = (query.select && query.select.length > 0 && query.select[0] !== '*') ? query.select : headers;
+
+                            const dataToWrite = filteredData.map(row => {
+                                return headersToWrite.map(header => {
+                                    const colIndex = headers.indexOf(header);
+                                    return colIndex !== -1 ? row[colIndex] : `_ERR_COL_NOT_FOUND: ${header}`;
+                                });
+                            });
+
+                            if (dataToWrite.length > 0) {
+                                outputSheet.getRange(outputSheet.getLastRow() + 1, 1, dataToWrite.length, dataToWrite[0].length).setValues(dataToWrite);
+                            }
+                        }
+                    }
+
+                    state.lastRowProcessed += numRowsToProcess;
+                    properties.setProperty(`state_${queryId}`, JSON.stringify(state));
+
+                    if(state.lastRowProcessed >= maxRows -1) {
+                        // break the while loop to go to completion logic
+                        break;
+                    } else {
+                       continue; // Continue processing chunks in the while loop
+                    }
+                }
+            }
+
+            // --- COMPLETION LOGIC ---
+            const outputSs = SpreadsheetApp.openById(state.outputSheetId);
+            const outputUrl = outputSs.getUrl();
+
+            if (query.groupBy && query.groupBy.length > 0) {
+                const cache = CacheService.getScriptCache();
+                const aggregationMap = JSON.parse(cache.get(queryId) || '{}');
+                const outputSheet = outputSs.getSheets()[0];
+                const headers = query.select;
+
+                const results = Object.values(aggregationMap).map(group => {
+                    return headers.map(header => {
+                        if (group[header] && typeof group[header] === 'object') {
+                            const aggData = group[header];
+                            if (header.toUpperCase().startsWith('AVG(')) {
+                                return aggData.count > 0 ? aggData.sum / aggData.count : 0;
+                            } else if (header.toUpperCase().startsWith('SUM(')) {
+                                return aggData.sum;
+                            } else if (header.toUpperCase().startsWith('COUNT(')) {
+                                return aggData.count;
+                            }
+                        }
+                        return group[header];
+                    });
+                });
+
+                outputSheet.clearContents().appendRow(headers);
+                if (results.length > 0) {
+                    outputSheet.getRange(2, 1, results.length, headers.length).setValues(results);
+                }
+                cache.remove(queryId);
+            }
+
+            const queueSs = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+            const queueSheet = queueSs.getSheetByName("QueryQueue");
+            const data = queueSheet.getDataRange().getValues();
+            const qHeaders = data.shift();
+            const qIdCol = qHeaders.indexOf("QueryID");
+            const statusColIdx = qHeaders.indexOf("Status");
+            const endTimeCol = qHeaders.indexOf("EndTime");
+
+            for (let i = 0; i < data.length; i++) {
+                if (data[i][qIdCol] === queryId) {
+                    queueSheet.getRange(i + 2, statusColIdx + 1).setValue("Complete");
+                    queueSheet.getRange(i + 2, endTimeCol + 1).setValue(new Date());
+                    break;
+                }
+            }
+
+            if (query.action && query.action.type === 'email' && query.action.recipient) {
+                MailApp.sendEmail({
+                    to: query.action.recipient, cc: query.action.cc || '',
+                    subject: `Query Engine Result: ${queryId}`,
+                    body: `Your query has completed. You can view the results at:\n\n${outputUrl}`
+                });
+            }
+
+            properties.deleteProperty('currentQueryID');
+            properties.deleteProperty(`state_${queryId}`);
+            queryId = null; // Reset for the next loop
         }
-
-      properties.deleteProperty('currentQueryID');
-      properties.deleteProperty(`state_${queryId}`);
-      queryId = null; // Reset for the next loop iteration
+    } catch (e) {
+        Logger.log(`ERROR in runQueryEngineBatch for query ${queryId}: ${e.toString()}`);
+        // TODO: Update queue with error message
+    } finally {
+        lock.releaseLock();
+        if (queryId) { // If loop timed out but a query was running
+            ScriptApp.newTrigger('runQueryEngineBatch').timeBased().after(60 * 1000).create();
+        }
     }
-  }
-
-  // If the loop finished due to time limit, re-trigger
-  if (queryId) {
-    ScriptApp.newTrigger('runQueryEngineBatch')
-      .timeBased()
-      .after(60 * 1000) // 1 minute
-      .create();
-  }
 }
 
 function evaluateWhereClause(row, headers, where) {
