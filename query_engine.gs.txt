@@ -224,7 +224,7 @@ function runQueryEngineBatch() {
       const ccRecipients = queueData[nextQueryRow - 2][6];
 
       // Create the output sheet immediately
-      const outputSpreadsheet = SpreadsheetApp.create(`Query Result - ${query.select.sourceSheet} - ${new Date().toLocaleString()}`);
+      const outputSpreadsheet = SpreadsheetApp.create(`Query Result - ${query.from[0]} - ${new Date().toLocaleString()}`);
       const outputSheet = outputSpreadsheet.getSheets()[0];
       outputSheet.setName("Results");
       const outputUrl = outputSpreadsheet.getUrl();
@@ -256,7 +256,14 @@ function runQueryEngineBatch() {
 
     // --- Time-Aware Processing Loop ---
     const sourceSs = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sourceSheet = sourceSs.getSheetByName(currentQueryState.query.select.sourceSheet);
+    const sourceSheetName = currentQueryState.query.from[0]; // <-- FIX: Get sheet name from 'from' clause
+    const sourceSheet = sourceSs.getSheetByName(sourceSheetName);
+
+    // Defensive check to prevent "Cannot read properties of null" error
+    if (!sourceSheet) {
+      throw new Error(`The specified sheet "${sourceSheetName}" was not found.`);
+    }
+
     const sourceData = sourceSheet.getDataRange().getValues();
     const sourceHeaders = sourceData.shift();
 
