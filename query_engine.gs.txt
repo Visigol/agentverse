@@ -109,9 +109,25 @@ function getAllSheetNames() {
  * @param {string} queryJson The JSON string of the query object from the UI.
  * @returns {string} A success message to the user.
  */
-function submitQueryToQueue(queryJson) {
+function submitQueryToQueue(queryData) {
   const userEmail = Session.getActiveUser().getEmail();
-  const query = JSON.parse(queryJson);
+
+  // Defensive Guard Clause: Ensure we are always working with both a valid object and a valid string.
+  let queryObject;
+  let queryString;
+  if (typeof queryData === 'string') {
+    queryString = queryData;
+    try {
+      queryObject = JSON.parse(queryData);
+    } catch (e) {
+      throw new Error(`Invalid JSON format received from client: ${e.message}`);
+    }
+  } else if (typeof queryData === 'object' && queryData !== null) {
+    queryObject = queryData;
+    queryString = JSON.stringify(queryData);
+  } else {
+    throw new Error("Received invalid or null query data.");
+  }
 
   try {
     const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
@@ -120,14 +136,14 @@ function submitQueryToQueue(queryJson) {
         const newSheet = ss.insertSheet("QueryQueue");
         newSheet.appendRow(["QueueTimestamp", "UserEmail", "Status", "QueryJSON", "OutputSheetURL", "Progress", "CCRecipients"]);
     }
-     ss.getSheetByName("QueryQueue").appendRow([
+    ss.getSheetByName("QueryQueue").appendRow([
       new Date(),
       userEmail,
       "Pending",
-      queryJson,
+      queryString, // <-- THE FIX: Always write the guaranteed string version to the sheet.
       "",
       "Queued...",
-      query.ccRecipients || ""
+      queryObject.ccRecipients || "" // Safely access property from the object.
     ]);
 
     // "Ignition" Logic: Check if the engine is already running.
