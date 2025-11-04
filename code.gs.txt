@@ -3647,42 +3647,11 @@ function submitQueryToQueue(query) {
   return query_engine.submitQueryToQueue(query);
 }
 
-function scheduleQuery(query, scheduleTime) {
-  try {
-    const trigger = ScriptApp.newTrigger('runQueryEngineBatch')
-      .timeBased()
-      .at(new Date(scheduleTime))
-      .create();
-
-    PropertiesService.getScriptProperties().setProperty(trigger.getUniqueId(), JSON.stringify(query));
-
-    return `Query scheduled successfully for ${new Date(scheduleTime).toLocaleString()}. Trigger ID: ${trigger.getUniqueId()}`;
-  } catch (e) {
-    Logger.log(`Error in scheduleQuery: ${e.toString()}`);
-    throw new Error(`Could not schedule query: ${e.message}`);
-  }
-}
-
-function scheduleRecurringQuery(query, cronString) {
-  try {
-    // Basic cron validation
-    if (cronString.split(' ').length !== 5 && cronString.split(' ').length !== 6) {
-      throw new Error("Invalid cron string format.");
-    }
-
-    const trigger = ScriptApp.newTrigger('runQueryEngineBatch')
-      .timeBased()
-      .cron(cronString)
-      .create();
-
-    PropertiesService.getScriptProperties().setProperty(trigger.getUniqueId(), JSON.stringify(query));
-
-    return `Query scheduled successfully with cron: "${cronString}". Trigger ID: ${trigger.getUniqueId()}`;
-  } catch (e) {
-    Logger.log(`Error in scheduleRecurringQuery: ${e.toString()}`);
-    throw new Error(`Could not schedule recurring query: ${e.message}`);
-  }
-}
+// Note: The scheduleQuery and scheduleRecurringQuery functions have been removed.
+// The new on-demand engine model is initiated by a user submitting a query
+// via submitQueryToQueue, which creates its own temporary trigger.
+// A separate scheduling feature would need to be designed to integrate
+// with the new queue-based system.
 
 
 

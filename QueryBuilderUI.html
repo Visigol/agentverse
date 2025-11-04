@@ -710,8 +710,9 @@
     function runQuery() {
       const jsonString = document.getElementById('query-formula-json').value;
       try {
-        const query = JSON.parse(jsonString);
-        if (!query.from || query.from.length === 0) {
+        // We still parse to validate, but we will send the raw string
+        const queryForValidation = JSON.parse(jsonString);
+        if (!queryForValidation.from || queryForValidation.from.length === 0) {
           alert("Please select at least one sheet in the 'FROM' clause.");
           return;
         }
@@ -722,10 +723,9 @@
 
         google.script.run
             .withSuccessHandler(response => {
-                const message = `${response.message} Your results will appear in the sheet linked below as soon as processing is complete.`;
-                const link = `<a href="${response.outputUrl}" target="_blank">Click here to view the results sheet.</a>`;
+                const message = `${response.message || 'Query submitted successfully.'} Your results will appear in the sheet linked below as soon as processing is complete.`;
+                const link = response.outputUrl ? `<a href="${response.outputUrl}" target="_blank">Click here to view the results sheet.</a>` : "";
 
-                // For a better user experience, we can create a small notification element.
                 const notification = document.createElement('div');
                 notification.innerHTML = `${message}<br>${link}`;
                 notification.style.cssText = "position:fixed; top:20px; right:20px; background-color: #007B5F; color:white; padding:15px; border-radius:8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index:1001;";
@@ -733,7 +733,7 @@
 
                 setTimeout(() => {
                     notification.remove();
-                }, 15000); // The notification will disappear after 15 seconds
+                }, 15000);
 
                 runButton.disabled = false;
                 runButton.textContent = "Run Query";
@@ -743,10 +743,10 @@
                 runButton.disabled = false;
                 runButton.textContent = "Run Query";
             })
-            .submitQueryToQueue(query);
+            .submitQueryToQueue(jsonString); // <-- CRITICAL FIX: Pass the raw string, not the parsed object
 
       } catch (e) {
-        alert("Error parsing the query JSON. Please check the formula.");
+        alert("Error parsing the query JSON. Please check the formula.\n" + e.message);
         const runButton = document.querySelector('.btn-primary');
         if(runButton) {
           runButton.disabled = false;
