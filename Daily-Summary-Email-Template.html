@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    color: #333;
+    margin: 0;
+    padding: 0;
+  }
+  .container {
+    width: 100%;
+    max-width: 800px;
+    margin: 20px auto;
+    background-color: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #ddd;
+  }
+  .header {
+    background-color: #00B14F;
+    color: #ffffff;
+    padding: 20px;
+    text-align: center;
+  }
+  .header h1 {
+    margin: 0;
+    font-size: 24px;
+  }
+  .header p {
+    margin: 5px 0 0;
+    font-size: 16px;
+  }
+  .section {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+  }
+  .section:last-child {
+    border-bottom: none;
+  }
+  .section-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #00B14F;
+    margin-top: 0;
+    margin-bottom: 15px;
+  }
+  .scorecard-container {
+    display: flex;
+    justify-content: space-around;
+    text-align: center;
+    gap: 15px;
+  }
+  .scorecard {
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    border-left: 5px solid #00B14F;
+    padding: 15px;
+    border-radius: 5px;
+    flex-grow: 1;
+  }
+  .scorecard .value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+  }
+  .scorecard .label {
+    font-size: 14px;
+    color: #666;
+    margin-top: 5px;
+  }
+  .list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+  }
+  .list li {
+    background-color: #fcfcfc;
+    border: 1px solid #eee;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .list li .agent-name {
+    font-weight: bold;
+  }
+  .list li .detail {
+    font-size: 14px;
+    color: #555;
+  }
+  .list li .rank {
+    font-size: 18px;
+    font-weight: bold;
+    color: #00B14F;
+    margin-right: 15px;
+  }
+  .no-data {
+    color: #888;
+    font-style: italic;
+  }
+  .anomaly-card {
+      border: 1px solid #e0e0e0;
+      border-left: 5px solid #ffa726; /* Orange for anomalies */
+      border-radius: 5px;
+      margin-bottom: 15px;
+      padding: 15px;
+      background-color: #fffaf2;
+  }
+  .anomaly-title {
+      font-weight: bold;
+      font-size: 16px;
+      margin-bottom: 10px;
+  }
+  .anomaly-details-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 12px;
+  }
+  .anomaly-details-grid div {
+      background-color: #fff;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #eee;
+  }
+  .anomaly-details-grid .label {
+      font-weight: bold;
+      color: #555;
+      display: block;
+      margin-bottom: 4px;
+  }
+  .anomaly-details-grid .value {
+      color: #333;
+  }
+  .problem-logs {
+      margin-top: 10px;
+  }
+  .problem-logs .log-entry {
+      font-family: monospace;
+      font-size: 11px;
+      background-color: #f0f0f0;
+      padding: 5px;
+      border-radius: 3px;
+      margin-bottom: 5px;
+      color: #c7254e;
+  }
+  .footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: #aaa;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>Daily Operations Summary</h1>
+    <p><?= new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) ?></p>
+  </div>
+
+  <!-- Section: Attendance Alerts -->
+  <div class="section">
+    <h2 class="section-title">🚨 Attendance Alerts</h2>
+    <p>Agents who may have forgotten to log out yesterday.</p>
+    <? if (attendanceAlerts && attendanceAlerts.length > 0) { ?>
+      <ul class="list">
+        <? for (var i = 0; i < attendanceAlerts.length; i++) { ?>
+          <li>
+            <span class="agent-name"><?= attendanceAlerts[i].agent ?></span>
+            <span class="detail">Last seen: <?= attendanceAlerts[i].lastLogin ?></span>
+          </li>
+        <? } ?>
+      </ul>
+    <? } else { ?>
+      <p class="no-data">✅ No overnight login alerts.</p>
+    <? } ?>
+  </div>
+
+  <!-- Section: Daily Scorecard -->
+  <div class="section">
+    <h2 class="section-title">📊 Yesterday's Scorecard</h2>
+    <div class="scorecard-container">
+      <div class="scorecard">
+        <div class="value"><?= scoreCardData.active ?></div>
+        <div class="label">Agents Active</div>
+      </div>
+      <div class="scorecard">
+        <div class="value"><?= scoreCardData.inactive ?></div>
+        <div class="label">Agents Inactive</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section: Top 5 Agents -->
+  <div class="section">
+    <h2 class="section-title">🏆 Top 5 Agents (Yesterday)</h2>
+    <? if (top5Agents && top5Agents.length > 0) { ?>
+      <ul class="list">
+        <? for (var i = 0; i < top5Agents.length; i++) { ?>
+          <li>
+            <div>
+              <span class="rank">#<?= top5Agents[i].rank ?></span>
+              <span class="agent-name"><?= top5Agents[i].agentName ?></span>
+            </div>
+            <span class="detail">Cases: <?= top5Agents[i].totalCases ?> | Avg Time: <?= formatDuration(top5Agents[i].avgHandlingTime) ?></span>
+          </li>
+        <? } ?>
+      </ul>
+    <? } else { ?>
+      <p class="no-data">No leaderboard data available for yesterday.</p>
+    <? } ?>
+  </div>
+
+  <!-- Section: Pending Corrections -->
+  <div class="section">
+    <h2 class="section-title">✍️ Pending Attendance Corrections</h2>
+    <? if (pendingCorrections && pendingCorrections.length > 0) { ?>
+      <ul class="list">
+        <? for (var i = 0; i < pendingCorrections.length; i++) { ?>
+          <li>
+            <span class="agent-name"><?= pendingCorrections[i].agent ?></span>
+            <span class="detail">Reason: <?= pendingCorrections[i].reason ?></span>
+          </li>
+        <? } ?>
+      </ul>
+    <? } else { ?>
+      <p class="no-data">✅ No pending correction requests.</p>
+    <? } ?>
+  </div>
+
+  <!-- Section: Anomaly Detections -->
+  <div class="section">
+    <h2 class="section-title">🔬 Anomaly Detections (Month-to-Date)</h2>
+    <? if (anomalies && anomalies.length > 0 && anomalies[0].type !== 'No Anomalies Found') { ?>
+      <? for (var i = 0; i < anomalies.length; i++) { ?>
+        <div class="anomaly-card">
+          <div class="anomaly-title">
+            Case: <?= anomalies[i].caseId ?> | Type: <?= anomalies[i].type ?>
+          </div>
+          <div class="anomaly-details-grid">
+            <div>
+                <span class="label">Current AHT</span>
+                <span class="value"><?= anomalies[i].preview.currentAHT ?></span>
+            </div>
+            <div>
+                <span class="label">Proposed AHT</span>
+                <span class="value" style="color: #00B14F; font-weight: bold;"><?= anomalies[i].preview.proposedAHT ?></span>
+            </div>
+            <div>
+                <span class="label">Current Pause</span>
+                <span class="value"><?= anomalies[i].preview.currentPause ?></span>
+            </div>
+            <div>
+                <span class="label">Proposed Pause</span>
+                <span class="value"><?= anomalies[i].preview.proposedPause ?></span>
+            </div>
+          </div>
+          <? if (anomalies[i].preview.problematicLogs && anomalies[i].preview.problematicLogs.length > 0) { ?>
+            <div class="problem-logs">
+              <span class="label">Problematic Logs:</span>
+              <? for (var j = 0; j < anomalies[i].preview.problematicLogs.length; j++) { ?>
+                <div class="log-entry">
+                  <?= anomalies[i].preview.problematicLogs[j].type ?> log (ID: <?= anomalies[i].preview.problematicLogs[j].id ?>) - <?= anomalies[i].preview.problematicLogs[j].reason ?>
+                </div>
+              <? } ?>
+            </div>
+          <? } ?>
+        </div>
+      <? } ?>
+    <? } else { ?>
+      <p class="no-data">✅ No anomalies detected for the current month.</p>
+    <? } ?>
+  </div>
+
+  <div class="footer">
+    This is an automated report. Please do not reply directly to this email.
+  </div>
+</div>
+
+</body>
+</html>
