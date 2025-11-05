@@ -4032,3 +4032,161 @@ function getHourlyWorkload(startDateStr, endDateStr) {
 
     return averages;
 }
+
+// =================================================================================
+// --- DAILY SUMMARY EMAIL ---
+// =================================================================================
+
+/**
+ * To set up a daily trigger for this function:
+ * 1. Open the Google Apps Script editor.
+ * 2. Go to "Triggers" (the clock icon on the left).
+ * 3. Click "Add Trigger".
+ * 4. Choose "sendDailySummaryEmail" from the "Choose which function to run" dropdown.
+ * 5. Choose "Time-driven" from the "Select event source" dropdown.
+ * 6. Select "Day timer" from the "Select type of time based trigger" dropdown.
+ * 7. Choose a time of day for the trigger to run (e.g., "8am to 9am").
+ * 8. Click "Save".
+ */
+function sendDailySummaryEmail() {
+  try {
+    const recipient = "manager@example.com"; // Dummy recipient
+    const ccRecipients = [
+      "supervisor1@example.com",
+      "supervisor2@example.com",
+      "teamlead@example.com",
+      "stakeholder@example.com",
+    ].join(',');
+
+    const subject = "Daily Operations Summary - " + new Date().toLocaleDateString();
+
+    // 1. Fetch all data
+    const attendanceAlerts = getAttendanceAlerts();
+    const scoreCardData = getScoreCardData();
+    const top5Agents = getTop5Agents();
+    const pendingCorrections = getPendingApprovalRequests();
+
+    // Get anomalies for the current month to date
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const anomaliesRaw = getAnomalies(startOfMonth.toISOString().slice(0, 10), today.toISOString().slice(0, 10));
+
+    // Enhance anomalies with their fix previews
+    const anomalies = anomaliesRaw
+      .filter(a => a.type !== 'No Anomalies Found' && a.caseId !== 'Error')
+      .map(anomaly => {
+        try {
+          anomaly.preview = previewHandlingTimeFix(anomaly.caseId);
+        } catch (e) {
+          anomaly.preview = { error: "Could not generate preview." };
+        }
+        return anomaly;
+      });
+
+    // 2. Prepare the HTML template
+    const template = HtmlService.createTemplateFromFile('Daily-Summary-Email-Template.html');
+    template.attendanceAlerts = attendanceAlerts;
+    template.scoreCardData = scoreCardData;
+    template.top5Agents = top5Agents;
+    template.pendingCorrections = pendingCorrections;
+    template.anomalies = anomalies;
+    template.formatDuration = formatDuration; // Pass the helper function to the template
+
+    const htmlBody = template.evaluate().getContent();
+
+    // 3. Send the email
+    MailApp.sendEmail({
+      to: recipient,
+      cc: ccRecipients,
+      subject: subject,
+      htmlBody: htmlBody,
+    });
+
+    Logger.log("Daily summary email sent successfully.");
+
+  } catch (e) {
+    Logger.log("Failed to send daily summary email: " + e.toString());
+    // Optional: Send a failure notification
+    MailApp.sendEmail("admin@example.com", "CRITICAL: Daily Summary Email Failed", "The automated daily summary email failed to generate. Error: " + e.message);
+  }
+}
+
+function getAttendanceAlerts() {
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const sheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENT_LOG);
+  const data = sheet.getDataRange().getValues();
+  const headers = data.shift();
+
+  const agentLogs = {};
+  data.forEach(row => {
+    const email = row[1];
+    if (!agentLogs[email]) {
+      agentLogs[email] = [];
+    }
+    agentLogs[email].push({
+      timestamp: new Date(row[0]),
+      action: row[3]
+    });
+  });
+
+  const alerts = [];
+  for (const email in agentLogs) {
+    const logs = agentLogs[email].sort((a, b) => b.timestamp - a.timestamp);
+    const lastLog = logs[0];
+
+    if (lastLog.action === 'Start Work') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      if (lastLog.timestamp.getDate() === yesterday.getDate() &&
+          lastLog.timestamp.getMonth() === yesterday.getMonth() &&
+          lastLog.timestamp.getFullYear() === yesterday.getFullYear()) {
+        alerts.push({
+          agent: email,
+          lastLogin: lastLog.timestamp.toLocaleString()
+        });
+      }
+    }
+  }
+
+  return alerts;
+}
+
+function getScoreCardData() {
+  const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
+  const agentSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENTS);
+  const allAgents = agentSheet.getDataRange().getValues().slice(1).map(row => row[0]);
+
+  const logSheet = ss.getSheetByName(CONFIG.ATTENDANCE.SHEETS.AGENT_LOG);
+  const logData = logSheet.getDataRange().getValues().slice(1);
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const activeAgents = new Set();
+  logData.forEach(row => {
+    const timestamp = new Date(row[0]);
+    if (timestamp.getDate() === yesterday.getDate() &&
+        timestamp.getMonth() === yesterday.getMonth() &&
+        timestamp.getFullYear() === yesterday.getFullYear()) {
+      activeAgents.add(row[1]);
+    }
+  });
+
+  const activeCount = activeAgents.size;
+  const inactiveCount = allAgents.length - activeCount;
+
+  return {
+    active: activeCount,
+    inactive: inactiveCount
+  };
+}
+
+function getTop5Agents() {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  const leaderboardData = getLeaderboardData(yesterdayStr, yesterdayStr);
+  return leaderboardData.slice(0, 5);
+}
