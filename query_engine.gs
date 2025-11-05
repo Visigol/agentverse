@@ -134,16 +134,20 @@ function submitQueryToQueue(queryData) {
     const queueSheet = ss.getSheetByName("QueryQueue");
     if (!queueSheet) {
         const newSheet = ss.insertSheet("QueryQueue");
-        newSheet.appendRow(["QueueTimestamp", "UserEmail", "Status", "QueryJSON", "OutputSheetURL", "Progress", "CCRecipients"]);
+        // FIX: Added "StartTime", "ENDTime", and "ErrorMessage" columns to the header.
+        newSheet.appendRow(["QueueTimestamp", "UserEmail", "Status", "QueryJSON", "StartTime", "ENDTime", "OutputSheetURL", "Progress", "CCRecipients", "ErrorMessage"]);
     }
     ss.getSheetByName("QueryQueue").appendRow([
       new Date(),
       userEmail,
       "Pending",
       queryString, // <-- THE FIX: Always write the guaranteed string version to the sheet.
-      "",
+      "", // StartTime
+      "", // ENDTime
+      "", // OutputSheetURL
       "Queued...",
-      queryObject.ccRecipients || "" // Safely access property from the object.
+      queryObject.ccRecipients || "", // Safely access property from the object.
+      "" // Add an empty string for the new ErrorMessage column
     ]);
 
     // "Ignition" Logic: Check if the engine is already running.
@@ -202,7 +206,8 @@ function runQueryEngineBatch() {
          deleteTriggers_();
          return; // Work is done.
       }
-      const queueData = queueSheet.getRange(2, 1, queueSheet.getLastRow() - 1, 7).getValues();
+      // FIX: Expanded the range to include the new "ErrorMessage" column (now 10 columns)
+      const queueData = queueSheet.getRange(2, 1, queueSheet.getLastRow() - 1, 10).getValues();
       let nextQueryRow = -1;
       for(let i = 0; i < queueData.length; i++) {
         if (queueData[i][2] === "Pending") {
@@ -231,7 +236,8 @@ function runQueryEngineBatch() {
 
       // Update the queue
       queueSheet.getRange(nextQueryRow, 3).setValue("Running");
-      queueSheet.getRange(nextQueryRow, 5).setValue(outputUrl);
+      queueSheet.getRange(nextQueryRow, 5).setValue(new Date()); // Set StartTime
+      queueSheet.getRange(nextQueryRow, 7).setValue(outputUrl);
 
       // Initialize state for the new query
       currentQueryState = {
@@ -250,7 +256,7 @@ function runQueryEngineBatch() {
           outputSheet.appendRow(["Running GROUP BY query..."]);
       } else {
           // For regular queries, write headers immediately.
-          outputSheet.appendRow(query.select.fields);
+          outputSheet.appendRow(query.select);
       }
     }
 
@@ -279,13 +285,13 @@ function runQueryEngineBatch() {
             const aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
             const outputSheet = SpreadsheetApp.openById(currentQueryState.outputSheetId).getSheets()[0];
             outputSheet.clearContents();
-            outputSheet.appendRow(currentQueryState.query.select.fields); // Write final headers
+            outputSheet.appendRow(currentQueryState.query.select); // Write final headers
 
             const results = [];
             for (const key in aggregationMap) {
                 const group = aggregationMap[key];
                 const row = [key];
-                currentQueryState.query.select.fields.slice(1).forEach(aggField => {
+                currentQueryState.query.select.slice(1).forEach(aggField => {
                   const aggFunc = aggField.split('(')[0].toLowerCase();
                   const field = aggField.match(/\((.*?)\)/)[1];
                   if (aggFunc === 'count') row.push(group[field].count);
@@ -303,14 +309,15 @@ function runQueryEngineBatch() {
         // Finalize queue entry
         const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
         queueSheet.getRange(currentQueryState.queueRow, 3).setValue("Complete");
-        queueSheet.getRange(currentQueryState.queueRow, 6).setValue("Finished");
+        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date()); // Set ENDTime
+        queueSheet.getRange(currentQueryState.queueRow, 8).setValue("Finished");
 
         // Send email notification
         const outputUrl = SpreadsheetApp.openById(currentQueryState.outputSheetId).getUrl();
         MailApp.sendEmail({
             to: currentQueryState.userEmail,
             cc: currentQueryState.ccRecipients || "",
-            subject: `Your Query is Complete: ${currentQueryState.query.select.sourceSheet}`,
+            subject: `Your Query is Complete: ${currentQueryState.query.from[0]}`,
             htmlBody: `Your query has finished processing.<br/><br/>You can view the results here: <a href="${outputUrl}">${outputUrl}</a>`
         });
 
@@ -344,14 +351,14 @@ function runQueryEngineBatch() {
       if (currentQueryState.isGroupBy) {
           const aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
           matchingRows.forEach(record => {
-              evaluateGroup(record, currentQueryState.query.groupBy, currentQueryState.query.select.fields, aggregationMap);
+              evaluateGroup(record, currentQueryState.query.groupBy, currentQueryState.query.select, aggregationMap);
           });
           properties.setProperty('aggregationMap', JSON.stringify(aggregationMap));
       } else {
         if (matchingRows.length > 0) {
             const outputSheet = SpreadsheetApp.openById(currentQueryState.outputSheetId).getSheets()[0];
             const outputData = matchingRows.map(record => {
-                return currentQueryState.query.select.fields.map(field => record[field]);
+                return currentQueryState.query.select.map(field => record[field]);
             });
             outputSheet.getRange(outputSheet.getLastRow() + 1, 1, outputData.length, outputData[0].length).setValues(outputData);
         }
@@ -363,7 +370,7 @@ function runQueryEngineBatch() {
       // Update progress in the queue
       const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
       const progress = `${currentQueryState.lastRowProcessed} / ${sourceData.length}`;
-      queueSheet.getRange(currentQueryState.queueRow, 6).setValue(progress);
+      queueSheet.getRange(currentQueryState.queueRow, 8).setValue(progress);
     }
 
     // --- EXECUTION TIME ENDED, BUT QUERY NOT FINISHED ---
@@ -382,7 +389,9 @@ function runQueryEngineBatch() {
     if (currentQueryState) {
         const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
         queueSheet.getRange(currentQueryState.queueRow, 3).setValue("Error");
-        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(`Error: ${e.message}`);
+        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date()); // Set ENDTime
+        queueSheet.getRange(currentQueryState.queueRow, 8).setValue("Error"); // Keep progress concise
+        queueSheet.getRange(currentQueryState.queueRow, 10).setValue(e.message); // Write full error to the new column
     }
     // Clean up state and triggers to prevent getting stuck
     properties.deleteProperty('currentQueryState');
@@ -431,7 +440,8 @@ function findNextPendingQuery_() {
  * @returns {boolean} True if the record matches all conditions, otherwise false.
  */
 function evaluateWhereClause(record, whereClause) {
-  if (!whereClause || whereClause.conditions.length === 0) {
+  // FIX: Added a guard against a null or undefined conditions array.
+  if (!whereClause || !whereClause.conditions || whereClause.conditions.length === 0) {
     return true; // No conditions means it's a match
   }
   const logic = whereClause.logic.toUpperCase(); // AND or OR
