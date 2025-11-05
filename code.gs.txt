@@ -1078,7 +1078,10 @@ function getActiveAgentStatuses() {
       const email = (row[1] || "").toString().trim().toLowerCase();
       // Once we find the latest action for an agent, we don't need to look for them again
       if (email && !lastActions.has(email)) {
-        lastActions.set(email, { action: row[3] });
+        lastActions.set(email, {
+          action: row[3],
+          timestamp: new Date(row[0]).toISOString()
+        });
       }
     }
 
@@ -1092,7 +1095,41 @@ function getActiveAgentStatuses() {
         let statusDetail = "Working";
         if (lastState.action === "Start Break") statusDetail = "On Break";
         else if (lastState.action === "Start Meeting") statusDetail = "In Meeting";
-        return { agentName: name, statusDetail: statusDetail };
+
+        // Find the start time of the current session
+        let sessionStartTime = null;
+        if (lastState.action === 'Start Work') {
+          sessionStartTime = lastState.timestamp;
+        } else {
+          // If the last action isn't 'Start Work', we need to find the preceding 'Start Work'
+          for (let i = agentLogData.length - 1; i >= 1; i--) {
+            const row = agentLogData[i];
+            const rowEmail = (row[1] || "").toString().trim().toLowerCase();
+            const action = row[3];
+            if (rowEmail === email.toLowerCase() && action === 'Start Work') {
+              sessionStartTime = new Date(row[0]).toISOString();
+              // We need to ensure this isn't an old session
+              let sessionEnded = false;
+              for (let j = i + 1; j < agentLogData.length; j++) {
+                const subsequentRow = agentLogData[j];
+                const subsequentEmail = (subsequentRow[1] || "").toString().trim().toLowerCase();
+                if (subsequentEmail === email.toLowerCase() && subsequentRow[3] === 'End Work') {
+                  sessionEnded = true;
+                  break;
+                }
+              }
+              if (!sessionEnded) {
+                break; // Found the start of the current, active session
+              }
+            }
+          }
+        }
+
+        return {
+          agentName: name,
+          statusDetail: statusDetail,
+          sessionStartTime: sessionStartTime
+        };
       }
       return null;
     }).filter(Boolean); // Remove null entries
