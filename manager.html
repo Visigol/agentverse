@@ -196,6 +196,11 @@
       padding-bottom: 0;
     }
 
+    #activeAgentsList {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
     /* Table Styling */
     table {
       width: 100%; border-collapse: separate; border-spacing: 0;
@@ -696,26 +701,18 @@
           let timeString = '';
           if (agent.sessionStartTime) {
             const startTime = new Date(agent.sessionStartTime);
-            const today = new Date();
-            const isToday = startTime.getDate() === today.getDate() &&
-              startTime.getMonth() === today.getMonth() &&
-              startTime.getFullYear() === today.getFullYear();
 
             const timeFormat = {
               hour: '2-digit',
               minute: '2-digit'
             };
             const dateFormat = {
-              year: '2-digit',
+              year: 'numeric',
               month: '2-digit',
               day: '2-digit'
             };
 
-            if (isToday) {
-              timeString = ` since today at ${startTime.toLocaleTimeString([], timeFormat)}`;
-            } else {
-              timeString = ` since ${startTime.toLocaleDateString([], dateFormat)} at ${startTime.toLocaleTimeString([], timeFormat)}`;
-            }
+            timeString = ` ${startTime.toLocaleDateString('en-GB', dateFormat)} ${startTime.toLocaleTimeString([], timeFormat)}`;
           }
 
           const listItem = document.createElement('li');
