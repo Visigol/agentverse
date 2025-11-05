@@ -693,8 +693,33 @@
       if (activeAgents && activeAgents.length > 0) {
         activeAgentsCount.textContent = `(${activeAgents.length})`;
         activeAgents.forEach(agent => {
+          let timeString = '';
+          if (agent.sessionStartTime) {
+            const startTime = new Date(agent.sessionStartTime);
+            const today = new Date();
+            const isToday = startTime.getDate() === today.getDate() &&
+              startTime.getMonth() === today.getMonth() &&
+              startTime.getFullYear() === today.getFullYear();
+
+            const timeFormat = {
+              hour: '2-digit',
+              minute: '2-digit'
+            };
+            const dateFormat = {
+              year: '2-digit',
+              month: '2-digit',
+              day: '2-digit'
+            };
+
+            if (isToday) {
+              timeString = ` since today at ${startTime.toLocaleTimeString([], timeFormat)}`;
+            } else {
+              timeString = ` since ${startTime.toLocaleDateString([], dateFormat)} at ${startTime.toLocaleTimeString([], timeFormat)}`;
+            }
+          }
+
           const listItem = document.createElement('li');
-          listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail})`;
+          listItem.innerHTML = `<strong>${agent.agentName}</strong> (${agent.statusDetail}${timeString})`;
           activeAgentsList.appendChild(listItem);
         });
       } else {
