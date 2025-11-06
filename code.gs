@@ -4302,7 +4302,7 @@ function getArchivedCases() {
         for(const key in task){
             if(task[key] instanceof Date){
                 serializedTask[key] = task[key].toISOString();
-            } else if (isDateTimeField_(key) && task[key]) {
+            } else if (isDateTimeField_(key) && task[key] && task[key].trim() !== '') {
                  serializedTask[key] = new Date(task[key]).toISOString();
             } else {
                 serializedTask[key] = task[key];
