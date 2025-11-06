@@ -4238,7 +4238,19 @@ function isDurationField_(fieldName) {
 }
 
 function getArchivedCases(options = {}) {
-  const { searchTerm = '', limit = 20, offset = 0 } = options;
+  // New filters, with defaults
+  const {
+    limit = 20,
+    offset = 0,
+    caseId = '',
+    status = '',
+    startDate: startDateStr = '',
+    endDate: endDateStr = '',
+    country = '',
+    userEmail = '',
+    category = ''
+  } = options;
+
   const FILE_NAME = 'HistoricalProductionReport.csv';
 
   try {
@@ -4301,17 +4313,43 @@ function getArchivedCases(options = {}) {
 
     let allTasks = Object.values(mainTasks);
 
-    // --- SEARCH FILTER ---
-    let filteredTasks = allTasks;
-    if (searchTerm && searchTerm.trim() !== '') {
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail']; // Define searchable fields
-        filteredTasks = allTasks.filter(task => {
-            return searchableHeaders.some(header =>
-                task[header] && String(task[header]).toLowerCase().includes(lowerCaseSearchTerm)
-            );
-        });
-    }
+    // --- ADVANCED SEARCH FILTER ---
+    let filteredTasks = allTasks.filter(task => {
+        // Helper function for case-insensitive string comparison
+        const matches = (value, filter) => {
+            if (!filter) return true; // If filter is empty, it's a match
+            if (!value) return false; // If value is empty but filter is not, it's not a match
+            return String(value).toLowerCase().includes(filter.toLowerCase());
+        };
+
+        // Date Range Filter
+        if (startDateStr && endDateStr) {
+            const startDate = new Date(startDateStr);
+            const endDate = new Date(endDateStr);
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(23, 59, 59, 999);
+            const taskStartDateStr = task['Main Task Start Date/Time'];
+            if (!taskStartDateStr) return false;
+            try {
+                const taskDate = new Date(taskStartDateStr);
+                if (isNaN(taskDate.getTime()) || taskDate < startDate || taskDate > endDate) {
+                    return false;
+                }
+            } catch (e) {
+                return false; // Invalid date format in the CSV
+            }
+        }
+
+        // Apply all filters
+        return (
+            matches(task['Main Task ID'], caseId) &&
+            matches(task['Status'], status) &&
+            matches(task['Country'], country) &&
+            matches(task['Useremail'], userEmail) &&
+            matches(task['Category'], category)
+        );
+    });
+
 
     const total = filteredTasks.length;
 
@@ -4355,31 +4393,68 @@ function getArchivedCases(options = {}) {
 }
 
 function exportArchiveToSheet() {
-  const FILE_NAME = 'HistoricalProductionReport.csv';
-  try {
-    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
-    const files = folder.getFilesByName(FILE_NAME);
-    if (!files.hasNext()) {
-      throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
+    const FILE_NAME = 'HistoricalProductionReport.csv';
+    try {
+        const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+        const files = folder.getFilesByName(FILE_NAME);
+        if (!files.hasNext()) {
+            throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
+        }
+        const file = files.next();
+        const csvContent = file.getBlob().getDataAsString();
+        const allRows = Utilities.parseCsv(csvContent);
+
+        if (allRows.length < 2) {
+            throw new Error("CSV file is empty or contains only a header.");
+        }
+
+        const headers = allRows.shift();
+        const recordTypeIndex = headers.indexOf('record_type');
+        if (recordTypeIndex === -1) {
+            throw new Error("'record_type' column not found in CSV.");
+        }
+
+        const dataByType = {
+            'Main Task': [headers],
+            'Escalation': [headers],
+            'Pausing': [headers],
+            'Cooperation': [headers]
+        };
+
+        allRows.forEach(row => {
+            const type = row[recordTypeIndex];
+            if (dataByType[type]) {
+                dataByType[type].push(row);
+            }
+        });
+
+        const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
+
+        // Helper to create and format a sheet
+        const createSheet = (name, data) => {
+            if (data.length > 1) { // Only create sheet if there's data
+                const sheet = spreadsheet.insertSheet(name);
+                sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+                sheet.setFrozenRows(1);
+            }
+        };
+
+        createSheet('Main Tasks', dataByType['Main Task']);
+        createSheet('Escalation Logs', dataByType['Escalation']);
+        createSheet('Pausing Logs', dataByType['Pausing']);
+        createSheet('Cooperation Logs', dataByType['Cooperation']);
+
+        // Delete the default 'Sheet1'
+        const defaultSheet = spreadsheet.getSheetByName('Sheet1');
+        if (defaultSheet) {
+            spreadsheet.deleteSheet(defaultSheet);
+        }
+
+        SpreadsheetApp.flush();
+        return spreadsheet.getUrl();
+
+    } catch (e) {
+        Logger.log(`Error in exportArchiveToSheet: ${e.toString()}`);
+        throw new Error(`Failed to export archive to Google Sheet. ${e.message}`);
     }
-    const file = files.next();
-    const csvContent = file.getBlob().getDataAsString();
-    const rows = Utilities.parseCsv(csvContent);
-
-    if (rows.length === 0) {
-      throw new Error("CSV file is empty.");
-    }
-
-    const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
-    const sheet = spreadsheet.getSheets()[0];
-    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
-    sheet.setFrozenRows(1);
-    SpreadsheetApp.flush();
-
-    return spreadsheet.getUrl();
-
-  } catch (e) {
-    Logger.log(`Error in exportArchiveToSheet: ${e.toString()}`);
-    throw new Error(`Failed to export archive to Google Sheet. ${e.message}`);
-  }
 }
