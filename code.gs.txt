@@ -4242,9 +4242,10 @@ function getArchivedCases() {
   const FILE_NAME = 'HistoricalProductionReport.csv';
 
   try {
-    const files = DriveApp.getFilesByName(FILE_NAME);
+    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq');
+    const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
-      throw new Error(`File "${FILE_NAME}" not found in Google Drive.`);
+      throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
     }
     const file = files.next();
     const csvContent = file.getBlob().getDataAsString();
@@ -4323,9 +4324,10 @@ function getArchivedCases() {
 function exportArchiveToSheet() {
   const FILE_NAME = 'HistoricalProductionReport.csv';
   try {
-    const files = DriveApp.getFilesByName(FILE_NAME);
+    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq');
+    const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
-      throw new Error(`File "${FILE_NAME}" not found in Google Drive.`);
+      throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
     }
     const file = files.next();
     const csvContent = file.getBlob().getDataAsString();
