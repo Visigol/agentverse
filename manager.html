@@ -399,10 +399,10 @@
     <div class="controls" style="margin-top: 20px; flex-direction: column; align-items: stretch;">
         <div style="display: flex; flex-wrap: wrap; gap: 15px;">
             <input type="text" id="archive-case-id-filter" placeholder="Case ID..." >
-            <input type="text" id="archive-status-filter" placeholder="Status...">
-            <input type="text" id="archive-country-filter" placeholder="Country...">
+            <select id="archive-status-filter"><option value="">All Statuses</option></select>
+            <select id="archive-country-filter"><option value="">All Countries</option></select>
             <input type="text" id="archive-user-filter" placeholder="User Email...">
-            <input type="text" id="archive-category-filter" placeholder="Category...">
+            <select id="archive-category-filter"><option value="">All Categories</option></select>
         </div>
         <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 10px;">
             <label for="archive-start-date">From:</label>
@@ -735,7 +735,45 @@
       }
       if (tabName === 'archive') {
         loadArchivedCases(1);
+        loadArchiveFilters();
       }
+    }
+
+    function loadArchiveFilters() {
+      google.script.run
+        .withSuccessHandler(options => {
+          const statusFilter = document.getElementById('archive-status-filter');
+          const countryFilter = document.getElementById('archive-country-filter');
+          const categoryFilter = document.getElementById('archive-category-filter');
+
+          // Populate Status
+          options.statuses.forEach(status => {
+            const option = document.createElement('option');
+            option.value = status;
+            option.textContent = status;
+            statusFilter.appendChild(option);
+          });
+
+          // Populate Country
+          options.countries.forEach(country => {
+            const option = document.createElement('option');
+            option.value = country;
+            option.textContent = country;
+            countryFilter.appendChild(option);
+          });
+
+          // Populate Category
+          options.categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            categoryFilter.appendChild(option);
+          });
+        })
+        .withFailureHandler(err => {
+          console.error("Failed to load archive filters:", err);
+        })
+        .getArchiveFilterOptions();
     }
 
     function searchArchivedCases() {
