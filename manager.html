@@ -396,11 +396,25 @@
       <h1 style="color: #c0392b;">Archived Files</h1>
       <p style="color: #c0392b;">This is a read-only view of historical case data.</p>
     </div>
-    <div class="controls" style="margin-top: 20px;">
-        <input type="text" id="archive-search-input" placeholder="Search by Case ID, Country, Account..." style="width: 300px;">
-        <button onclick="searchArchivedCases()">Search</button>
-        <button onclick="exportArchiveToSheet()">Extract to Google Sheets</button>
-        <div id="archive-loader" class="loader"></div>
+    <div class="controls" style="margin-top: 20px; flex-direction: column; align-items: stretch;">
+        <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+            <input type="text" id="archive-case-id-filter" placeholder="Case ID..." >
+            <input type="text" id="archive-status-filter" placeholder="Status...">
+            <input type="text" id="archive-country-filter" placeholder="Country...">
+            <input type="text" id="archive-user-filter" placeholder="User Email...">
+            <input type="text" id="archive-category-filter" placeholder="Category...">
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 10px;">
+            <label for="archive-start-date">From:</label>
+            <input type="date" id="archive-start-date">
+            <label for="archive-end-date">To:</label>
+            <input type="date" id="archive-end-date">
+        </div>
+        <div style="margin-top: 15px;">
+            <button onclick="searchArchivedCases()">Search</button>
+            <button onclick="exportArchiveToSheet()">Extract to Google Sheets</button>
+            <div id="archive-loader" class="loader"></div>
+        </div>
     </div>
     <div id="archive-message-area" class="message-area"></div>
     <div id="archive-table-container">
@@ -730,22 +744,30 @@
     }
 
     function loadArchivedCases(page = 1) {
-      currentArchivedPage = page;
-      const searchTerm = document.getElementById('archive-search-input').value;
-      const offset = (page - 1) * ARCHIVE_ITEMS_PER_PAGE;
+        currentArchivedPage = page;
+        const offset = (page - 1) * ARCHIVE_ITEMS_PER_PAGE;
 
-      showLoader(true, 'archive-loader');
-      google.script.run
-        .withSuccessHandler(displayArchivedCases)
-        .withFailureHandler(err => {
-          showLoader(false, 'archive-loader');
-          setUserMessage(err.message, "error", "archive-message-area");
-        })
-        .getArchivedCases({
-            searchTerm: searchTerm,
+        // Collect values from all filter fields
+        const filters = {
             limit: ARCHIVE_ITEMS_PER_PAGE,
-            offset: offset
-        });
+            offset: offset,
+            caseId: document.getElementById('archive-case-id-filter').value,
+            status: document.getElementById('archive-status-filter').value,
+            startDate: document.getElementById('archive-start-date').value,
+            endDate: document.getElementById('archive-end-date').value,
+            country: document.getElementById('archive-country-filter').value,
+            userEmail: document.getElementById('archive-user-filter').value,
+            category: document.getElementById('archive-category-filter').value
+        };
+
+        showLoader(true, 'archive-loader');
+        google.script.run
+            .withSuccessHandler(displayArchivedCases)
+            .withFailureHandler(err => {
+                showLoader(false, 'archive-loader');
+                setUserMessage(err.message, "error", "archive-message-area");
+            })
+            .getArchivedCases(filters);
     }
 
     function displayArchivedCases(response) {
@@ -872,8 +894,10 @@
                     allLogsHtml += `<div class="log-record"><div class="details-grid">`;
                     for (const header in log) {
                         let displayValue = log[header] || '';
-                        if (isDateTimeField(header) && displayValue) displayValue = formatDisplayDate(displayValue);
-                        allLogsHtml += `<div class="field"><strong>${header}</strong><span>${displayValue}</span></div>`;
+                        if (displayValue) { // Only show fields that have a value
+                            if (isDateTimeField(header) && displayValue) displayValue = formatDisplayDate(displayValue);
+                            allLogsHtml += `<div class="field"><strong>${header}</strong><span>${displayValue}</span></div>`;
+                        }
                     }
                     allLogsHtml += `</div></div>`;
                 });
