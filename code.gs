@@ -4087,12 +4087,10 @@ function getHourlyWorkload(startDateStr, endDateStr) {
  */
 function sendDailySummaryEmail() {
   try {
-    const recipient = "manager@example.com"; // Dummy recipient
+    const recipient = "andre.homem@cognizant.com"; // Dummy recipient
     const ccRecipients = [
-      "supervisor1@example.com",
-      "supervisor2@example.com",
-      "teamlead@example.com",
-      "stakeholder@example.com",
+      "Inesa.Povar@cognizant.com",
+      "Jitesh.Amin@cognizant.com",
     ].join(',');
 
     const subject = "Daily Operations Summary - " + new Date().toLocaleDateString();
@@ -4242,7 +4240,7 @@ function getArchivedCases() {
   const FILE_NAME = 'HistoricalProductionReport.csv';
 
   try {
-    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq');
+    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ');
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
       throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
@@ -4324,7 +4322,7 @@ function getArchivedCases() {
 function exportArchiveToSheet() {
   const FILE_NAME = 'HistoricalProductionReport.csv';
   try {
-    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq');
+    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ');
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
       throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
