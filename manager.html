@@ -378,12 +378,17 @@
       <p style="color: #c0392b;">This is a read-only view of historical case data.</p>
     </div>
     <div class="controls" style="margin-top: 20px;">
+        <input type="text" id="archive-search-input" placeholder="Search by Case ID, Country, Account..." style="width: 300px;">
+        <button onclick="searchArchivedCases()">Search</button>
         <button onclick="exportArchiveToSheet()">Extract to Google Sheets</button>
         <div id="archive-loader" class="loader"></div>
     </div>
     <div id="archive-message-area" class="message-area"></div>
     <div id="archive-table-container">
         <!-- The table of archived cases will be rendered here by JavaScript -->
+    </div>
+    <div id="archive-pagination-container" class="pagination-controls" style="margin-top: 20px; text-align: center;">
+        <!-- Pagination buttons will be rendered here -->
     </div>
   </div>
 
@@ -627,7 +632,32 @@
   </div>
 
 <script>
+    // --- Mock google.script.run for local testing ---
+    if (typeof google === 'undefined') {
+      window.google = {
+        script: {
+          run: {
+            withSuccessHandler: function(handler) {
+              return this;
+            },
+            withFailureHandler: function(handler) {
+              return this;
+            },
+            getArchivedCases: function(options) {
+              // Simulate a successful response with empty data
+              if (this.withSuccessHandler) {
+                this.withSuccessHandler({ records: [], total: 0 });
+              }
+            }
+          }
+        }
+      };
+    }
     // --- UTILITY AND HELPER FUNCTIONS ---
+    let currentArchivedPage = 1;
+    let totalArchivedRecords = 0;
+    const ARCHIVE_ITEMS_PER_PAGE = 20;
+
     function showTab(tabName) {
       document.getElementById('homepage-container').style.display = tabName === 'homepage' ? 'block' : 'none';
       document.getElementById('settings-container').style.display = tabName === 'settings' ? 'block' : 'none';
@@ -639,11 +669,20 @@
         loadAuthorizedUsers();
       }
       if (tabName === 'archive') {
-        loadArchivedCases();
+        loadArchivedCases(1);
       }
     }
 
-    function loadArchivedCases() {
+    function searchArchivedCases() {
+        currentArchivedPage = 1;
+        loadArchivedCases(1);
+    }
+
+    function loadArchivedCases(page = 1) {
+      currentArchivedPage = page;
+      const searchTerm = document.getElementById('archive-search-input').value;
+      const offset = (page - 1) * ARCHIVE_ITEMS_PER_PAGE;
+
       showLoader(true, 'archive-loader');
       google.script.run
         .withSuccessHandler(displayArchivedCases)
@@ -651,14 +690,22 @@
           showLoader(false, 'archive-loader');
           setUserMessage(err.message, "error", "archive-message-area");
         })
-        .getArchivedCases();
+        .getArchivedCases({
+            searchTerm: searchTerm,
+            limit: ARCHIVE_ITEMS_PER_PAGE,
+            offset: offset
+        });
     }
 
-    function displayArchivedCases(cases) {
+    function displayArchivedCases(response) {
       showLoader(false, 'archive-loader');
       const container = document.getElementById('archive-table-container');
+      const cases = response.records;
+      totalArchivedRecords = response.total;
+
       if (!cases || cases.length === 0) {
-        container.innerHTML = '<p>No archived cases found.</p>';
+        container.innerHTML = '<p>No archived cases found for the current filter.</p>';
+        renderArchivePagination(); // still render pagination to show total count
         return;
       }
       let tableHtml = '<table><thead><tr><th>Main Task ID</th><th>Country</th><th>Account Name</th><th>Status</th><th>End Date</th></tr></thead><tbody>';
@@ -673,6 +720,35 @@
       });
       tableHtml += '</tbody></table>';
       container.innerHTML = tableHtml;
+      renderArchivePagination();
+    }
+
+    function renderArchivePagination() {
+        const paginationContainer = document.getElementById('archive-pagination-container');
+        paginationContainer.innerHTML = '';
+        const totalPages = Math.ceil(totalArchivedRecords / ARCHIVE_ITEMS_PER_PAGE);
+
+        if (totalPages <= 1) return;
+
+        // Previous button
+        const prevButton = document.createElement('button');
+        prevButton.textContent = '« Previous';
+        prevButton.disabled = currentArchivedPage === 1;
+        prevButton.onclick = () => loadArchivedCases(currentArchivedPage - 1);
+        paginationContainer.appendChild(prevButton);
+
+        // Page info
+        const pageInfo = document.createElement('span');
+        pageInfo.textContent = ` Page ${currentArchivedPage} of ${totalPages} `;
+        pageInfo.style.margin = "0 10px";
+        paginationContainer.appendChild(pageInfo);
+
+        // Next button
+        const nextButton = document.createElement('button');
+        nextButton.textContent = 'Next »';
+        nextButton.disabled = currentArchivedPage === totalPages;
+        nextButton.onclick = () => loadArchivedCases(currentArchivedPage + 1);
+        paginationContainer.appendChild(nextButton);
     }
 
     function openArchiveModal(caseData) {

@@ -4236,11 +4236,12 @@ function isDurationField_(fieldName) {
     return lower.includes('duration') || lower.includes('agent handling time');
 }
 
-function getArchivedCases() {
+function getArchivedCases(options = {}) {
+  const { searchTerm = '', limit = 20, offset = 0 } = options;
   const FILE_NAME = 'HistoricalProductionReport.csv';
 
   try {
-    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ');
+    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnlFfQ');
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
       throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
@@ -4250,7 +4251,7 @@ function getArchivedCases() {
     const rows = Utilities.parseCsv(csvContent);
 
     if (rows.length < 2) {
-      return []; // No data
+      return { records: [], total: 0 };
     }
 
     const headers = rows.shift();
@@ -4297,21 +4298,54 @@ function getArchivedCases() {
       }
     });
 
-    const result = Object.values(mainTasks).map(task => {
+    let allTasks = Object.values(mainTasks);
+
+    // --- SEARCH FILTER ---
+    let filteredTasks = allTasks;
+    if (searchTerm && searchTerm.trim() !== '') {
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        const searchableHeaders = ['Main Task ID', 'Country', 'Account Name', 'Case Title', 'Category', 'Provider Id', 'Useremail']; // Define searchable fields
+        filteredTasks = allTasks.filter(task => {
+            return searchableHeaders.some(header =>
+                task[header] && String(task[header]).toLowerCase().includes(lowerCaseSearchTerm)
+            );
+        });
+    }
+
+    const total = filteredTasks.length;
+
+    // --- PAGINATION ---
+    const paginatedTasks = filteredTasks.slice(offset, offset + limit);
+
+
+    // --- SERIALIZATION ---
+    const records = paginatedTasks.map(task => {
         const serializedTask = {};
         for(const key in task){
-            if(task[key] instanceof Date){
-                serializedTask[key] = task[key].toISOString();
-            } else if (isDateTimeField_(key) && task[key] && task[key].trim() !== '') {
-                 serializedTask[key] = new Date(task[key]).toISOString();
-            } else {
-                serializedTask[key] = task[key];
+            try {
+                if(task[key] instanceof Date){
+                    serializedTask[key] = task[key].toISOString();
+                } else if (isDateTimeField_(key) && task[key] && String(task[key]).trim() !== '') {
+                    const date = new Date(task[key]);
+                    if (isNaN(date.getTime())) {
+                        // Instead of throwing, log it and set to null
+                        Logger.log(`Invalid date value for key "${key}": ${task[key]}`);
+                        serializedTask[key] = null;
+                    } else {
+                       serializedTask[key] = date.toISOString();
+                    }
+                } else {
+                    serializedTask[key] = task[key];
+                }
+            } catch (e) {
+                serializedTask[key] = null;
+                Logger.log(`Handled invalid date for key "${key}" with value "${task[key]}". Set to null.`);
             }
         }
         return serializedTask;
     });
 
-    return result;
+    return { records: records, total: total };
 
   } catch (e) {
     Logger.log(`Error in getArchivedCases: ${e.toString()}`);
