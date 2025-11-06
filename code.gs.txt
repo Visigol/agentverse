@@ -4301,13 +4301,23 @@ function getArchivedCases() {
 
     const result = Object.values(mainTasks).map(task => {
         const serializedTask = {};
-        for(const key in task){
-            if(task[key] instanceof Date){
-                serializedTask[key] = task[key].toISOString();
-            } else if (isDateTimeField_(key) && task[key]) {
-                 serializedTask[key] = new Date(task[key]).toISOString();
-            } else {
-                serializedTask[key] = task[key];
+        for (const key in task) {
+            try {
+                if (task[key] instanceof Date) {
+                    serializedTask[key] = task[key].toISOString();
+                } else if (isDateTimeField_(key) && task[key]) {
+                    const dateValue = new Date(task[key]);
+                    if (isNaN(dateValue.getTime())) {
+                        // Throw a specific error if the date is invalid after parsing attempt
+                        throw new Error(`Could not parse invalid date format.`);
+                    }
+                    serializedTask[key] = dateValue.toISOString();
+                } else {
+                    serializedTask[key] = task[key];
+                }
+            } catch (e) {
+                // Re-throw a more descriptive error to the frontend
+                throw new Error(`Error in field "${key}" with value "${task[key]}". Details: ${e.message}`);
             }
         }
         return serializedTask;
