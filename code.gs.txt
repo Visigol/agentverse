@@ -4227,3 +4227,124 @@ function getTop5Agents() {
   const leaderboardData = getLeaderboardData(yesterdayStr, yesterdayStr);
   return leaderboardData.slice(0, 5);
 }
+
+function isDateTimeField_(fieldName) {
+    const lower = fieldName.toLowerCase();
+    return (lower.includes('date') || lower.includes('time')) && !isDurationField_(fieldName);
+}
+
+function isDurationField_(fieldName) {
+    const lower = fieldName.toLowerCase();
+    return lower.includes('duration') || lower.includes('agent handling time');
+}
+
+function getArchivedCases() {
+  const FILE_NAME = 'HistoricalProductionReport.csv';
+
+  try {
+    const files = DriveApp.getFilesByName(FILE_NAME);
+    if (!files.hasNext()) {
+      throw new Error(`File "${FILE_NAME}" not found in Google Drive.`);
+    }
+    const file = files.next();
+    const csvContent = file.getBlob().getDataAsString();
+    const rows = Utilities.parseCsv(csvContent);
+
+    if (rows.length < 2) {
+      return []; // No data
+    }
+
+    const headers = rows.shift();
+    const mainTasks = {};
+
+    rows.forEach(row => {
+      const record = {};
+      headers.forEach((header, i) => {
+        record[header] = row[i];
+      });
+
+      const recordType = record['record_type'];
+      const mainTaskId = record['Main Task ID'];
+
+      if (!mainTaskId) return;
+
+      if (recordType === 'Main Task') {
+        if (!mainTasks[mainTaskId]) {
+          mainTasks[mainTaskId] = {
+            ...record,
+            escalations: [],
+            pauses: [],
+            cooperations: []
+          };
+        } else {
+          Object.assign(mainTasks[mainTaskId], record);
+        }
+      } else {
+        if (!mainTasks[mainTaskId]) {
+          mainTasks[mainTaskId] = {
+            'Main Task ID': mainTaskId,
+            escalations: [],
+            pauses: [],
+            cooperations: []
+          };
+        }
+        if (recordType === 'Escalation') {
+          mainTasks[mainTaskId].escalations.push(record);
+        } else if (recordType === 'Pausing') {
+          mainTasks[mainTaskId].pauses.push(record);
+        } else if (recordType === 'Cooperation') {
+          mainTasks[mainTaskId].cooperations.push(record);
+        }
+      }
+    });
+
+    const result = Object.values(mainTasks).map(task => {
+        const serializedTask = {};
+        for(const key in task){
+            if(task[key] instanceof Date){
+                serializedTask[key] = task[key].toISOString();
+            } else if (isDateTimeField_(key) && task[key]) {
+                 serializedTask[key] = new Date(task[key]).toISOString();
+            } else {
+                serializedTask[key] = task[key];
+            }
+        }
+        return serializedTask;
+    });
+
+    return result;
+
+  } catch (e) {
+    Logger.log(`Error in getArchivedCases: ${e.toString()}`);
+    throw new Error(`Failed to get archived cases. ${e.message}`);
+  }
+}
+
+function exportArchiveToSheet() {
+  const FILE_NAME = 'HistoricalProductionReport.csv';
+  try {
+    const files = DriveApp.getFilesByName(FILE_NAME);
+    if (!files.hasNext()) {
+      throw new Error(`File "${FILE_NAME}" not found in Google Drive.`);
+    }
+    const file = files.next();
+    const csvContent = file.getBlob().getDataAsString();
+    const rows = Utilities.parseCsv(csvContent);
+
+    if (rows.length === 0) {
+      throw new Error("CSV file is empty.");
+    }
+
+    const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
+    const sheet = spreadsheet.getSheets()[0];
+    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+    sheet.setFrozenRows(1);
+    SpreadsheetApp.flush();
+
+    return spreadsheet.getUrl();
+
+  } catch (e) {
+    Logger.log(`Error in exportArchiveToSheet: ${e.toString()}`);
+    throw new Error(`Failed to export archive to Google Sheet. ${e.message}`);
+  }
+}

@@ -368,7 +368,23 @@
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=cases', '_blank')">Cases</button>
     <button id="tab-scheduling" onclick="showTab('scheduling')">Scheduling</button>
     <button id="tab-settings" onclick="showTab('settings')">Settings</button>
+    <button id="tab-archive" onclick="showTab('archive')">Archive</button>
     <button onclick="window.open('<?= ScriptApp.getService().getUrl() ?>?page=query_engine', '_blank')">Query Engine</button>
+  </div>
+
+  <div id="archive-container" class="manager-container" style="display: none;">
+    <div class="header" style="background-color: #fce8e6; border-bottom: 1px solid #f4c7c3;">
+      <h1 style="color: #c0392b;">Archived Files</h1>
+      <p style="color: #c0392b;">This is a read-only view of historical case data.</p>
+    </div>
+    <div class="controls" style="margin-top: 20px;">
+        <button onclick="exportArchiveToSheet()">Extract to Google Sheets</button>
+        <div id="archive-loader" class="loader"></div>
+    </div>
+    <div id="archive-message-area" class="message-area"></div>
+    <div id="archive-table-container">
+        <!-- The table of archived cases will be rendered here by JavaScript -->
+    </div>
   </div>
 
   <div id="scheduling-container" class="manager-container" style="display: none;">
@@ -616,12 +632,108 @@
       document.getElementById('homepage-container').style.display = tabName === 'homepage' ? 'block' : 'none';
       document.getElementById('settings-container').style.display = tabName === 'settings' ? 'block' : 'none';
       document.getElementById('scheduling-container').style.display = tabName === 'scheduling' ? 'block' : 'none';
+      document.getElementById('archive-container').style.display = tabName === 'archive' ? 'block' : 'none';
       document.querySelectorAll('.nav-tabs button').forEach(button => button.classList.remove('active'));
       document.getElementById(`tab-${tabName}`).classList.add('active');
       if (tabName === 'settings') {
         loadAuthorizedUsers();
       }
+      if (tabName === 'archive') {
+        loadArchivedCases();
+      }
     }
+
+    function loadArchivedCases() {
+      showLoader(true, 'archive-loader');
+      google.script.run
+        .withSuccessHandler(displayArchivedCases)
+        .withFailureHandler(err => {
+          showLoader(false, 'archive-loader');
+          setUserMessage(err.message, "error", "archive-message-area");
+        })
+        .getArchivedCases();
+    }
+
+    function displayArchivedCases(cases) {
+      showLoader(false, 'archive-loader');
+      const container = document.getElementById('archive-table-container');
+      if (!cases || cases.length === 0) {
+        container.innerHTML = '<p>No archived cases found.</p>';
+        return;
+      }
+      let tableHtml = '<table><thead><tr><th>Main Task ID</th><th>Country</th><th>Account Name</th><th>Status</th><th>End Date</th></tr></thead><tbody>';
+      cases.forEach(caseData => {
+        tableHtml += `<tr onclick='openArchiveModal(${JSON.stringify(caseData)})'>
+          <td>${caseData['Main Task ID'] || ''}</td>
+          <td>${caseData['Country'] || ''}</td>
+          <td>${caseData['Account Name'] || ''}</td>
+          <td>${caseData['Status'] || ''}</td>
+          <td>${caseData['Main Task End Date/Time'] ? new Date(caseData['Main Task End Date/Time']).toLocaleString() : ''}</td>
+        </tr>`;
+      });
+      tableHtml += '</tbody></table>';
+      container.innerHTML = tableHtml;
+    }
+
+    function openArchiveModal(caseData) {
+        const modal = document.createElement('div');
+        modal.className = 'modal-overlay';
+        modal.style.display = 'flex';
+        let modalContent = `
+            <div class="modal-content" style="max-width: 900px; flex-direction: column;">
+                <div class="modal-header">
+                    <h2>Archived Case: ${caseData['Main Task ID']}</h2>
+                    <button class="close-button" onclick="this.parentElement.parentElement.parentElement.remove()">×</button>
+                </div>
+                <div class="modal-body" style="padding: 20px; max-height: 70vh; overflow-y: auto;">
+                    <h4>Main Task Details</h4>
+                    <div class="details-grid">`;
+
+        for(const key in caseData){
+            if(key !== 'escalations' && key !== 'pauses' && key !== 'cooperations' && caseData[key]){
+                 modalContent += `<div class="field"><strong>${key}</strong><span>${caseData[key]}</span></div>`;
+            }
+        }
+        modalContent += `</div>`;
+
+        if(caseData.escalations && caseData.escalations.length > 0){
+            modalContent += `<h4>Escalation Logs</h4>`;
+            caseData.escalations.forEach(log => {
+                modalContent += `<div class="log-record"><div class="details-grid">`;
+                for(const key in log){
+                    if(log[key]) modalContent += `<div class="field"><strong>${key}</strong><span>${log[key]}</span></div>`;
+                }
+                modalContent += `</div></div>`;
+            });
+        }
+
+        if(caseData.pauses && caseData.pauses.length > 0){
+            modalContent += `<h4>Pause Logs</h4>`;
+            caseData.pauses.forEach(log => {
+                modalContent += `<div class="log-record"><div class="details-grid">`;
+                for(const key in log){
+                    if(log[key]) modalContent += `<div class="field"><strong>${key}</strong><span>${log[key]}</span></div>`;
+                }
+                modalContent += `</div></div>`;
+            });
+        }
+
+        if(caseData.cooperations && caseData.cooperations.length > 0){
+            modalContent += `<h4>Cooperation Logs</h4>`;
+            caseData.cooperations.forEach(log => {
+                modalContent += `<div class="log-record"><div class="details-grid">`;
+                for(const key in log){
+                    if(log[key]) modalContent += `<div class="field"><strong>${key}</strong><span>${log[key]}</span></div>`;
+                }
+                modalContent += `</div></div>`;
+            });
+        }
+
+        modalContent += `</div></div>`;
+        modal.innerHTML = modalContent;
+        document.body.appendChild(modal);
+    }
+
 
     function toggleDateRange() {
       const endDateInput = document.getElementById('endDate');
@@ -629,6 +741,23 @@
       endDateInput.disabled = !isRange;
       if (!isRange) { endDateInput.value = document.getElementById('startDate').value; }
     }
+
+    function exportArchiveToSheet() {
+      showLoader(true, 'archive-loader');
+      setUserMessage("Exporting...", "status", "archive-message-area");
+      google.script.run
+        .withSuccessHandler(url => {
+          showLoader(false, 'archive-loader');
+          setUserMessage("Export successful! Opening sheet...", "success", "archive-message-area");
+          window.open(url, '_blank');
+        })
+        .withFailureHandler(err => {
+          showLoader(false, 'archive-loader');
+          setUserMessage(err.message, "error", "archive-message-area");
+        })
+        .exportArchiveToSheet();
+    }
+
     function showLoader(show, id = 'loader') { document.getElementById(id).style.display = show ? 'inline-block' : 'none'; }
     function setUserMessage(message, type = "status", areaId = 'userMessage') {
       const msgEl = document.getElementById(areaId);
