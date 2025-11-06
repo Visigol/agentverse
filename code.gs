@@ -60,7 +60,8 @@ const CONFIG = {
       "Pausing Logs": "ID"
     }
     // --- ADDITIONS END ---
-  }
+  },
+   DRIVE_FOLDER_ID: '1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq'
 };
 
 // IMPORTANT: Manually update this version number in the script before deploying a new version.
@@ -4241,7 +4242,7 @@ function getArchivedCases(options = {}) {
   const FILE_NAME = 'HistoricalProductionReport.csv';
 
   try {
-    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2jIW6nOTpnlFfQ');
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
       throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
@@ -4356,7 +4357,7 @@ function getArchivedCases(options = {}) {
 function exportArchiveToSheet() {
   const FILE_NAME = 'HistoricalProductionReport.csv';
   try {
-    const folder = DriveApp.getFolderById('1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ');
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) {
       throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
