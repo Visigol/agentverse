@@ -4458,3 +4458,47 @@ function exportArchiveToSheet() {
         throw new Error(`Failed to export archive to Google Sheet. ${e.message}`);
     }
 }
+
+function getArchiveFilterOptions() {
+  const FILE_NAME = 'HistoricalProductionReport.csv';
+  try {
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const files = folder.getFilesByName(FILE_NAME);
+    if (!files.hasNext()) {
+      throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
+    }
+    const file = files.next();
+    const csvContent = file.getBlob().getDataAsString();
+    const rows = Utilities.parseCsv(csvContent);
+
+    if (rows.length < 2) {
+      return { statuses: [], countries: [], categories: [] };
+    }
+
+    const headers = rows.shift();
+    const statusIndex = headers.indexOf('Status');
+    const countryIndex = headers.indexOf('Country');
+    const categoryIndex = headers.indexOf('Category');
+
+    const uniqueValues = {
+      statuses: new Set(),
+      countries: new Set(),
+      categories: new Set()
+    };
+
+    rows.forEach(row => {
+      if (statusIndex !== -1 && row[statusIndex]) uniqueValues.statuses.add(row[statusIndex]);
+      if (countryIndex !== -1 && row[countryIndex]) uniqueValues.countries.add(row[countryIndex]);
+      if (categoryIndex !== -1 && row[categoryIndex]) uniqueValues.categories.add(row[categoryIndex]);
+    });
+
+    return {
+      statuses: Array.from(uniqueValues.statuses).sort(),
+      countries: Array.from(uniqueValues.countries).sort(),
+      categories: Array.from(uniqueValues.categories).sort()
+    };
+  } catch (e) {
+    Logger.log(`Error in getArchiveFilterOptions: ${e.toString()}`);
+    throw new Error(`Failed to get archive filter options. ${e.message}`);
+  }
+}
