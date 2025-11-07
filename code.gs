@@ -4423,8 +4423,8 @@ function exportArchiveToSheet() {
             'Escalation Logs': {
                 'Log ID': 'Log ID',
                 'Related Case ID': 'Main Task ID',
-                'Escalation Start Time': 'Escalation Start Time',
-                'Escalation End Time': 'Escalation End Time'
+                'Escalation Start Time': 'Escalated Start Time',
+                'Escalation End Time': 'Escalated End Time'
             },
             'Pausing Logs': {
                 'ID': 'Log ID',
@@ -4436,8 +4436,8 @@ function exportArchiveToSheet() {
                 'Log ID': 'Log ID',
                 'User Email': 'Useremail',
                 'Related Case ID': 'Main Task ID',
-                'Start Time': 'Cooperation Start Time',
-                'End Time': 'Cooperation End Time',
+                'Start Time': 'Main task Start Date/Time',
+                'End Time': 'Main Task End Date/Time',
                 'Cooperation Notes': 'Cooperation Notes'
             }
         };
