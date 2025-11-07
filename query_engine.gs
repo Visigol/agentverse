@@ -505,6 +505,26 @@ function evaluateGroupRules(record, group) {
 }
 
 /**
+ * Tries to parse a value into a Date object.
+ * Handles both native Date objects and common string formats.
+ * @private
+ * @param {*} value The value to parse.
+ * @returns {Date|null} A valid Date object or null.
+ */
+function tryParseDate_(value) {
+  if (value instanceof Date && !isNaN(value)) {
+    return value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      return date;
+    }
+  }
+  return null;
+}
+
+/**
  * Applies a single filtering rule with expanded operators and type coercion.
  * @param {*} recordValue The value from the current row.
  * @param {string} operator The comparison operator (e.g., 'is', 'contains').
@@ -518,8 +538,26 @@ function applyRule(recordValue, operator, conditionValue) {
   if (operator === 'is_blank') return isRecordValueBlank;
   if (operator === 'is_not_blank') return !isRecordValueBlank;
 
+  // For most operators, if the record's value is blank, it can't match.
   if (isRecordValueBlank) return false;
 
+  // --- Date Comparison Logic ---
+  const recordDate = tryParseDate_(recordValue);
+  const conditionDate = tryParseDate_(conditionValue);
+
+  if (recordDate && conditionDate) {
+    const recordTime = recordDate.getTime();
+    const conditionTime = conditionDate.getTime();
+    switch (operator) {
+      case 'is_greater_than':           return recordTime > conditionTime;
+      case 'is_less_than':              return recordTime < conditionTime;
+      case 'is_greater_than_or_equal_to': return recordTime >= conditionTime;
+      case 'is_less_than_or_equal_to':    return recordTime <= conditionTime;
+      // Continue to string/number logic for other operators like 'is' or 'contains'
+    }
+  }
+
+  // --- String/Number Comparison Logic (Fallback) ---
   const rv = String(recordValue);
   const cv = String(conditionValue);
   const rvLower = rv.toLowerCase();
@@ -530,20 +568,20 @@ function applyRule(recordValue, operator, conditionValue) {
   const conditionValues = cv.split(',').map(v => v.trim().toLowerCase());
 
   switch (operator) {
-    case 'is': return rvLower === cvLower;
-    case 'is_not': return rvLower !== cvLower;
-    case 'is_one_of': return conditionValues.includes(rvLower);
-    case 'is_not_one_of': return !conditionValues.includes(rvLower);
-    case 'contains': return rvLower.includes(cvLower);
-    case 'does_not_contain': return !rvLower.includes(cvLower);
-    case 'starts_with': return rvLower.startsWith(cvLower);
-    case 'does_not_start_with': return !rvLower.startsWith(cvLower);
-    case 'ends_with': return rvLower.endsWith(cvLower);
-    case 'does_not_end_with': return !rvLower.endsWith(cvLower);
-    case 'is_greater_than': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum > cvNum;
-    case 'is_less_than': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum < cvNum;
+    case 'is':                          return rvLower === cvLower;
+    case 'is_not':                        return rvLower !== cvLower;
+    case 'is_one_of':                   return conditionValues.includes(rvLower);
+    case 'is_not_one_of':               return !conditionValues.includes(rvLower);
+    case 'contains':                    return rvLower.includes(cvLower);
+    case 'does_not_contain':            return !rvLower.includes(cvLower);
+    case 'starts_with':                 return rvLower.startsWith(cvLower);
+    case 'does_not_start_with':         return !rvLower.startsWith(cvLower);
+    case 'ends_with':                   return rvLower.endsWith(cvLower);
+    case 'does_not_end_with':           return !rvLower.endsWith(cvLower);
+    case 'is_greater_than':             return !isNaN(rvNum) && !isNaN(cvNum) && rvNum > cvNum;
+    case 'is_less_than':                return !isNaN(rvNum) && !isNaN(cvNum) && rvNum < cvNum;
     case 'is_greater_than_or_equal_to': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum >= cvNum;
-    case 'is_less_than_or_equal_to': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum <= cvNum;
+    case 'is_less_than_or_equal_to':    return !isNaN(rvNum) && !isNaN(cvNum) && rvNum <= cvNum;
     case 'matches_regex':
       try {
         return new RegExp(cv, 'i').test(rv);
