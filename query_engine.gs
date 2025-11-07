@@ -196,7 +196,7 @@ function runQueryEngineBatch() {
     const stateJson = properties.getProperty('currentQueryState');
     if (stateJson) {
       currentQueryState = JSON.parse(stateJson);
-      Logger.log("Resuming existing query: " + currentQueryState.query.select.sourceSheet);
+      Logger.log("Resuming existing query.");
     } else {
       // No active query, let's find the next "Pending" one.
       const ss = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID);
@@ -206,7 +206,6 @@ function runQueryEngineBatch() {
          deleteTriggers_();
          return; // Work is done.
       }
-      // FIX: Expanded the range to include the new "ErrorMessage" column (now 10 columns)
       const queueData = queueSheet.getRange(2, 1, queueSheet.getLastRow() - 1, 10).getValues();
       let nextQueryRow = -1;
       for(let i = 0; i < queueData.length; i++) {
@@ -229,7 +228,7 @@ function runQueryEngineBatch() {
       const ccRecipients = queueData[nextQueryRow - 2][6];
 
       // Create the output sheet immediately
-      const outputSpreadsheet = SpreadsheetApp.create(`Query Result - ${query.from[0]} - ${new Date().toLocaleString()}`);
+      const outputSpreadsheet = SpreadsheetApp.create(`Query Result - ${query.from.join(', ')} - ${new Date().toLocaleString()}`);
       const outputSheet = outputSpreadsheet.getSheets()[0];
       outputSheet.setName("Results");
       const outputUrl = outputSpreadsheet.getUrl();
@@ -245,58 +244,63 @@ function runQueryEngineBatch() {
         userEmail: userEmail,
         ccRecipients: ccRecipients,
         outputSheetId: outputSpreadsheet.getId(),
-        lastRowProcessed: 1, // Start after the header row
+        currentSheetIndex: 0,
+        lastRowProcessed: 0, // Start before the header row
+        totalRecordsProcessed: 0,
+        totalRecordsToProcess: 0, // Will be calculated
         queueRow: nextQueryRow,
-        isGroupBy: !!query.groupBy
+        isGroupBy: !!(query.groupBy && query.groupBy.length > 0)
       };
 
       if (currentQueryState.isGroupBy) {
-          // For GROUP BY, we need to process all data in memory.
           properties.setProperty('aggregationMap', JSON.stringify({}));
           outputSheet.appendRow(["Running GROUP BY query..."]);
       } else {
-          // For regular queries, write headers immediately.
           outputSheet.appendRow(query.select);
       }
     }
 
     // --- Time-Aware Processing Loop ---
     const sourceSs = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
-    const sourceSheetName = currentQueryState.query.from[0]; // <-- FIX: Get sheet name from 'from' clause
-    const sourceSheet = sourceSs.getSheetByName(sourceSheetName);
-
-    // Defensive check to prevent "Cannot read properties of null" error
-    if (!sourceSheet) {
-      throw new Error(`The specified sheet "${sourceSheetName}" was not found.`);
+    if (currentQueryState.totalRecordsToProcess === 0) {
+      let total = 0;
+      for (const sheetName of currentQueryState.query.from) {
+        const sheet = sourceSs.getSheetByName(sheetName);
+        if (sheet) {
+          total += sheet.getLastRow() -1; // Exclude header
+        }
+      }
+      currentQueryState.totalRecordsToProcess = total;
     }
 
-    const sourceData = sourceSheet.getDataRange().getValues();
-    const sourceHeaders = sourceData.shift();
-
-    let recordsProcessedThisRun = 0;
-
     while (new Date().getTime() - startTime < MAX_EXECUTION_TIME_MS) {
-      if (currentQueryState.lastRowProcessed >= sourceData.length) {
+      if (currentQueryState.currentSheetIndex >= currentQueryState.query.from.length) {
         // --- QUERY FINISHED ---
-        Logger.log("Query finished. Processed all rows.");
+        Logger.log("Query finished. Processed all sheets.");
 
         if (currentQueryState.isGroupBy) {
-            // Write aggregated results to sheet
             const aggregationMap = JSON.parse(properties.getProperty('aggregationMap'));
             const outputSheet = SpreadsheetApp.openById(currentQueryState.outputSheetId).getSheets()[0];
             outputSheet.clearContents();
-            outputSheet.appendRow(currentQueryState.query.select); // Write final headers
+            outputSheet.appendRow(currentQueryState.query.select);
 
             const results = [];
             for (const key in aggregationMap) {
                 const group = aggregationMap[key];
-                const row = [key];
-                currentQueryState.query.select.slice(1).forEach(aggField => {
-                  const aggFunc = aggField.split('(')[0].toLowerCase();
-                  const field = aggField.match(/\((.*?)\)/)[1];
-                  if (aggFunc === 'count') row.push(group[field].count);
-                  else if (aggFunc === 'sum') row.push(group[field].sum);
-                  else if (aggFunc === 'avg') row.push(group[field].sum / group[field].count);
+                const row = [];
+                currentQueryState.query.select.forEach(selectField => {
+                    if (selectField.includes('(')) {
+                        const aggFunc = selectField.split('(')[0].toLowerCase();
+                        const field = selectField.match(/\((.*?)\)/)[1];
+                        if (aggFunc === 'count') row.push(group[field].count);
+                        else if (aggFunc === 'sum') row.push(group[field].sum);
+                        else if (aggFunc === 'avg') {
+                          const avg = group[field].count > 0 ? group[field].sum / group[field].count : 0;
+                          row.push(avg);
+                        }
+                    } else {
+                        row.push(group[selectField]);
+                    }
                 });
                 results.push(row);
             }
@@ -306,29 +310,26 @@ function runQueryEngineBatch() {
             properties.deleteProperty('aggregationMap');
         }
 
-        // Finalize queue entry
         const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
         queueSheet.getRange(currentQueryState.queueRow, 3).setValue("Complete");
-        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date()); // Set ENDTime
+        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date());
         queueSheet.getRange(currentQueryState.queueRow, 8).setValue("Finished");
 
-        // Send email notification
         const outputUrl = SpreadsheetApp.openById(currentQueryState.outputSheetId).getUrl();
         MailApp.sendEmail({
             to: currentQueryState.userEmail,
             cc: currentQueryState.ccRecipients || "",
-            subject: `Your Query is Complete: ${currentQueryState.query.from[0]}`,
+            subject: `Your Query is Complete: ${currentQueryState.query.from.join(', ')}`,
             htmlBody: `Your query has finished processing.<br/><br/>You can view the results here: <a href="${outputUrl}">${outputUrl}</a>`
         });
 
         properties.deleteProperty('currentQueryState');
-        currentQueryState = null; // Mark as finished
+        currentQueryState = null;
 
-        // Check for another pending query immediately.
         const nextPendingRow = findNextPendingQuery_();
         if (nextPendingRow !== -1) {
-            Logger.log("Query finished. Found another pending query. Restarting loop without new trigger.");
-            continue; // Re-enter the while loop to start the next query
+            Logger.log("Query finished. Found another pending query. Restarting loop.");
+            continue;
         } else {
              Logger.log("Query finished. No more pending queries. Engine going to sleep.");
              deleteTriggers_();
@@ -336,7 +337,24 @@ function runQueryEngineBatch() {
         }
       }
 
-      // --- PROCESS A CHUNK ---
+      const sourceSheetName = currentQueryState.query.from[currentQueryState.currentSheetIndex];
+      const sourceSheet = sourceSs.getSheetByName(sourceSheetName);
+
+      if (!sourceSheet) {
+          currentQueryState.currentSheetIndex++;
+          currentQueryState.lastRowProcessed = 0;
+          continue;
+      }
+
+      const sourceData = sourceSheet.getDataRange().getValues();
+      const sourceHeaders = sourceData.shift() || [];
+
+      if (currentQueryState.lastRowProcessed >= sourceData.length) {
+        currentQueryState.currentSheetIndex++;
+        currentQueryState.lastRowProcessed = 0;
+        continue;
+      }
+
       const chunk = sourceData.slice(currentQueryState.lastRowProcessed, currentQueryState.lastRowProcessed + CHUNK_SIZE);
       const matchingRows = [];
 
@@ -364,23 +382,20 @@ function runQueryEngineBatch() {
         }
       }
 
-      currentQueryState.lastRowProcessed += CHUNK_SIZE;
-      recordsProcessedThisRun += CHUNK_SIZE;
+      currentQueryState.lastRowProcessed += chunk.length;
+      currentQueryState.totalRecordsProcessed += chunk.length;
 
-      // Update progress in the queue
       const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
-      const progress = `${currentQueryState.lastRowProcessed} / ${sourceData.length}`;
+      const progress = `${currentQueryState.totalRecordsProcessed} / ${currentQueryState.totalRecordsToProcess}`;
       queueSheet.getRange(currentQueryState.queueRow, 8).setValue(progress);
     }
 
-    // --- EXECUTION TIME ENDED, BUT QUERY NOT FINISHED ---
     if (currentQueryState) {
         Logger.log("Execution time limit reached. Saving state and creating next trigger.");
         properties.setProperty('currentQueryState', JSON.stringify(currentQueryState));
-        // Create a trigger to run itself again
         ScriptApp.newTrigger(QUERY_ENGINE_TRIGGER_FUNCTION)
             .timeBased()
-            .after(60 * 1000) // 1 minute from now
+            .after(60 * 1000)
             .create();
     }
 
@@ -389,11 +404,10 @@ function runQueryEngineBatch() {
     if (currentQueryState) {
         const queueSheet = SpreadsheetApp.openById(CONFIG.ATTENDANCE.ID).getSheetByName("QueryQueue");
         queueSheet.getRange(currentQueryState.queueRow, 3).setValue("Error");
-        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date()); // Set ENDTime
-        queueSheet.getRange(currentQueryState.queueRow, 8).setValue("Error"); // Keep progress concise
-        queueSheet.getRange(currentQueryState.queueRow, 10).setValue(e.message); // Write full error to the new column
+        queueSheet.getRange(currentQueryState.queueRow, 6).setValue(new Date());
+        queueSheet.getRange(currentQueryState.queueRow, 8).setValue("Error");
+        queueSheet.getRange(currentQueryState.queueRow, 10).setValue(e.message);
     }
-    // Clean up state and triggers to prevent getting stuck
     properties.deleteProperty('currentQueryState');
     deleteTriggers_();
   } finally {
@@ -434,87 +448,157 @@ function findNextPendingQuery_() {
 }
 
 /**
- * Evaluates a record against the 'where' clause of a query.
+ * Evaluates a record against the 'where' clause of a query recursively.
  * @param {Object} record The data record (row) as an object.
  * @param {Object} whereClause The 'where' clause from the query object.
- * @returns {boolean} True if the record matches all conditions, otherwise false.
+ * @returns {boolean} True if the record matches the conditions, otherwise false.
  */
 function evaluateWhereClause(record, whereClause) {
-  // FIX: Added a guard against a null or undefined conditions array.
-  if (!whereClause || !whereClause.conditions || whereClause.conditions.length === 0) {
-    return true; // No conditions means it's a match
-  }
-  const logic = whereClause.logic.toUpperCase(); // AND or OR
-
-  for (let i = 0; i < whereClause.conditions.length; i++) {
-    const condition = whereClause.conditions[i];
-    const recordValue = record[condition.field];
-    const matches = applyRule(recordValue, condition.operator, condition.value);
-
-    if (logic === 'AND' && !matches) {
-      return false; // In AND, one failure means the whole thing fails
-    }
-    if (logic === 'OR' && matches) {
-      return true; // In OR, one success means the whole thing succeeds
-    }
+  if (!whereClause || !whereClause.groups || whereClause.groups.length === 0) {
+    return true; // No conditions means it's a match.
   }
 
-  // If we get here:
-  // For AND, it means all conditions passed.
-  // For OR, it means no conditions passed.
-  return logic === 'AND';
+  const rootLogic = whereClause.logic.toUpperCase(); // AND or OR
+
+  for (let i = 0; i < whereClause.groups.length; i++) {
+    const group = whereClause.groups[i];
+    const groupMatches = evaluateGroupRules(record, group);
+
+    if (rootLogic === 'AND' && !groupMatches) {
+      return false; // In AND, one group failure means the whole thing fails.
+    }
+    if (rootLogic === 'OR' && groupMatches) {
+      return true; // In OR, one group success means the whole thing succeeds.
+    }
+  }
+
+  return rootLogic === 'AND';
 }
 
 /**
- * Applies a single filtering rule.
+ * Evaluates a record against a single group of rules.
+ * @param {Object} record The data record (row) as an object.
+ * @param {Object} group The group object from the where clause.
+ * @returns {boolean} True if the record matches the group's rules, otherwise false.
+ */
+function evaluateGroupRules(record, group) {
+  if (!group.rules || group.rules.length === 0) {
+    return true; // An empty group is considered a match.
+  }
+
+  const groupLogic = group.logic.toUpperCase(); // AND or OR
+
+  for (let i = 0; i < group.rules.length; i++) {
+    const rule = group.rules[i];
+    const recordValue = record[rule.column];
+    const ruleMatches = applyRule(recordValue, rule.operator, rule.value);
+
+    if (groupLogic === 'AND' && !ruleMatches) {
+      return false; // In AND, one rule failure means the group fails.
+    }
+    if (groupLogic === 'OR' && ruleMatches) {
+      return true; // In OR, one rule success means the group succeeds.
+    }
+  }
+
+  return groupLogic === 'AND';
+}
+
+/**
+ * Applies a single filtering rule with expanded operators and type coercion.
  * @param {*} recordValue The value from the current row.
- * @param {string} operator The comparison operator (e.g., 'equals', 'contains').
+ * @param {string} operator The comparison operator (e.g., 'is', 'contains').
  * @param {*} conditionValue The value to compare against from the query.
  * @returns {boolean} True if the rule is met.
  */
 function applyRule(recordValue, operator, conditionValue) {
-    const rv = (recordValue === null || recordValue === undefined) ? '' : String(recordValue).toLowerCase();
-    const cv = (conditionValue === null || conditionValue === undefined) ? '' : String(conditionValue).toLowerCase();
+  const isRecordValueBlank = recordValue === null || recordValue === undefined || recordValue === '';
+  const isConditionValueBlank = conditionValue === null || conditionValue === undefined || conditionValue === '';
 
-    switch (operator) {
-        case 'equals': return rv === cv;
-        case 'does not equal': return rv !== cv;
-        case 'contains': return rv.includes(cv);
-        case 'does not contain': return !rv.includes(cv);
-        case 'is empty': return rv === '';
-        case 'is not empty': return rv !== '';
-        // Note: For date/number comparisons, more robust parsing is needed.
-        // This basic version treats them as strings.
-        case 'greater than': return parseFloat(rv) > parseFloat(cv);
-        case 'less than': return parseFloat(rv) < parseFloat(cv);
-        default: return false;
-    }
+  if (operator === 'is_blank') return isRecordValueBlank;
+  if (operator === 'is_not_blank') return !isRecordValueBlank;
+
+  if (isRecordValueBlank) return false;
+
+  const rv = String(recordValue);
+  const cv = String(conditionValue);
+  const rvLower = rv.toLowerCase();
+  const cvLower = cv.toLowerCase();
+  const rvNum = parseFloat(rv);
+  const cvNum = parseFloat(cv);
+
+  const conditionValues = cv.split(',').map(v => v.trim().toLowerCase());
+
+  switch (operator) {
+    case 'is': return rvLower === cvLower;
+    case 'is_not': return rvLower !== cvLower;
+    case 'is_one_of': return conditionValues.includes(rvLower);
+    case 'is_not_one_of': return !conditionValues.includes(rvLower);
+    case 'contains': return rvLower.includes(cvLower);
+    case 'does_not_contain': return !rvLower.includes(cvLower);
+    case 'starts_with': return rvLower.startsWith(cvLower);
+    case 'does_not_start_with': return !rvLower.startsWith(cvLower);
+    case 'ends_with': return rvLower.endsWith(cvLower);
+    case 'does_not_end_with': return !rvLower.endsWith(cvLower);
+    case 'is_greater_than': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum > cvNum;
+    case 'is_less_than': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum < cvNum;
+    case 'is_greater_than_or_equal_to': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum >= cvNum;
+    case 'is_less_than_or_equal_to': return !isNaN(rvNum) && !isNaN(cvNum) && rvNum <= cvNum;
+    case 'matches_regex':
+      try {
+        return new RegExp(cv, 'i').test(rv);
+      } catch (e) {
+        return false;
+      }
+    case 'does_not_match_regex':
+      try {
+        return !new RegExp(cv, 'i').test(rv);
+      } catch (e) {
+        return true;
+      }
+    default: return false;
+  }
 }
 
 /**
  * Processes a record for a GROUP BY aggregation.
  * @param {Object} record The data record object.
- * @param {string} groupByField The field to group by.
+ * @param {Array<string>} groupByFields The fields to group by.
  * @param {Array<string>} aggregateFields The fields to aggregate (e.g., ["COUNT(ID)", "SUM(Amount)"]).
  * @param {Object} aggregationMap The map holding the aggregated data.
  */
-function evaluateGroup(record, groupByField, aggregateFields, aggregationMap) {
-    const key = record[groupByField];
+function evaluateGroup(record, groupByFields, aggregateFields, aggregationMap) {
+    const key = groupByFields.map(field => record[field]).join(' | ');
+
     if (!aggregationMap[key]) {
         aggregationMap[key] = {};
-        aggregateFields.slice(1).forEach(aggField => {
-            const field = aggField.match(/\((.*?)\)/)[1];
-            aggregationMap[key][field] = { sum: 0, count: 0 };
+        groupByFields.forEach(field => {
+            aggregationMap[key][field] = record[field];
+        });
+
+        aggregateFields.forEach(aggField => {
+            if (aggField.includes('(')) {
+                const field = aggField.match(/\((.*?)\)/)[1];
+                if (field && !aggregationMap[key][field]) {
+                    aggregationMap[key][field] = { sum: 0, count: 0, values: new Set() };
+                }
+            }
         });
     }
 
-    aggregateFields.slice(1).forEach(aggField => {
+    aggregateFields.forEach(aggField => {
+        if (!aggField.includes('(')) return;
+
         const aggFunc = aggField.split('(')[0].toLowerCase();
         const field = aggField.match(/\((.*?)\)/)[1];
+        if (!field) return;
+
         const value = record[field];
 
         if (aggFunc === 'count') {
-            aggregationMap[key][field].count++;
+            if (value !== null && value !== undefined && value !== '') {
+                 aggregationMap[key][field].count++;
+            }
         } else if (aggFunc === 'sum' || aggFunc === 'avg') {
             const numValue = parseFloat(value);
             if (!isNaN(numValue)) {
