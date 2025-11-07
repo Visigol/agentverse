@@ -4419,6 +4419,29 @@ function exportArchiveToSheet() {
         const pausingLogHeaders = ["ID", "Related Case ID", "Pause Start Time", "Pause End Time"];
         const cooperationLogHeaders = ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"];
 
+        const headerMapping = {
+            'Escalation Logs': {
+                'Log ID': 'Log ID',
+                'Related Case ID': 'Main Task ID',
+                'Escalation Start Time': 'Escalation Start Time',
+                'Escalation End Time': 'Escalation End Time'
+            },
+            'Pausing Logs': {
+                'ID': 'Log ID',
+                'Related Case ID': 'Main Task ID',
+                'Pause Start Time': 'Pause Time',
+                'Pause End Time': 'Pause End Time'
+            },
+            'Cooperation Logs': {
+                'Log ID': 'Log ID',
+                'User Email': 'Useremail',
+                'Related Case ID': 'Main Task ID',
+                'Start Time': 'Cooperation Start Time',
+                'End Time': 'Cooperation End Time',
+                'Cooperation Notes': 'Cooperation Notes'
+            }
+        };
+
         const dataByType = {
             'Main Task': { headers: mainTaskHeaders, rows: [] },
             'Escalation': { headers: escalationLogHeaders, rows: [] },
@@ -4442,9 +4465,25 @@ function exportArchiveToSheet() {
         const createSheet = (name, headerOrder, dataRows) => {
             if (dataRows.length > 0) {
                 const sheet = spreadsheet.insertSheet(name);
+                const mapping = headerMapping[name];
+
+                if (name === 'Main Tasks') {
+                    const outputData = [headerOrder];
+                    dataRows.forEach(row => {
+                        const newRow = headerOrder.map(header => row[header] || "");
+                        outputData.push(newRow);
+                    });
+                    sheet.getRange(1, 1, outputData.length, headerOrder.length).setValues(outputData);
+                    sheet.setFrozenRows(1);
+                    return;
+                }
+
                 const outputData = [headerOrder];
                 dataRows.forEach(row => {
-                    const newRow = headerOrder.map(header => row[header] || "");
+                    const newRow = headerOrder.map(destHeader => {
+                        const sourceHeader = mapping[destHeader];
+                        return row[sourceHeader] || "";
+                    });
                     outputData.push(newRow);
                 });
                 sheet.getRange(1, 1, outputData.length, headerOrder.length).setValues(outputData);
@@ -4456,6 +4495,7 @@ function exportArchiveToSheet() {
         createSheet('Escalation Logs', dataByType['Escalation'].headers, dataByType['Escalation'].rows);
         createSheet('Pausing Logs', dataByType['Pausing'].headers, dataByType['Pausing'].rows);
         createSheet('Cooperation Logs', dataByType['Cooperation'].headers, dataByType['Cooperation'].rows);
+
 
         const defaultSheet = spreadsheet.getSheetByName('Sheet1');
         if (defaultSheet) {
