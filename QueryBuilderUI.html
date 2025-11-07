@@ -11,8 +11,8 @@
         :root {
             --primary-bg: #F8F9FA;
             --secondary-bg: #FFFFFF;
-            --primary-accent: #0D47A1;
-            --secondary-accent: #1976D2;
+            --primary-accent: #28a745;
+            --secondary-accent: #218838;
             --text-dark: #212529;
             --text-light: #6C757D;
             --border-color: #DEE2E6;
@@ -246,12 +246,6 @@
             <p>Review the generated query below. You can add sorting rules before running.</p>
             <div id="order-by-builder"></div>
             <div id="actions-builder">
-                <h4>Actions</h4>
-                <label><input type="checkbox" id="email-notification-checkbox" onchange="toggleEmailInputs()"> Send Email Notification</label>
-                <div id="email-inputs" style="display: none; margin-top: 10px;">
-                    <input type="email" id="email-recipient" placeholder="Recipient Email (required)">
-                    <input type="email" id="email-cc" placeholder="CC Emails (comma-separated, optional)" style="margin-top: 5px;">
-                </div>
             </div>
             <div id="live-preview"></div>
             <div class="navigation-buttons">
@@ -563,25 +557,6 @@
         updateLivePreview();
     }
 
-    function toggleEmailInputs() {
-        const isChecked = document.getElementById('email-notification-checkbox').checked;
-        document.getElementById('email-inputs').style.display = isChecked ? 'block' : 'none';
-        updateAction();
-    }
-
-    function updateAction() {
-        const isChecked = document.getElementById('email-notification-checkbox').checked;
-        if (isChecked) {
-            query.action = {
-                type: 'email',
-                recipient: document.getElementById('email-recipient').value,
-                cc: document.getElementById('email-cc').value
-            };
-        } else {
-            query.action = {};
-        }
-    }
-
     function saveQuery() {
         const name = prompt("Enter a name for your query:");
         if (name) {
@@ -723,7 +698,6 @@
         if (query.select.length === 0) {
             query.select = availableColumns;
         }
-        updateAction();
 
         const runButton = event.target;
         runButton.disabled = true;

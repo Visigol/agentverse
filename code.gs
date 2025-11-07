@@ -4408,43 +4408,55 @@ function exportArchiveToSheet() {
             throw new Error("CSV file is empty or contains only a header.");
         }
 
-        const headers = allRows.shift();
-        const recordTypeIndex = headers.indexOf('record_type');
+        const originalHeaders = allRows.shift();
+        const recordTypeIndex = originalHeaders.indexOf('record_type');
         if (recordTypeIndex === -1) {
             throw new Error("'record_type' column not found in CSV.");
         }
 
+        const mainTaskHeaders = ["Created By", "Useremail", "Main Task ID", "Country", "Menu Request Sent Date", "Language", "Case Title", "Category", "Account Name", "Status", "Provider Id", "City", "Menu Instructions", "Onboarding", "Menu Comment", "Menu link", "Dish Photos Link", "Photo Coverage", "Main Task Start Date/Time", "Main Task End Date/Time", "Escalated Start Time", "Escalated End Time", "Task Tat", "Escalated Comment", "Task Paused", "Pause Time", "Pause End Time", "TAT Adherance", "SalesforceUpdated", "Salesforce Updated time", "Ready for QA", "Date stamp", "Task Type", "Rework Count", "No of Main dishes(Excluding Extras, drinks, sides, etc)", "Total No of dishes", "Total No of categories", "Total no of options", "Total no of tags", "Total no of timetables.", "No of Valid Photos for Main dishes (Excluding Extras, drinks, sides, etc.)", "Comments", "Event Summary", "Stored Escalation Duration", "Stored Pause Duration", "Stored Agent Handling Time", "Retailer Provider Type", "Airtable Link", "Description Coverage", "Visual and Descriptive Elements", "Claim Flag", "SLA Missed Reason", "SLA Missed Comment", "Linking Snapshot URL"];
+        const escalationLogHeaders = ["Log ID", "Related Case ID", "Escalation Start Time", "Escalation End Time"];
+        const pausingLogHeaders = ["ID", "Related Case ID", "Pause Start Time", "Pause End Time"];
+        const cooperationLogHeaders = ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"];
+
         const dataByType = {
-            'Main Task': [headers],
-            'Escalation': [headers],
-            'Pausing': [headers],
-            'Cooperation': [headers]
+            'Main Task': { headers: mainTaskHeaders, rows: [] },
+            'Escalation': { headers: escalationLogHeaders, rows: [] },
+            'Pausing': { headers: pausingLogHeaders, rows: [] },
+            'Cooperation': { headers: cooperationLogHeaders, rows: [] }
         };
 
         allRows.forEach(row => {
             const type = row[recordTypeIndex];
             if (dataByType[type]) {
-                dataByType[type].push(row);
+                const record = {};
+                originalHeaders.forEach((header, i) => {
+                    record[header] = row[i];
+                });
+                dataByType[type].rows.push(record);
             }
         });
 
         const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
 
-        // Helper to create and format a sheet
-        const createSheet = (name, data) => {
-            if (data.length > 1) { // Only create sheet if there's data
+        const createSheet = (name, headerOrder, dataRows) => {
+            if (dataRows.length > 0) {
                 const sheet = spreadsheet.insertSheet(name);
-                sheet.getRange(1, 1, data.length, data[0].length).setValues(data);
+                const outputData = [headerOrder];
+                dataRows.forEach(row => {
+                    const newRow = headerOrder.map(header => row[header] || "");
+                    outputData.push(newRow);
+                });
+                sheet.getRange(1, 1, outputData.length, headerOrder.length).setValues(outputData);
                 sheet.setFrozenRows(1);
             }
         };
 
-        createSheet('Main Tasks', dataByType['Main Task']);
-        createSheet('Escalation Logs', dataByType['Escalation']);
-        createSheet('Pausing Logs', dataByType['Pausing']);
-        createSheet('Cooperation Logs', dataByType['Cooperation']);
+        createSheet('Main Tasks', dataByType['Main Task'].headers, dataByType['Main Task'].rows);
+        createSheet('Escalation Logs', dataByType['Escalation'].headers, dataByType['Escalation'].rows);
+        createSheet('Pausing Logs', dataByType['Pausing'].headers, dataByType['Pausing'].rows);
+        createSheet('Cooperation Logs', dataByType['Cooperation'].headers, dataByType['Cooperation'].rows);
 
-        // Delete the default 'Sheet1'
         const defaultSheet = spreadsheet.getSheetByName('Sheet1');
         if (defaultSheet) {
             spreadsheet.deleteSheet(defaultSheet);
