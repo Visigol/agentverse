@@ -4619,12 +4619,25 @@ function continueArchiveExport() {
     const triggerUid = new Date().getTime(); // Unique ID for this job run
     const cache = CacheService.getScriptCache();
     const jobQueue = Object.keys(dataByType).filter(type => dataByType[type].rows.length > 0);
-    const dataToCache = {};
+    const allCacheEntries = {};
+    const CHUNK_SIZE = 90000; // 90KB, safely under the 100KB limit
+
     jobQueue.forEach(type => {
-      const cacheKey = `archive_data_${triggerUid}_${type}`;
-      dataToCache[cacheKey] = JSON.stringify(dataByType[type]);
+      const dataString = JSON.stringify(dataByType[type]);
+      const numChunks = Math.ceil(dataString.length / CHUNK_SIZE);
+
+      // Store a manifest for this data type
+      const manifestKey = `archive_manifest_${triggerUid}_${type}`;
+      allCacheEntries[manifestKey] = JSON.stringify({ numChunks: numChunks });
+
+      // Store the data in chunks
+      for (let i = 0; i < numChunks; i++) {
+        const chunkKey = `archive_data_${triggerUid}_${type}_${i}`;
+        allCacheEntries[chunkKey] = dataString.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      }
     });
-    cache.putAll(dataToCache, 21600); // Store for 6 hours
+
+    cache.putAll(allCacheEntries, 21600); // Store all chunks and manifests for 6 hours
 
     PropertiesService.getScriptProperties().setProperties({
         'archive_job_queue': JSON.stringify(jobQueue),
