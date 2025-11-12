@@ -4623,16 +4623,17 @@ function continueArchiveExport() {
     const CHUNK_SIZE = 90000; // 90KB, safely under the 100KB limit
 
     jobQueue.forEach(type => {
+      const sanitizedType = type.replace(/\s/g, '_'); // Sanitize the type for use in cache keys
       const dataString = JSON.stringify(dataByType[type]);
       const numChunks = Math.ceil(dataString.length / CHUNK_SIZE);
 
       // Store a manifest for this data type
-      const manifestKey = `archive_manifest_${triggerUid}_${type}`;
+      const manifestKey = `archive_manifest_${triggerUid}_${sanitizedType}`;
       allCacheEntries[manifestKey] = JSON.stringify({ numChunks: numChunks });
 
       // Store the data in chunks
       for (let i = 0; i < numChunks; i++) {
-        const chunkKey = `archive_data_${triggerUid}_${type}_${i}`;
+        const chunkKey = `archive_data_${triggerUid}_${sanitizedType}_${i}`;
         allCacheEntries[chunkKey] = dataString.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
       }
     });
@@ -4699,10 +4700,11 @@ function processArchiveExportStep() {
 
   try {
     const typeToProcess = jobQueue.shift(); // Get the first job
+    const sanitizedType = typeToProcess.replace(/\s/g, '_'); // Sanitize the type to match the key format
 
     const cache = CacheService.getScriptCache();
     // 1. Read the manifest to find out how many chunks there are.
-    const manifestKey = `archive_manifest_${triggerUid}_${typeToProcess}`;
+    const manifestKey = `archive_manifest_${triggerUid}_${sanitizedType}`;
     const manifestJSON = cache.get(manifestKey);
     if (!manifestJSON) {
         throw new Error(`Could not retrieve the manifest for job type "${typeToProcess}". The data may have expired.`);
@@ -4713,7 +4715,7 @@ function processArchiveExportStep() {
     // 2. Retrieve all chunks from the cache.
     let reassembledJSON = "";
     for (let i = 0; i < numChunks; i++) {
-        const chunkKey = `archive_data_${triggerUid}_${typeToProcess}_${i}`;
+        const chunkKey = `archive_data_${triggerUid}_${sanitizedType}_${i}`;
         const chunk = cache.get(chunkKey);
         if (!chunk) {
             throw new Error(`Cache MISS for chunk ${i} of job type "${typeToProcess}". The data may have expired.`);
