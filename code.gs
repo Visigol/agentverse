@@ -4577,15 +4577,18 @@ function continueArchiveExport() {
   const BATCH_SIZE = 500;
 
   try {
+    Logger.log(`Starting background export for Sheet ID: ${sheetId}`);
     const newSpreadsheet = SpreadsheetApp.openById(sheetId);
 
     // Read the entire CSV once
+    Logger.log(`Reading CSV file: ${FILE_NAME}`);
     const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
     const files = folder.getFilesByName(FILE_NAME);
     if (!files.hasNext()) throw new Error(`File "${FILE_NAME}" not found.`);
     const file = files.next();
     const csvContent = file.getBlob().getDataAsString();
     const allRows = Utilities.parseCsv(csvContent);
+    Logger.log(`Found ${allRows.length -1} data rows in CSV.`);
     const originalHeaders = allRows.shift();
     const recordTypeIndex = originalHeaders.indexOf('record_type');
 
@@ -4607,6 +4610,7 @@ function continueArchiveExport() {
     };
 
     // Process all rows in memory first
+    Logger.log("Processing and separating rows by record_type in memory...");
     allRows.forEach(row => {
       const type = row[recordTypeIndex];
       if (dataByType[type]) {
@@ -4615,11 +4619,15 @@ function continueArchiveExport() {
         dataByType[type].rows.push(record);
       }
     });
+    Logger.log(`Processing complete. Found: ${dataByType['Main Task'].rows.length} Main Tasks, ${dataByType['Escalation'].rows.length} Escalations, ${dataByType['Pausing'].rows.length} Pauses, ${dataByType['Cooperation'].rows.length} Cooperations.`);
+
 
     // Write to sheets in batches
     Object.keys(dataByType).forEach(type => {
       const job = dataByType[type];
       const sheetName = type === 'Main Task' ? 'Main Tasks' : `${type} Logs`;
+      Logger.log(`--- Starting export for: ${sheetName} ---`);
+
       const sheet = newSpreadsheet.insertSheet(sheetName);
       sheet.getRange(1, 1, 1, job.headers.length).setValues([job.headers]).setFontWeight('bold');
       sheet.setFrozenRows(1);
@@ -4630,21 +4638,28 @@ function continueArchiveExport() {
               const sourceHeader = (type !== 'Main Task' && mapping) ? mapping[destHeader] : destHeader;
               let value = row[sourceHeader] || "";
               if (typeof value === 'string' && value.trim() === '') return "";
-              if (isDateTimeField_(destHeader) && value) return new Date(value);
+              if (isDateTimeField_(destHeader) && value) {
+                  try { return new Date(value); } catch(e) { return value; /* Return original string if date is invalid */ }
+              }
               if (isDurationField_(destHeader) && value) return parseFloat(value) || 0;
               return value;
           });
       });
 
       if (rowsToWrite.length > 0) {
+        Logger.log(`Writing ${rowsToWrite.length} rows to '${sheetName}' in batches of ${BATCH_SIZE}...`);
         for (let i = 0; i < rowsToWrite.length; i += BATCH_SIZE) {
           const batch = rowsToWrite.slice(i, i + BATCH_SIZE);
+          Logger.log(`Writing batch ${i / BATCH_SIZE + 1} to '${sheetName}' (${batch.length} rows).`);
           sheet.getRange(i + 2, 1, batch.length, job.headers.length).setValues(batch);
-          SpreadsheetApp.flush();
+          SpreadsheetApp.flush(); // Crucial for preventing timeouts
         }
+      } else {
+        Logger.log(`No rows to write for '${sheetName}'.`);
       }
 
       // Final formatting pass
+      Logger.log(`Applying column formatting for '${sheetName}'...`);
       job.headers.forEach((header, i) => {
         if(sheet.getLastRow() > 1){
            if (isDateTimeField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
@@ -4652,6 +4667,7 @@ function continueArchiveExport() {
         }
         sheet.autoResizeColumn(i + 1);
       });
+       Logger.log(`--- Finished export for: ${sheetName} ---`);
     });
 
     const defaultSheet = newSpreadsheet.getSheetByName('Sheet1');
@@ -4660,7 +4676,7 @@ function continueArchiveExport() {
     Logger.log("--- Background archive export has completed successfully. ---");
 
   } catch (e) {
-    Logger.log(`A critical error occurred during the archive fill operation: ${e.message}`);
+    Logger.log(`A critical error occurred during the archive fill operation: ${e.message} \nStack: ${e.stack}`);
     const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
     sheet.setName("Error");
     sheet.getRange("A1").setValue(`An error occurred: ${e.message}`);
