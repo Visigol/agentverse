@@ -4439,26 +4439,9 @@ function exportArchiveToSheet() {
         const cooperationLogHeaders = ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"];
 
         const headerMapping = {
-            'Escalation Logs': {
-                'Log ID': 'Log ID',
-                'Related Case ID': 'Main Task ID',
-                'Escalation Start Time': 'Escalated Start Time',
-                'Escalation End Time': 'Escalated End Time'
-            },
-            'Pausing Logs': {
-                'ID': 'Log ID',
-                'Related Case ID': 'Main Task ID',
-                'Pause Start Time': 'Pause Time',
-                'Pause End Time': 'Pause End Time'
-            },
-            'Cooperation Logs': {
-                'Log ID': 'Log ID',
-                'User Email': 'Useremail',
-                'Related Case ID': 'Main Task ID',
-                'Start Time': 'Main task Start Date/Time',
-                'End Time': 'Main Task End Date/Time',
-                'Cooperation Notes': 'Cooperation Notes'
-            }
+            'Escalation Logs': { 'Log ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Escalation Start Time': 'Escalated Start Time', 'Escalation End Time': 'Escalated End Time' },
+            'Pausing Logs': { 'ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Pause Start Time': 'Pause Time', 'Pause End Time': 'Pause End Time' },
+            'Cooperation Logs': { 'Log ID': 'Log ID', 'User Email': 'Useremail', 'Related Case ID': 'Main Task ID', 'Start Time': 'Main task Start Date/Time', 'End Time': 'Main Task End Date/Time', 'Cooperation Notes': 'Cooperation Notes' }
         };
 
         const dataByType = {
@@ -4472,9 +4455,7 @@ function exportArchiveToSheet() {
             const type = row[recordTypeIndex];
             if (dataByType[type]) {
                 const record = {};
-                originalHeaders.forEach((header, i) => {
-                    record[header] = row[i];
-                });
+                originalHeaders.forEach((header, i) => { record[header] = row[i]; });
                 dataByType[type].rows.push(record);
             }
         });
@@ -4486,27 +4467,51 @@ function exportArchiveToSheet() {
                 const sheet = spreadsheet.insertSheet(name);
                 const mapping = headerMapping[name];
 
-                if (name === 'Main Tasks') {
-                    const outputData = [headerOrder];
-                    dataRows.forEach(row => {
-                        const newRow = headerOrder.map(header => row[header] || "");
-                        outputData.push(newRow);
-                    });
-                    sheet.getRange(1, 1, outputData.length, headerOrder.length).setValues(outputData);
-                    sheet.setFrozenRows(1);
-                    return;
-                }
+                const outputRows = dataRows.map(row => {
+                    return headerOrder.map(destHeader => {
+                        let sourceHeader = destHeader;
+                        if (name !== 'Main Tasks' && mapping && mapping[destHeader]) {
+                            sourceHeader = mapping[destHeader];
+                        }
+                        let value = row[sourceHeader] || "";
 
-                const outputData = [headerOrder];
-                dataRows.forEach(row => {
-                    const newRow = headerOrder.map(destHeader => {
-                        const sourceHeader = mapping[destHeader];
-                        return row[sourceHeader] || "";
+                        if (typeof value === 'string' && value.trim() === '') return "";
+
+                        if (isDateTimeField_(destHeader)) {
+                            try {
+                                const date = new Date(value);
+                                return isNaN(date.getTime()) ? value : date;
+                            } catch (e) {
+                                return value;
+                            }
+                        } else if (isDurationField_(destHeader)) {
+                            const num = parseFloat(value);
+                            return isNaN(num) ? 0 : num;
+                        }
+                        return value;
                     });
-                    outputData.push(newRow);
                 });
-                sheet.getRange(1, 1, outputData.length, headerOrder.length).setValues(outputData);
-                sheet.setFrozenRows(1);
+
+                const outputData = [headerOrder, ...outputRows];
+                if (outputData.length > 1) { // Ensure there is data to write
+                    const dataRange = sheet.getRange(1, 1, outputData.length, headerOrder.length);
+                    dataRange.setValues(outputData);
+
+                    headerOrder.forEach((header, i) => {
+                        const colIndex = i + 1;
+                        if (sheet.getLastRow() > 1) { // Don't format an empty sheet
+                            if (isDateTimeField_(header)) {
+                                sheet.getRange(2, colIndex, sheet.getLastRow() - 1, 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
+                            } else if (isDurationField_(header)) {
+                                sheet.getRange(2, colIndex, sheet.getLastRow() - 1, 1).setNumberFormat("[h]:mm:ss.SSS");
+                            }
+                        }
+                    });
+                } else {
+                     sheet.getRange(1, 1, 1, headerOrder.length).setValues([headerOrder]);
+                }
+                 sheet.setFrozenRows(1);
+                 headerOrder.forEach((_, i) => sheet.autoResizeColumn(i + 1));
             }
         };
 
@@ -4514,7 +4519,6 @@ function exportArchiveToSheet() {
         createSheet('Escalation Logs', dataByType['Escalation'].headers, dataByType['Escalation'].rows);
         createSheet('Pausing Logs', dataByType['Pausing'].headers, dataByType['Pausing'].rows);
         createSheet('Cooperation Logs', dataByType['Cooperation'].headers, dataByType['Cooperation'].rows);
-
 
         const defaultSheet = spreadsheet.getSheetByName('Sheet1');
         if (defaultSheet) {
