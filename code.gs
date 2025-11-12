@@ -1445,7 +1445,8 @@ function getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr) {
         PAUSE: "stored pause duration",
         ESCALATION: "stored escalation duration",
         CASE_ID: "main task id",
-        ACCOUNT_NAME: "account name"
+        ACCOUNT_NAME: "account name",
+        STORED_AHT: "stored agent handling time"
     };
 
     const headerMap = {};
@@ -1467,13 +1468,20 @@ function getCaseDetailsForAgent(agentEmail, startDateStr, endDateStr) {
         const pauseDuration = (parseFloat(row[headerMap.PAUSE]) || 0) * 86400; // in seconds
         const escalationDuration = (parseFloat(row[headerMap.ESCALATION]) || 0) * 86400; // in seconds
 
-        const grossDuration = (endTime - startTime) / 1000; // in seconds
-        const netHandlingTime = grossDuration - pauseDuration - escalationDuration;
+        let handlingTimeSeconds = 0;
+        const storedAhtValue = row[headerMap.STORED_AHT];
+        if (storedAhtValue) {
+            if (storedAhtValue instanceof Date) {
+                handlingTimeSeconds = (storedAhtValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
+            } else if (!isNaN(parseFloat(storedAhtValue))) {
+                handlingTimeSeconds = parseFloat(storedAhtValue) * 86400;
+            }
+        }
 
         caseDetails.push({
           caseId: row[headerMap.CASE_ID],
           accountName: row[headerMap.ACCOUNT_NAME],
-          handlingTime: netHandlingTime > 0 ? netHandlingTime : 0,
+          handlingTime: handlingTimeSeconds > 0 ? handlingTimeSeconds : 0,
           startTime: startTime.toISOString(),
           endTime: endTime.toISOString(),
           pauseDuration: pauseDuration,
