@@ -1,0 +1,14 @@
+This Google Apps Script is a sophisticated, enterprise-level web application for comprehensive team and case management, spanning over 12,248 lines of code. It delivers a rich suite of functionalities through distinct, role-based user interfaces for agents and managers, leveraging Google Sheets as a database and a powerful, custom-built asynchronous query engine for advanced data processing and reporting.
+
+Here is a summary of its main features:
+
+Role-Based Dashboards: The application provides separate, tailored UIs for agents (index.html) and managers (manager.html), ensuring each role has access to the specific functionality and data they need.
+Real-time Attendance Tracking: Agents can clock in/out and log breaks or meetings, with their real-time status and session timers visible on both agent and manager dashboards.
+Comprehensive Case Management: A dedicated interface (cases.html) allows users to claim, view, and manage the entire lifecycle of cases, including pausing, escalating, and editing any data field.
+Advanced Data Analytics & Reporting: Managers have access to a powerful production dashboard (production.html) with filterable charts and metrics on team performance, TAT adherence, and menu complexity.
+Asynchronous Query Engine: A custom-built, on-demand query engine (query_engine.gs) allows users to construct complex SQL-like queries, which are processed in the background and delivered via email, preventing UI freezes and script timeouts.
+Data Integrity & Anomaly Detection: The system includes a proactive feature for managers to scan for and correct data anomalies, such as negative durations or invalid timestamps, ensuring data accuracy.
+Automated Email Reports: The script can automatically generate and email detailed daily and monthly performance reports, complete with dynamic charts and data tables, to stakeholders.
+Schedule Efficiency & Planning Module: The application features a complete scheduling system where managers can analyze historical workload vs. staffing, generate suggested schedules, and review agent applications for upcoming shifts.
+Attendance Correction Workflow: Agents can submit requests to correct their attendance logs, which appear on the manager's dashboard for a formal approval or denial process.
+Historical Data Archive: The system provides access to a read-only archive of historical case data from a separate CSV file, complete with search, filtering, and an asynchronous "Extract to Google Sheets" feature for large datasets.
