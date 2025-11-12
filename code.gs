@@ -4618,9 +4618,13 @@ function continueArchiveExport() {
     // 4. Store processed data and job list for the worker function
     const triggerUid = new Date().getTime(); // Unique ID for this job run
     const cache = CacheService.getScriptCache();
-    cache.put(`archive_data_${triggerUid}`, JSON.stringify(dataByType), 21600); // Store for 6 hours
-
     const jobQueue = Object.keys(dataByType).filter(type => dataByType[type].rows.length > 0);
+    const dataToCache = {};
+    jobQueue.forEach(type => {
+      const cacheKey = `archive_data_${triggerUid}_${type}`;
+      dataToCache[cacheKey] = JSON.stringify(dataByType[type]);
+    });
+    cache.putAll(dataToCache, 21600); // Store for 6 hours
 
     PropertiesService.getScriptProperties().setProperties({
         'archive_job_queue': JSON.stringify(jobQueue),
@@ -4681,16 +4685,15 @@ function processArchiveExportStep() {
   const BATCH_SIZE = 500;
 
   try {
-    const cache = CacheService.getScriptCache();
-    const dataByTypeJSON = cache.get(`archive_data_${triggerUid}`);
-    if (!dataByTypeJSON) {
-      throw new Error("Could not retrieve cached archive data. The data may have expired.");
-    }
-    const dataByType = JSON.parse(dataByTypeJSON);
-
     const typeToProcess = jobQueue.shift(); // Get the first job
 
-    const job = dataByType[typeToProcess];
+    const cache = CacheService.getScriptCache();
+    const cacheKey = `archive_data_${triggerUid}_${typeToProcess}`;
+    const jobJSON = cache.get(cacheKey);
+    if (!jobJSON) {
+      throw new Error(`Could not retrieve cached data for job type "${typeToProcess}". The data may have expired.`);
+    }
+    const job = JSON.parse(jobJSON);
     const sheetName = typeToProcess === 'Main Task' ? 'Main Tasks' : `${typeToProcess} Logs`;
     Logger.log(`--- Worker processing: ${sheetName} ---`);
 
