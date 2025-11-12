@@ -997,18 +997,18 @@
 
     function exportArchiveToSheet() {
       showLoader(true, 'archive-loader');
-      setUserMessage("Exporting...", "status", "archive-message-area");
+      setUserMessage("Starting export... Please wait.", "status", "archive-message-area");
       google.script.run
         .withSuccessHandler(url => {
           showLoader(false, 'archive-loader');
-          setUserMessage("Export successful! Opening sheet...", "success", "archive-message-area");
+          setUserMessage("Export started! The sheet will be populated in the background. You can open it now.", "success", "archive-message-area");
           window.open(url, '_blank');
         })
         .withFailureHandler(err => {
           showLoader(false, 'archive-loader');
           setUserMessage(err.message, "error", "archive-message-area");
         })
-        .exportArchiveToSheet();
+        .startArchiveExport();
     }
 
     function showLoader(show, id = 'loader') { document.getElementById(id).style.display = show ? 'inline-block' : 'none'; }
