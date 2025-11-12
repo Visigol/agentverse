@@ -4622,13 +4622,45 @@ function continueArchiveExport() {
     Logger.log(`Processing complete. Found: ${dataByType['Main Task'].rows.length} Main Tasks, ${dataByType['Escalation'].rows.length} Escalations, ${dataByType['Pausing'].rows.length} Pauses, ${dataByType['Cooperation'].rows.length} Cooperations.`);
 
 
-    // Write to sheets in batches
+    // --- NEW: Create all sheets upfront ---
+    Logger.log("Creating all destination sheets upfront...");
+    Object.keys(dataByType).forEach(type => {
+        const sheetName = type === 'Main Task' ? 'Main Tasks' : `${type} Logs`;
+        // Only create a sheet if there is data for it, to avoid empty sheets.
+        if (dataByType[type].rows.length > 0) {
+            newSpreadsheet.insertSheet(sheetName);
+            Logger.log(`Created sheet: ${sheetName}`);
+        }
+    });
+
+    // Delete the default 'Sheet1' after creating the new ones.
+    const defaultSheet = newSpreadsheet.getSheetByName('Sheet1');
+    if (defaultSheet) {
+        newSpreadsheet.deleteSheet(defaultSheet);
+    }
+    Logger.log("Finished creating sheets. Flushing changes.");
+    SpreadsheetApp.flush(); // Ensure all sheet creation is committed before proceeding.
+
+
+    // Write to the pre-created sheets in batches
     Object.keys(dataByType).forEach(type => {
       const job = dataByType[type];
+      // If there are no rows for this type, skip it entirely.
+      if (job.rows.length === 0) {
+          Logger.log(`--- Skipping export for '${type}' (no data) ---`);
+          return; // 'continue' in a forEach loop
+      }
+
       const sheetName = type === 'Main Task' ? 'Main Tasks' : `${type} Logs`;
       Logger.log(`--- Starting export for: ${sheetName} ---`);
 
-      const sheet = newSpreadsheet.insertSheet(sheetName);
+      // Retrieve the sheet that was already created.
+      const sheet = newSpreadsheet.getSheetByName(sheetName);
+      if (!sheet) {
+          Logger.log(`ERROR: Could not find pre-created sheet named "${sheetName}". Skipping.`);
+          return; // 'continue'
+      }
+
       sheet.getRange(1, 1, 1, job.headers.length).setValues([job.headers]).setFontWeight('bold');
       sheet.setFrozenRows(1);
 
@@ -4646,6 +4678,7 @@ function continueArchiveExport() {
           });
       });
 
+      // This part remains the same - writing in batches
       if (rowsToWrite.length > 0) {
         Logger.log(`Writing ${rowsToWrite.length} rows to '${sheetName}' in batches of ${BATCH_SIZE}...`);
         for (let i = 0; i < rowsToWrite.length; i += BATCH_SIZE) {
@@ -4658,7 +4691,7 @@ function continueArchiveExport() {
         Logger.log(`No rows to write for '${sheetName}'.`);
       }
 
-      // Final formatting pass
+      // Final formatting pass (already optimized)
       Logger.log(`Applying column formatting for '${sheetName}'...`);
       if (sheet.getLastRow() > 1) {
         job.headers.forEach((header, i) => {
@@ -4668,14 +4701,10 @@ function continueArchiveExport() {
             sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("[h]:mm:ss.SSS");
           }
         });
-        // Auto-resizing all columns at once is much faster than one-by-one in a loop.
         sheet.autoResizeColumns(1, job.headers.length);
       }
        Logger.log(`--- Finished export for: ${sheetName} ---`);
     });
-
-    const defaultSheet = newSpreadsheet.getSheetByName('Sheet1');
-    if (defaultSheet) newSpreadsheet.deleteSheet(defaultSheet);
 
     Logger.log("--- Background archive export has completed successfully. ---");
 
