@@ -61,7 +61,7 @@ const CONFIG = {
     }
     // --- ADDITIONS END ---
   },
-   DRIVE_FOLDER_ID: '1WXiYBNDjxw7DK5L-K2jIW6nOTpnIFfq'
+   DRIVE_FOLDER_ID: '1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ'
 };
 
 // IMPORTANT: Manually update this version number in the script before deploying a new version.
@@ -4246,27 +4246,6 @@ function getTop5Agents() {
   return leaderboardData.slice(0, 5);
 }
 
-/**
- * Parses a date string from the CSV, assuming it's in UTC, and returns a valid Date object.
- * @param {string} dateString The date string from the CSV (e.g., "2023-10-26 10:00:00").
- * @returns {Date|string} A Date object or the original string if parsing fails.
- */
-function parseCsvDateAsUtc_(dateString) {
-  if (!dateString || typeof dateString !== 'string' || dateString.trim() === '') {
-    return dateString;
-  }
-  // Check if the string already contains timezone information by looking for Z, +, or a hyphen in the timezone offset part
-  if (dateString.includes('Z') || /([+-])\d{2}:\d{2}$/.test(dateString)) {
-      const date = new Date(dateString);
-      return isNaN(date.getTime()) ? dateString : date;
-  }
-  // Replace the first space with 'T' and append 'Z' to treat as UTC
-  const isoString = dateString.trim().replace(' ', 'T') + 'Z';
-  const date = new Date(isoString);
-
-  return isNaN(date.getTime()) ? dateString : date;
-}
-
 function isDateTimeField_(fieldName) {
     const lower = fieldName.toLowerCase();
     return (lower.includes('date') || lower.includes('time')) && !isDurationField_(fieldName);
@@ -4432,34 +4411,152 @@ function getArchivedCases(options = {}) {
   }
 }
 
+function exportArchiveToSheet() {
+    const FILE_NAME = 'HistoricalProductionReport.csv';
+    try {
+        const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+        const files = folder.getFilesByName(FILE_NAME);
+        if (!files.hasNext()) {
+            throw new Error(`File "${FILE_NAME}" not found in the specified Google Drive folder.`);
+        }
+        const file = files.next();
+        const csvContent = file.getBlob().getDataAsString();
+        const allRows = Utilities.parseCsv(csvContent);
+
+        if (allRows.length < 2) {
+            throw new Error("CSV file is empty or contains only a header.");
+        }
+
+        const originalHeaders = allRows.shift();
+        const recordTypeIndex = originalHeaders.indexOf('record_type');
+        if (recordTypeIndex === -1) {
+            throw new Error("'record_type' column not found in CSV.");
+        }
+
+        const mainTaskHeaders = ["Created By", "Useremail", "Main Task ID", "Country", "Menu Request Sent Date", "Language", "Case Title", "Category", "Account Name", "Status", "Provider Id", "City", "Menu Instructions", "Onboarding", "Menu Comment", "Menu link", "Dish Photos Link", "Photo Coverage", "Main Task Start Date/Time", "Main Task End Date/Time", "Escalated Start Time", "Escalated End Time", "Task Tat", "Escalated Comment", "Task Paused", "Pause Time", "Pause End Time", "TAT Adherance", "SalesforceUpdated", "Salesforce Updated time", "Ready for QA", "Date stamp", "Task Type", "Rework Count", "No of Main dishes(Excluding Extras, drinks, sides, etc)", "Total No of dishes", "Total No of categories", "Total no of options", "Total no of tags", "Total no of timetables.", "No of Valid Photos for Main dishes (Excluding Extras, drinks, sides, etc.)", "Comments", "Event Summary", "Stored Escalation Duration", "Stored Pause Duration", "Stored Agent Handling Time", "Retailer Provider Type", "Airtable Link", "Description Coverage", "Visual and Descriptive Elements", "Claim Flag", "SLA Missed Reason", "SLA Missed Comment", "Linking Snapshot URL"];
+        const escalationLogHeaders = ["Log ID", "Related Case ID", "Escalation Start Time", "Escalation End Time"];
+        const pausingLogHeaders = ["ID", "Related Case ID", "Pause Start Time", "Pause End Time"];
+        const cooperationLogHeaders = ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"];
+
+        const headerMapping = {
+            'Escalation Logs': { 'Log ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Escalation Start Time': 'Escalated Start Time', 'Escalation End Time': 'Escalated End Time' },
+            'Pausing Logs': { 'ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Pause Start Time': 'Pause Time', 'Pause End Time': 'Pause End Time' },
+            'Cooperation Logs': { 'Log ID': 'Log ID', 'User Email': 'Useremail', 'Related Case ID': 'Main Task ID', 'Start Time': 'Main task Start Date/Time', 'End Time': 'Main Task End Date/Time', 'Cooperation Notes': 'Cooperation Notes' }
+        };
+
+        const dataByType = {
+            'Main Task': { headers: mainTaskHeaders, rows: [] },
+            'Escalation': { headers: escalationLogHeaders, rows: [] },
+            'Pausing': { headers: pausingLogHeaders, rows: [] },
+            'Cooperation': { headers: cooperationLogHeaders, rows: [] }
+        };
+
+        allRows.forEach(row => {
+            const type = row[recordTypeIndex];
+            if (dataByType[type]) {
+                const record = {};
+                originalHeaders.forEach((header, i) => { record[header] = row[i]; });
+                dataByType[type].rows.push(record);
+            }
+        });
+
+        const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
+
+        const createSheet = (name, headerOrder, dataRows) => {
+            if (dataRows.length > 0) {
+                const sheet = spreadsheet.insertSheet(name);
+                const mapping = headerMapping[name];
+
+                const outputRows = dataRows.map(row => {
+                    return headerOrder.map(destHeader => {
+                        let sourceHeader = destHeader;
+                        if (name !== 'Main Tasks' && mapping && mapping[destHeader]) {
+                            sourceHeader = mapping[destHeader];
+                        }
+                        let value = row[sourceHeader] || "";
+
+                        if (typeof value === 'string' && value.trim() === '') return "";
+
+                        if (isDateTimeField_(destHeader)) {
+                            try {
+                                const date = new Date(value);
+                                return isNaN(date.getTime()) ? value : date;
+                            } catch (e) {
+                                return value;
+                            }
+                        } else if (isDurationField_(destHeader)) {
+                            const num = parseFloat(value);
+                            return isNaN(num) ? 0 : num;
+                        }
+                        return value;
+                    });
+                });
+
+                const outputData = [headerOrder, ...outputRows];
+                if (outputData.length > 1) { // Ensure there is data to write
+                    const dataRange = sheet.getRange(1, 1, outputData.length, headerOrder.length);
+                    dataRange.setValues(outputData);
+
+                    headerOrder.forEach((header, i) => {
+                        const colIndex = i + 1;
+                        if (sheet.getLastRow() > 1) { // Don't format an empty sheet
+                            if (isDateTimeField_(header)) {
+                                sheet.getRange(2, colIndex, sheet.getLastRow() - 1, 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
+                            } else if (isDurationField_(header)) {
+                                sheet.getRange(2, colIndex, sheet.getLastRow() - 1, 1).setNumberFormat("[h]:mm:ss.SSS");
+                            }
+                        }
+                    });
+                } else {
+                     sheet.getRange(1, 1, 1, headerOrder.length).setValues([headerOrder]);
+                }
+                 sheet.setFrozenRows(1);
+                 headerOrder.forEach((_, i) => sheet.autoResizeColumn(i + 1));
+            }
+        };
+
+        createSheet('Main Tasks', dataByType['Main Task'].headers, dataByType['Main Task'].rows);
+        createSheet('Escalation Logs', dataByType['Escalation'].headers, dataByType['Escalation'].rows);
+        createSheet('Pausing Logs', dataByType['Pausing'].headers, dataByType['Pausing'].rows);
+        createSheet('Cooperation Logs', dataByType['Cooperation'].headers, dataByType['Cooperation'].rows);
+
+        const defaultSheet = spreadsheet.getSheetByName('Sheet1');
+        if (defaultSheet) {
+            spreadsheet.deleteSheet(defaultSheet);
+        }
+
+        SpreadsheetApp.flush();
+        return spreadsheet.getUrl();
+
+    } catch (e) {
+        Logger.log(`Error in exportArchiveToSheet: ${e.toString()}`);
+        throw new Error(`Failed to export archive to Google Sheet. ${e.message}`);
+    }
+}
 
 function startArchiveExport() {
   try {
-    deleteAllTriggersByName_('processExportBatch'); // Clean up any orphaned triggers first
     const userEmail = Session.getActiveUser().getEmail();
 
+    // 1. Create the destination spreadsheet immediately
     const spreadsheet = SpreadsheetApp.create(`Archive Export - ${new Date().toLocaleString()}`);
-    spreadsheet.addEditor(userEmail);
+    spreadsheet.addEditor(userEmail); // Add user as editor
     const spreadsheetId = spreadsheet.getId();
     const url = spreadsheet.getUrl();
 
-    const recordTypesToProcess = ['Main Task', 'Escalation', 'Pausing', 'Cooperation'];
+    // 2. Store the ID for the background worker
+    PropertiesService.getScriptProperties().setProperty('tempExportSheetId', spreadsheetId);
 
-    const trigger = ScriptApp.newTrigger('processExportBatch')
+
+    // 3. Create a one-time trigger to start the background process
+    ScriptApp.newTrigger('continueArchiveExport')
       .timeBased()
-      .after(5 * 1000) // 5 seconds
+      .after(5 * 1000) // 5 seconds from now
       .create();
 
-    const triggerId = trigger.getUniqueId();
+    Logger.log(`Started archive export for ${userEmail}. Sheet ID: ${spreadsheetId}`);
 
-    const properties = {
-      spreadsheetId: spreadsheetId,
-      recordTypes: recordTypesToProcess
-    };
-    PropertiesService.getScriptProperties().setProperty(triggerId, JSON.stringify(properties));
-
-    Logger.log(`Started multi-stage archive export for ${userEmail}. Sheet ID: ${spreadsheetId}. Initial Trigger ID: ${triggerId}`);
-
+    // 4. Return the URL to the user immediately
     return url;
 
   } catch (e) {
@@ -4468,152 +4565,123 @@ function startArchiveExport() {
   }
 }
 
+function continueArchiveExport() {
+  deleteAllTriggersByName_('continueArchiveExport');
+  const sheetId = PropertiesService.getScriptProperties().getProperty('tempExportSheetId');
+  if (!sheetId) {
+    Logger.log("Could not find 'tempExportSheetId' property. Aborting export.");
+    return;
+  }
 
-function processExportBatch(e) {
-  const triggerId = e.triggerUid;
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000);
-
-  let properties;
-  const scriptProperties = PropertiesService.getScriptProperties();
+  const FILE_NAME = 'HistoricalProductionReport.csv';
+  const BATCH_SIZE = 500;
 
   try {
-    const propertiesString = scriptProperties.getProperty(triggerId);
-    if (!propertiesString) {
-      Logger.log(`No properties found for trigger ID ${triggerId}. Aborting.`);
-      deleteAllTriggersById_(triggerId);
-      return;
-    }
-    properties = JSON.parse(propertiesString);
-    const { spreadsheetId, recordTypes, originalHeaders } = properties;
+    Logger.log(`Starting background export for Sheet ID: ${sheetId}`);
+    const newSpreadsheet = SpreadsheetApp.openById(sheetId);
 
-    if (!recordTypes || recordTypes.length === 0) {
-      Logger.log("All record types processed. Finalizing export.");
-      const finalSpreadsheet = SpreadsheetApp.openById(spreadsheetId);
-      const defaultSheet = finalSpreadsheet.getSheetByName('Sheet1');
-      if (defaultSheet) {
-          finalSpreadsheet.deleteSheet(defaultSheet);
+    // Read the entire CSV once
+    Logger.log(`Reading CSV file: ${FILE_NAME}`);
+    const folder = DriveApp.getFolderById(CONFIG.DRIVE_FOLDER_ID);
+    const files = folder.getFilesByName(FILE_NAME);
+    if (!files.hasNext()) throw new Error(`File "${FILE_NAME}" not found.`);
+    const file = files.next();
+    const csvContent = file.getBlob().getDataAsString();
+    const allRows = Utilities.parseCsv(csvContent);
+    Logger.log(`Found ${allRows.length -1} data rows in CSV.`);
+    const originalHeaders = allRows.shift();
+    const recordTypeIndex = originalHeaders.indexOf('record_type');
+
+    // Define structure
+    const mainTaskHeaders = ["Created By", "Useremail", "Main Task ID", "Country", "Menu Request Sent Date", "Language", "Case Title", "Category", "Account Name", "Status", "Provider Id", "City", "Menu Instructions", "Onboarding", "Menu Comment", "Menu link", "Dish Photos Link", "Photo Coverage", "Main Task Start Date/Time", "Main Task End Date/Time", "Escalated Start Time", "Escalated End Time", "Task Tat", "Escalated Comment", "Task Paused", "Pause Time", "Pause End Time", "TAT Adherance", "SalesforceUpdated", "Salesforce Updated time", "Ready for QA", "Date stamp", "Task Type", "Rework Count", "No of Main dishes(Excluding Extras, drinks, sides, etc)", "Total No of dishes", "Total No of categories", "Total no of options", "Total no of tags", "Total no of timetables.", "No of Valid Photos for Main dishes (Excluding Extras, drinks, sides, etc.)", "Comments", "Event Summary", "Stored Escalation Duration", "Stored Pause Duration", "Stored Agent Handling Time", "Retailer Provider Type", "Airtable Link", "Description Coverage", "Visual and Descriptive Elements", "Claim Flag", "SLA Missed Reason", "SLA Missed Comment", "Linking Snapshot URL"];
+    const escalationLogHeaders = ["Log ID", "Related Case ID", "Escalation Start Time", "Escalation End Time"];
+    const pausingLogHeaders = ["ID", "Related Case ID", "Pause Start Time", "Pause End Time"];
+    const cooperationLogHeaders = ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"];
+    const headerMapping = {
+        'Escalation Logs': { 'Log ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Escalation Start Time': 'Escalated Start Time', 'Escalation End Time': 'Escalated End Time' },
+        'Pausing Logs': { 'ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Pause Start Time': 'Pause Time', 'Pause End Time': 'Pause End Time' },
+        'Cooperation Logs': { 'Log ID': 'Log ID', 'User Email': 'Useremail', 'Related Case ID': 'Main Task ID', 'Start Time': 'Main task Start Date/Time', 'End Time': 'Main Task End Date/Time', 'Cooperation Notes': 'Cooperation Notes' }
+    };
+    const dataByType = {
+        'Main Task': { headers: mainTaskHeaders, rows: [] },
+        'Escalation': { headers: escalationLogHeaders, rows: [] },
+        'Pausing': { headers: pausingLogHeaders, rows: [] },
+        'Cooperation': { headers: cooperationLogHeaders, rows: [] }
+    };
+
+    // Process all rows in memory first
+    Logger.log("Processing and separating rows by record_type in memory...");
+    allRows.forEach(row => {
+      const type = row[recordTypeIndex];
+      if (dataByType[type]) {
+        const record = {};
+        originalHeaders.forEach((header, i) => { record[header] = row[i]; });
+        dataByType[type].rows.push(record);
       }
-      Logger.log("--- Multi-stage archive export has completed successfully. ---");
-      return;
-    }
+    });
+    Logger.log(`Processing complete. Found: ${dataByType['Main Task'].rows.length} Main Tasks, ${dataByType['Escalation'].rows.length} Escalations, ${dataByType['Pausing'].rows.length} Pauses, ${dataByType['Cooperation'].rows.length} Cooperations.`);
 
-    const currentRecordType = recordTypes.shift();
-    Logger.log(`Starting batch processing for: ${currentRecordType}. Remaining: [${recordTypes.join(', ')}]`);
 
-    // --- New: Reassemble data from chunks ---
-    let reassembledJSON = "";
-    const numChunks = properties[`${currentRecordType}_chunks`] || 0;
-    for(let i=0; i<numChunks; i++){
-      const chunkKey = `${triggerId}_${currentRecordType}_${i}`;
-      reassembledJSON += scriptProperties.getProperty(chunkKey);
-    }
-    const filteredRows = JSON.parse(reassembledJSON || "[]");
-    Logger.log(`Reassembled ${filteredRows.length} rows for type: ${currentRecordType}`);
+    // Write to sheets in batches
+    Object.keys(dataByType).forEach(type => {
+      const job = dataByType[type];
+      const sheetName = type === 'Main Task' ? 'Main Tasks' : `${type} Logs`;
+      Logger.log(`--- Starting export for: ${sheetName} ---`);
 
-    if (filteredRows.length > 0) {
-        const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+      const sheet = newSpreadsheet.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, job.headers.length).setValues([job.headers]).setFontWeight('bold');
+      sheet.setFrozenRows(1);
 
-        const structure = {
-            'Main Task': { name: 'Main Tasks', headers: ["Created By", "Useremail", "Main Task ID", "Country", "Menu Request Sent Date", "Language", "Case Title", "Category", "Account Name", "Status", "Provider Id", "City", "Menu Instructions", "Onboarding", "Menu Comment", "Menu link", "Dish Photos Link", "Photo Coverage", "Main Task Start Date/Time", "Main Task End Date/Time", "Escalated Start Time", "Escalated End Time", "Task Tat", "Escalated Comment", "Task Paused", "Pause Time", "Pause End Time", "TAT Adherance", "SalesforceUpdated", "Salesforce Updated time", "Ready for QA", "Date stamp", "Task Type", "Rework Count", "No of Main dishes(Excluding Extras, drinks, sides, etc)", "Total No of dishes", "Total No of categories", "Total no of options", "Total no of tags", "Total no of timetables.", "No of Valid Photos for Main dishes (Excluding Extras, drinks, sides, etc.)", "Comments", "Event Summary", "Stored Escalation Duration", "Stored Pause Duration", "Stored Agent Handling Time", "Retailer Provider Type", "Airtable Link", "Description Coverage", "Visual and Descriptive Elements", "Claim Flag", "SLA Missed Reason", "SLA Missed Comment", "Linking Snapshot URL"]},
-            'Escalation': { name: 'Escalation Logs', headers: ["Log ID", "Related Case ID", "Escalation Start Time", "Escalation End Time"] },
-            'Pausing': { name: 'Pausing Logs', headers: ["ID", "Related Case ID", "Pause Start Time", "Pause End Time"] },
-            'Cooperation': { name: 'Cooperation Logs', headers: ["Log ID", "User Email", "Related Case ID", "Start Time", "End Time", "Cooperation Notes"] }
-        };
-        const headerMapping = {
-            'Escalation Logs': { 'Log ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Escalation Start Time': 'Escalated Start Time', 'Escalation End Time': 'Escalated End Time' },
-            'Pausing Logs': { 'ID': 'Log ID', 'Related Case ID': 'Main Task ID', 'Pause Start Time': 'Pause Time', 'Pause End Time': 'Pause End Time' },
-            'Cooperation Logs': { 'Log ID': 'Log ID', 'User Email': 'Useremail', 'Related Case ID': 'Main Task ID', 'Start Time': 'Main task Start Date/Time', 'End Time': 'Main Task End Date/Time', 'Cooperation Notes': 'Cooperation Notes' }
-        };
+      const mapping = headerMapping[sheetName];
+      const rowsToWrite = job.rows.map(row => {
+          return job.headers.map(destHeader => {
+              const sourceHeader = (type !== 'Main Task' && mapping) ? mapping[destHeader] : destHeader;
+              let value = row[sourceHeader] || "";
+              if (typeof value === 'string' && value.trim() === '') return "";
+              if (isDateTimeField_(destHeader) && value) {
+                  try { return new Date(value); } catch(e) { return value; /* Return original string if date is invalid */ }
+              }
+              if (isDurationField_(destHeader) && value) return parseFloat(value) || 0;
+              return value;
+          });
+      });
 
-        const job = structure[currentRecordType];
-        const sheet = spreadsheet.insertSheet(job.name);
-        sheet.getRange(1, 1, 1, job.headers.length).setValues([job.headers]).setFontWeight('bold');
-        sheet.setFrozenRows(1);
-
-        const records = filteredRows.map(row => {
-            const record = {};
-            originalHeaders.forEach((header, i) => { record[header] = row[i]; });
-            return record;
-        });
-
-        const mapping = headerMapping[job.name];
-        const rowsToWrite = records.map(row => {
-            return job.headers.map(destHeader => {
-                const sourceHeader = (currentRecordType !== 'Main Task' && mapping && mapping[destHeader]) ? mapping[destHeader] : destHeader;
-                let value = row[sourceHeader] || "";
-                if (typeof value === 'string' && value.trim() === '') return "";
-                if (isDateTimeField_(destHeader) && value) {
-                  // Use the new UTC-aware parsing function
-                  return parseCsvDateAsUtc_(value);
-                }
-                if (isDurationField_(destHeader) && value) return parseFloat(value) || 0;
-                return value;
-            });
-        });
-
-        const BATCH_SIZE = 500;
+      if (rowsToWrite.length > 0) {
+        Logger.log(`Writing ${rowsToWrite.length} rows to '${sheetName}' in batches of ${BATCH_SIZE}...`);
         for (let i = 0; i < rowsToWrite.length; i += BATCH_SIZE) {
-            const batch = rowsToWrite.slice(i, i + BATCH_SIZE);
-            sheet.getRange(i + 2, 1, batch.length, job.headers.length).setValues(batch);
-            if(i + BATCH_SIZE < rowsToWrite.length) SpreadsheetApp.flush();
+          const batch = rowsToWrite.slice(i, i + BATCH_SIZE);
+          Logger.log(`Writing batch ${i / BATCH_SIZE + 1} to '${sheetName}' (${batch.length} rows).`);
+          sheet.getRange(i + 2, 1, batch.length, job.headers.length).setValues(batch);
+          SpreadsheetApp.flush(); // Crucial for preventing timeouts
         }
+      } else {
+        Logger.log(`No rows to write for '${sheetName}'.`);
+      }
 
-        Logger.log(`Applying column formatting for '${job.name}'...`);
-        job.headers.forEach((header, i) => {
-            if (sheet.getLastRow() > 1) {
-                if (isDateTimeField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
-                if (isDurationField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("[h]:mm:ss.SSS");
-            }
-        });
-        Logger.log(`Finished writing and formatting for ${currentRecordType}.`);
-    }
+      // Final formatting pass
+      Logger.log(`Applying column formatting for '${sheetName}'...`);
+      job.headers.forEach((header, i) => {
+        if(sheet.getLastRow() > 1){
+           if (isDateTimeField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
+           if (isDurationField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("[h]:mm:ss.SSS");
+        }
+        sheet.autoResizeColumn(i + 1);
+      });
+       Logger.log(`--- Finished export for: ${sheetName} ---`);
+    });
 
-    const nextTrigger = ScriptApp.newTrigger('processExportBatch')
-      .timeBased()
-      .after(5 * 1000)
-      .create();
-    const nextTriggerId = nextTrigger.getUniqueId();
+    const defaultSheet = newSpreadsheet.getSheetByName('Sheet1');
+    if (defaultSheet) newSpreadsheet.deleteSheet(defaultSheet);
 
-    const nextProperties = { ...properties, recordTypes: recordTypes }; // Pass on the remaining work
-
-    // Re-store the data chunks for the next trigger
-    const allRecordTypes = ['Main Task', 'Escalation', 'Pausing', 'Cooperation'];
-    for(const type of allRecordTypes){
-       const numChunks = properties[`${type}_chunks`] || 0;
-       for(let i=0; i<numChunks; i++){
-         const key = `${triggerId}_${type}_${i}`;
-         const nextKey = `${nextTriggerId}_${type}_${i}`;
-         const value = scriptProperties.getProperty(key);
-         if(value) scriptProperties.setProperty(nextKey, value);
-       }
-    }
-
-    scriptProperties.setProperty(nextTriggerId, JSON.stringify(nextProperties));
-    Logger.log(`Scheduled next batch. Remaining: [${recordTypes.join(', ')}]. Trigger ID: ${nextTriggerId}`);
+    Logger.log("--- Background archive export has completed successfully. ---");
 
   } catch (e) {
-    Logger.log(`A critical error occurred during batch export for trigger ${triggerId}: ${e.message} \nStack: ${e.stack}`);
-    if(properties && properties.spreadsheetId){
-       const sheet = SpreadsheetApp.openById(properties.spreadsheetId).getSheets()[0];
-       sheet.setName("Error");
-       sheet.getRange("A1").setValue(`An error occurred during ${properties.recordTypes[0] || 'unknown'} export: ${e.message}`);
-    }
+    Logger.log(`A critical error occurred during the archive fill operation: ${e.message} \nStack: ${e.stack}`);
+    const sheet = SpreadsheetApp.openById(sheetId).getSheets()[0];
+    sheet.setName("Error");
+    sheet.getRange("A1").setValue(`An error occurred: ${e.message}`);
   } finally {
-    deleteAllTriggersById_(triggerId);
-
-    if (properties) {
-        const allRecordTypes = ['Main Task', 'Escalation', 'Pausing', 'Cooperation'];
-        for(const type of allRecordTypes){
-           const numChunks = properties[`${type}_chunks`] || 0;
-           for(let i=0; i<numChunks; i++){
-               scriptProperties.deleteProperty(`${triggerId}_${type}_${i}`);
-           }
-        }
-    }
-    scriptProperties.deleteProperty(triggerId);
-
-    lock.releaseLock();
+    PropertiesService.getScriptProperties().deleteProperty('tempExportSheetId');
   }
 }
 
@@ -4621,15 +4689,6 @@ function deleteAllTriggersByName_(functionName) {
     const allTriggers = ScriptApp.getProjectTriggers();
     allTriggers.forEach(trigger => {
         if (trigger.getHandlerFunction() === functionName) {
-            ScriptApp.deleteTrigger(trigger);
-        }
-    });
-}
-
-function deleteAllTriggersById_(triggerId) {
-    const allTriggers = ScriptApp.getProjectTriggers();
-    allTriggers.forEach(trigger => {
-        if (trigger.getUniqueId() === triggerId) {
             ScriptApp.deleteTrigger(trigger);
         }
     });
