@@ -1364,7 +1364,8 @@ function getLeaderboardData(startDateStr, endDateStr) {
         START_TIME: "main task start date/time",
         END_TIME: "main task end date/time",
         PAUSE: "stored pause duration",
-        ESCALATION: "stored escalation duration"
+        ESCALATION: "stored escalation duration",
+        STORED_AHT: "stored agent handling time"
     };
 
     // Map header names to their column index
@@ -1387,15 +1388,25 @@ function getLeaderboardData(startDateStr, endDateStr) {
           agentData[agentEmail] = { name: agentEmail, totalCases: 0, totalHandlingTime: 0 };
         }
 
-        const startTime = new Date(row[headerMap.START_TIME]);
-        // Note: Durations in Sheets are fractions of a day. Convert to seconds.
-        const pauseDuration = (parseFloat(row[headerMap.PAUSE]) || 0) * 86400;
-        const escalationDuration = (parseFloat(row[headerMap.ESCALATION]) || 0) * 86400;
-        const grossDuration = (endTime - startTime) / 1000; // in seconds
+        let handlingTimeSeconds = 0;
+        const storedAhtValue = headerMap.STORED_AHT > -1 ? row[headerMap.STORED_AHT] : null;
 
-        const netHandlingTime = grossDuration - pauseDuration - escalationDuration;
+        if (storedAhtValue) {
+            if (storedAhtValue instanceof Date) {
+                handlingTimeSeconds = (storedAhtValue.getTime() - SPREADSHEET_EPOCH_OFFSET_MS) / 1000;
+            } else if (!isNaN(parseFloat(storedAhtValue))) {
+                handlingTimeSeconds = parseFloat(storedAhtValue) * 86400;
+            }
+        } else {
+            const startTime = new Date(row[headerMap.START_TIME]);
+            const pauseDuration = (parseFloat(row[headerMap.PAUSE]) || 0) * 86400;
+            const escalationDuration = (parseFloat(row[headerMap.ESCALATION]) || 0) * 86400;
+            const grossDuration = (endTime - startTime) / 1000;
+            handlingTimeSeconds = grossDuration - pauseDuration - escalationDuration;
+        }
+
         agentData[agentEmail].totalCases++;
-        agentData[agentEmail].totalHandlingTime += netHandlingTime > 0 ? netHandlingTime : 0;
+        agentData[agentEmail].totalHandlingTime += handlingTimeSeconds > 0 ? handlingTimeSeconds : 0;
       }
     });
 
