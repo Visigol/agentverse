@@ -4701,12 +4701,31 @@ function processArchiveExportStep() {
     const typeToProcess = jobQueue.shift(); // Get the first job
 
     const cache = CacheService.getScriptCache();
-    const cacheKey = `archive_data_${triggerUid}_${typeToProcess}`;
-    const jobJSON = cache.get(cacheKey);
-    if (!jobJSON) {
-      throw new Error(`Could not retrieve cached data for job type "${typeToProcess}". The data may have expired.`);
+    // 1. Read the manifest to find out how many chunks there are.
+    const manifestKey = `archive_manifest_${triggerUid}_${typeToProcess}`;
+    const manifestJSON = cache.get(manifestKey);
+    if (!manifestJSON) {
+        throw new Error(`Could not retrieve the manifest for job type "${typeToProcess}". The data may have expired.`);
     }
-    const job = JSON.parse(jobJSON);
+    const manifest = JSON.parse(manifestJSON);
+    const numChunks = manifest.numChunks;
+
+    // 2. Retrieve all chunks from the cache.
+    let reassembledJSON = "";
+    for (let i = 0; i < numChunks; i++) {
+        const chunkKey = `archive_data_${triggerUid}_${typeToProcess}_${i}`;
+        const chunk = cache.get(chunkKey);
+        if (!chunk) {
+            throw new Error(`Cache MISS for chunk ${i} of job type "${typeToProcess}". The data may have expired.`);
+        }
+        reassembledJSON += chunk;
+    }
+
+    // 3. Parse the reassembled data.
+    if (!reassembledJSON) {
+        throw new Error(`Could not retrieve cached data for job type "${typeToProcess}". The data may have expired.`);
+    }
+    const job = JSON.parse(reassembledJSON);
     const sheetName = typeToProcess === 'Main Task' ? 'Main Tasks' : `${typeToProcess} Logs`;
     Logger.log(`--- Worker processing: ${sheetName} ---`);
 
