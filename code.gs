@@ -4660,13 +4660,17 @@ function continueArchiveExport() {
 
       // Final formatting pass
       Logger.log(`Applying column formatting for '${sheetName}'...`);
-      job.headers.forEach((header, i) => {
-        if(sheet.getLastRow() > 1){
-           if (isDateTimeField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
-           if (isDurationField_(header)) sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("[h]:mm:ss.SSS");
-        }
-        sheet.autoResizeColumn(i + 1);
-      });
+      if (sheet.getLastRow() > 1) {
+        job.headers.forEach((header, i) => {
+          if (isDateTimeField_(header)) {
+            sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("mm-dd-yyyy hh:mm:ss");
+          } else if (isDurationField_(header)) {
+            sheet.getRange(2, i + 1, sheet.getLastRow() - 1).setNumberFormat("[h]:mm:ss.SSS");
+          }
+        });
+        // Auto-resizing all columns at once is much faster than one-by-one in a loop.
+        sheet.autoResizeColumns(1, job.headers.length);
+      }
        Logger.log(`--- Finished export for: ${sheetName} ---`);
     });
 
