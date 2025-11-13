@@ -253,6 +253,7 @@ function generateAgentPerformanceHtml(agentEmail, startDate, endDate) {
         <li>Avg. Options/Case: <strong>${kpis.avgOptions}</strong></li>
         <li>Avg. Tags/Case: <strong>${kpis.avgTags}</strong></li>
         <li>Avg. Categories/Case: <strong>${kpis.avgCategories}</strong></li>
+        <li>Avg. Photos/Case: <strong>${kpis.avgPhotos}</strong></li>
       </ul>
     </div>`;
 }
@@ -418,13 +419,13 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
     const emailCol = headers.indexOf('useremail');
     const endDateCol = headers.indexOf('main task end date/time');
     const statusCol = headers.indexOf('status');
-    const dishesCol = headers.indexOf('total no of dishes');
-    const optionGroupsCol = headers.indexOf('total no of option groups');
-    const optionsCol = headers.indexOf('total no of options');
-    const tagsCol = headers.indexOf('total no of tags');
-    const categoriesCol = headers.indexOf('total no of categories');
+    const dishesCol = headers.indexOf('total no. of dishes');
+    const optionGroupsCol = headers.indexOf('total no. of option groups');
+    const optionsCol = headers.indexOf('total no. of options');
+    const tagsCol = headers.indexOf('total no. of tags');
+    const categoriesCol = headers.indexOf('total no. of categories');
     const photosCol = headers.indexOf('no of valid photos for main dishes (exlcuding extras, drinks, sides etc.)');
-    const timetablesCol = headers.indexOf('total no of timetables.');
+    const timetablesCol = headers.indexOf('total no. of timetables.');
 
     let totalCases = 0;
     let totalDishes = 0;
