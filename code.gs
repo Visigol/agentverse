@@ -1,7 +1,7 @@
 /**
  * @fileoverview Main server-side script for the BoltVerse Attendance & Production App.
  * Refactored for a standalone web app architecture to read from multiple spreadsheets.
- * @version 8.1 (Consolidated Config - Complete)
+ * @version 8.2 (Force Re-Auth)
  */
 
 // =================================================================================
