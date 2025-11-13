@@ -80,7 +80,7 @@ function getEmailTextTemplates() {
       id: row[0],
       subject: row[1],
       body: row[2],
-      isCustom: row[3]
+      isCustom: String(row[3]).toUpperCase() // Ensure this is always a string 'TRUE' or 'FALSE'
     })).filter(t => t.id && t.subject);
   } catch (e) {
     Logger.log('Error in getEmailTextTemplates: ' + e.toString());

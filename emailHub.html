@@ -151,14 +151,19 @@
 
       function handleTemplateChange() {
         const selectedId = templateSelect.value;
-        const selectedTemplate = emailTemplates.find(t => t.id === selectedId);
 
-        if (!selectedTemplate) return;
-
-        if (selectedTemplate.isCustom === 'TRUE' || selectedTemplate.id === 'custom-new') {
-          setupCustomEmail(selectedTemplate);
+        if (selectedId === 'custom-new') {
+          // Special case for creating a new custom email
+          setupCustomEmail({ id: 'custom-new', subject: 'New Custom Email', body: '', isCustom: 'TRUE' });
         } else {
-          setupMonthlyPerformance();
+          const selectedTemplate = emailTemplates.find(t => t.id === selectedId);
+          if (!selectedTemplate) return;
+
+          if (selectedTemplate.isCustom === 'TRUE') {
+            setupCustomEmail(selectedTemplate);
+          } else {
+            setupMonthlyPerformance();
+          }
         }
       }
 
