@@ -96,12 +96,8 @@
     <div class="card">
       <h2>Template Selector</h2>
       <div class="form-group">
-        <input type="radio" id="monthly-performance" name="template" value="monthly" checked>
-        <label for="monthly-performance" style="display: inline-block;">Monthly Performance Template</label>
-      </div>
-      <div class="form-group">
-        <input type="radio" id="custom-email" name="template" value="custom">
-        <label for="custom-email" style="display: inline-block;">Custom Email Builder</label>
+        <label for="template-select">Choose a Template</label>
+        <select id="template-select"></select>
       </div>
     </div>
 
@@ -118,35 +114,57 @@
     </div>
   </div>
 
+  <div id="log-modal" style="display:none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+    <div style="background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 600px; border-radius: 12px;">
+      <h2 id="log-modal-title">Email Sending Status</h2>
+      <div id="log-modal-content" style="max-height: 300px; overflow-y: auto;"></div>
+      <button id="close-log-modal" style="margin-top: 15px;">Close</button>
+    </div>
+  </div>
+
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const monthlyPerformanceRadio = document.getElementById('monthly-performance');
-      const customEmailRadio = document.getElementById('custom-email');
+      const templateSelect = document.getElementById('template-select');
       const configurationColumn = document.getElementById('configuration-column');
       const livePreview = document.getElementById('live-preview');
       let recipients = { agents: [], managers: [] };
-      let textTemplates = [];
+      let emailTemplates = [];
       let dashboardSections = [];
 
       function init() {
-        // Fetch initial data
         google.script.run.withSuccessHandler(data => {
           recipients = data;
-          setupMonthlyPerformance();
         }).getEmailRecipients();
-
-        google.script.run.withSuccessHandler(data => {
-          textTemplates = data;
-          populateTemplates();
-        }).getEmailTextTemplates();
 
         google.script.run.withSuccessHandler(data => {
           dashboardSections = data;
         }).getDashboardSections();
 
-        // Event Listeners
-        monthlyPerformanceRadio.addEventListener('change', () => { if(monthlyPerformanceRadio.checked) setupMonthlyPerformance()});
-        customEmailRadio.addEventListener('change', () => { if(customEmailRadio.checked) setupCustomEmail()});
+        google.script.run.withSuccessHandler(templates => {
+          emailTemplates = templates;
+          populateTemplateSelector();
+          handleTemplateChange();
+        }).getEmailTextTemplates();
+
+        templateSelect.addEventListener('change', handleTemplateChange);
+      }
+
+      function handleTemplateChange() {
+        const selectedId = templateSelect.value;
+
+        if (selectedId === 'custom-new') {
+          // Special case for creating a new custom email
+          setupCustomEmail({ id: 'custom-new', subject: 'New Custom Email', body: '', isCustom: 'TRUE' });
+        } else {
+          const selectedTemplate = emailTemplates.find(t => t.id === selectedId);
+          if (!selectedTemplate) return;
+
+          if (selectedTemplate.isCustom === 'TRUE') {
+            setupCustomEmail(selectedTemplate);
+          } else {
+            setupMonthlyPerformance();
+          }
+        }
       }
 
       function setupMonthlyPerformance() {
@@ -158,7 +176,6 @@
           </div>
           <div class="form-group">
             <label for="managers-note">Manager's Note</label>
-            <select id="template-selector"><option value="">Select a template...</option></select>
             <textarea id="managers-note" rows="5"></textarea>
           </div>
           <div class="form-group">
@@ -168,42 +185,32 @@
           <button id="send-monthly">Send Emails</button>
         `;
 
-        livePreview.innerHTML = `
-          <img src="https://i.imgur.com/3gQ1m9A.png" alt="Monthly Performance Template Preview" style="width:100%; height:auto; border-radius: 8px;">
-        `;
-
+        livePreview.innerHTML = `<p><i>Live preview for monthly performance email is generated individually for each recipient upon sending.</i></p>`;
         populateRecipients();
-        populateTemplates();
-
-        document.getElementById('template-selector').addEventListener('change', (e) => {
-          const selectedTemplate = textTemplates.find(t => t.id === e.target.value);
-          if (selectedTemplate) {
-            document.getElementById('subject').value = selectedTemplate.subject;
-            document.getElementById('managers-note').value = selectedTemplate.body;
-          }
-        });
 
         document.getElementById('send-monthly').addEventListener('click', () => {
-            const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
-            const subject = document.getElementById('subject').value;
-            const managersNote = document.getElementById('managers-note').value;
+          const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
+          const subject = document.getElementById('subject').value;
+          const managersNote = document.getElementById('managers-note').value;
 
-            if(recipientList.length === 0) {
-                alert('Please select at least one recipient.');
-                return;
-            }
-
-            google.script.run.sendMonthlyPerformanceEmail(recipientList, subject, managersNote);
-            alert('Sending personalized performance emails...');
+          if (recipientList.length === 0) {
+            alert('Please select at least one recipient.');
+            return;
+          }
+          showSendLogModal('Sending monthly performance emails...', true);
+          google.script.run
+            .withSuccessHandler(displaySendLog)
+            .withFailureHandler(err => displaySendLog({ error: err.message }))
+            .sendMonthlyPerformanceEmail(recipientList, subject, managersNote);
         });
       }
 
-      function setupCustomEmail() {
+      function setupCustomEmail(template) {
         configurationColumn.innerHTML = `
           <h2>Configuration</h2>
           <div class="form-group">
             <label for="custom-subject">Subject</label>
-            <input type="text" id="custom-subject" value="A Message from Your Manager">
+            <input type="text" id="custom-subject" value="${template.subject || 'Custom Email'}">
           </div>
           <div class="form-group">
             <label>Draggable Blocks</label>
@@ -214,9 +221,10 @@
             <select id="recipients" multiple></select>
           </div>
           <button id="send-custom">Send Email</button>
+          <button id="save-template" style="background-color: #6B7280; margin-left: 10px;">Save as Template</button>
         `;
 
-        livePreview.innerHTML = '';
+        livePreview.innerHTML = template.body || '';
 
         const draggableBlocks = document.getElementById('draggable-blocks');
         dashboardSections.forEach(section => {
@@ -234,24 +242,82 @@
 
         new Sortable(livePreview, {
           group: 'shared',
-          animation: 150
+          animation: 150,
+          onAdd: function (evt) {
+            const blockName = evt.item.textContent;
+            evt.item.innerHTML = '<div>Loading...</div>';
+            const selectedRecipient = document.getElementById('recipients').value;
+            google.script.run
+              .withSuccessHandler(html => { evt.item.innerHTML = html; })
+              .getCustomEmailBlockHtml(blockName, selectedRecipient);
+          }
         });
 
         populateRecipients();
 
-        document.getElementById('send-custom').addEventListener('click', () => {
-            const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
-            const subject = document.getElementById('custom-subject').value;
-            const emailBodyHtml = livePreview.innerHTML;
-
-            if(recipientList.length === 0) {
-                alert('Please select at least one recipient.');
-                return;
-            }
-
-            google.script.run.sendCustomEmail(recipientList, subject, emailBodyHtml);
-            alert('Sending custom email...');
+        document.getElementById('save-template').addEventListener('click', () => {
+          const templateName = prompt("Enter a name for this template:");
+          if (templateName) {
+            const templateHtml = livePreview.innerHTML;
+            google.script.run.withSuccessHandler(response => {
+              if (response.success) {
+                alert(response.message);
+                google.script.run.withSuccessHandler(templates => {
+                  emailTemplates = templates;
+                  populateTemplateSelector();
+                  templateSelect.value = response.newId;
+                }).getEmailTextTemplates();
+              } else {
+                alert('Error: ' + response.error);
+              }
+            }).saveCustomEmailTemplate(templateName, templateHtml);
+          }
         });
+
+        document.getElementById('send-custom').addEventListener('click', () => {
+          const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
+          const subject = document.getElementById('custom-subject').value;
+          const emailBodyHtml = livePreview.innerHTML;
+
+          if (recipientList.length === 0) {
+            alert('Please select at least one recipient.');
+            return;
+          }
+          showSendLogModal('Sending custom email...', true);
+          google.script.run
+            .withSuccessHandler(displaySendLog)
+            .withFailureHandler(err => displaySendLog({ error: err.message }))
+            .sendCustomEmail(recipientList, subject, emailBodyHtml);
+        });
+      }
+
+      function populateTemplateSelector() {
+        templateSelect.innerHTML = '';
+        const monthly = emailTemplates.find(t => t.id === 'monthly-performance');
+        if (monthly) {
+          const option = document.createElement('option');
+          option.value = monthly.id;
+          option.textContent = monthly.subject;
+          templateSelect.appendChild(option);
+        }
+
+        const customTemplates = emailTemplates.filter(t => t.isCustom === 'TRUE');
+        if (customTemplates.length > 0) {
+          const group = document.createElement('optgroup');
+          group.label = "Custom Templates";
+          customTemplates.forEach(t => {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = t.subject;
+            group.appendChild(option);
+          });
+          templateSelect.appendChild(group);
+        }
+
+        const newCustomOption = document.createElement('option');
+        newCustomOption.value = 'custom-new';
+        newCustomOption.textContent = '✨ New Custom Email';
+        templateSelect.appendChild(newCustomOption);
       }
 
       function populateRecipients() {
@@ -280,22 +346,38 @@
         select.appendChild(managerGroup);
       }
 
-      function populateTemplates() {
-        const select = document.getElementById('template-selector');
-        if (!select) return;
-
-        // Clear old options but keep the placeholder
-        const placeholder = select.querySelector('option[value=""]');
-        select.innerHTML = '';
-        if(placeholder) select.appendChild(placeholder);
-
-        textTemplates.forEach(template => {
-          const option = document.createElement('option');
-          option.value = template.id;
-          option.textContent = template.subject;
-          select.appendChild(option);
-        });
+      function showSendLogModal(message, showLoader) {
+        const modal = document.getElementById('log-modal');
+        const content = document.getElementById('log-modal-content');
+        content.innerHTML = '';
+        if (showLoader) {
+          content.innerHTML = `<p>${message} <span class="loader"></span></p>`;
+        } else {
+          content.innerHTML = `<p>${message}</p>`;
+        }
+        modal.style.display = 'block';
       }
+
+      function displaySendLog(log) {
+        const content = document.getElementById('log-modal-content');
+        let html = '';
+        if (log.error) {
+          html = `<p style="color: red;"><strong>Error:</strong> ${log.error}</p>`;
+        } else {
+          html += `<h3>Summary</h3><p>${log.success.length} sent, ${log.failed.length} failed.</p>`;
+          if (log.success.length > 0) {
+            html += '<h4>Successful:</h4><ul>' + log.success.map(e => `<li>${e}</li>`).join('') + '</ul>';
+          }
+          if (log.failed.length > 0) {
+            html += '<h4>Failed:</h4><ul>' + log.failed.map(f => `<li>${f.email}: <span style="color:red;">${f.error}</span></li>`).join('') + '</ul>';
+          }
+        }
+        content.innerHTML = html;
+      }
+
+      document.getElementById('close-log-modal').addEventListener('click', () => {
+        document.getElementById('log-modal').style.display = 'none';
+      });
 
       init();
     });
