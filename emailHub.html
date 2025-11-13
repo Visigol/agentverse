@@ -130,20 +130,31 @@
       let recipients = { agents: [], managers: [] };
       let emailTemplates = [];
       let dashboardSections = [];
+      let dataLoadCounter = 0;
+      const totalDataToLoad = 3;
+
+      function checkAllDataLoaded() {
+        dataLoadCounter++;
+        if (dataLoadCounter === totalDataToLoad) {
+          populateTemplateSelector();
+          handleTemplateChange();
+        }
+      }
 
       function init() {
         google.script.run.withSuccessHandler(data => {
           recipients = data;
+          checkAllDataLoaded();
         }).getEmailRecipients();
 
         google.script.run.withSuccessHandler(data => {
           dashboardSections = data;
+          checkAllDataLoaded();
         }).getDashboardSections();
 
         google.script.run.withSuccessHandler(templates => {
           emailTemplates = templates;
-          populateTemplateSelector();
-          handleTemplateChange();
+          checkAllDataLoaded();
         }).getEmailTextTemplates();
 
         templateSelect.addEventListener('change', handleTemplateChange);
