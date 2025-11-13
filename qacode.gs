@@ -68,13 +68,6 @@ const REWORK_MAP = {
 // WEB APP & SERVER-SIDE FUNCTIONS
 // =================================================================================
 
-function doGet(e) {
-  return HtmlService.createTemplateFromFile('Dashboard')
-    .evaluate()
-    .setTitle('Quality Dashboard')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
-}
-
 function getFilterOptions() {
   try {
     const ss = SpreadsheetApp.openById(GOOGLE_SHEET_ID);
