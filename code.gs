@@ -117,6 +117,8 @@ function doGet(e) {
       return HtmlService.createHtmlOutputFromFile('Dashboard.html')
         .setTitle('Quality Dashboard')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'email_hub') {
+      return serveEmailHub();
     } else {
       // Otherwise, show the default manager homepage.
       return HtmlService.createTemplateFromFile('manager').evaluate()

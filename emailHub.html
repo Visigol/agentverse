@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>Manager Email Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <style>
+    :root {
+      --background-main: #F0F8F5;
+      --primary-accent: #00B14F;
+      --card-background: #FFFFFF;
+      --text-primary: #111827;
+      --text-secondary: #6B7280;
+      --border-light: #E5E7EB;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--background-main);
+      color: var(--text-primary);
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: auto;
+    }
+    .card {
+      background-color: var(--card-background);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      color: var(--primary-accent);
+      font-weight: 800;
+      font-size: 2em;
+    }
+    h2 {
+      font-size: 1.2em;
+      font-weight: 700;
+      margin-top: 0;
+    }
+    .grid-container {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      background-color: #F9FAFB;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: var(--primary-accent);
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #live-preview {
+      min-height: 400px;
+      border: 2px dashed var(--border-light);
+      padding: 15px;
+      border-radius: 8px;
+    }
+    .draggable-block {
+      background-color: #F9FAFB;
+      padding: 10px;
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      cursor: grab;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Manager Email Hub</h1>
+
+    <div class="card">
+      <h2>Template Selector</h2>
+      <div class="form-group">
+        <input type="radio" id="monthly-performance" name="template" value="monthly" checked>
+        <label for="monthly-performance" style="display: inline-block;">Monthly Performance Template</label>
+      </div>
+      <div class="form-group">
+        <input type="radio" id="custom-email" name="template" value="custom">
+        <label for="custom-email" style="display: inline-block;">Custom Email Builder</label>
+      </div>
+    </div>
+
+    <div class="grid-container">
+      <div id="configuration-column" class="card">
+        <!-- Content will be dynamically loaded here -->
+      </div>
+      <div id="live-preview-column" class="card">
+        <h2>Live Preview</h2>
+        <div id="live-preview">
+          <!-- Preview will be dynamically loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const monthlyPerformanceRadio = document.getElementById('monthly-performance');
+      const customEmailRadio = document.getElementById('custom-email');
+      const configurationColumn = document.getElementById('configuration-column');
+      const livePreview = document.getElementById('live-preview');
+      let recipients = { agents: [], managers: [] };
+      let textTemplates = [];
+      let dashboardSections = [];
+
+      function init() {
+        // Fetch initial data
+        google.script.run.withSuccessHandler(data => {
+          recipients = data;
+          setupMonthlyPerformance();
+        }).getEmailRecipients();
+
+        google.script.run.withSuccessHandler(data => {
+          textTemplates = data;
+          populateTemplates();
+        }).getEmailTextTemplates();
+
+        google.script.run.withSuccessHandler(data => {
+          dashboardSections = data;
+        }).getDashboardSections();
+
+        // Event Listeners
+        monthlyPerformanceRadio.addEventListener('change', () => { if(monthlyPerformanceRadio.checked) setupMonthlyPerformance()});
+        customEmailRadio.addEventListener('change', () => { if(customEmailRadio.checked) setupCustomEmail()});
+      }
+
+      function setupMonthlyPerformance() {
+        configurationColumn.innerHTML = `
+          <h2>Configuration</h2>
+          <div class="form-group">
+            <label for="subject">Subject</label>
+            <input type="text" id="subject" value="Your Monthly Performance Report">
+          </div>
+          <div class="form-group">
+            <label for="managers-note">Manager's Note</label>
+            <select id="template-selector"><option value="">Select a template...</option></select>
+            <textarea id="managers-note" rows="5"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="recipients">Recipients</label>
+            <select id="recipients" multiple></select>
+          </div>
+          <button id="send-monthly">Send Emails</button>
+        `;
+
+        livePreview.innerHTML = `
+          <img src="https://i.imgur.com/3gQ1m9A.png" alt="Monthly Performance Template Preview" style="width:100%; height:auto; border-radius: 8px;">
+        `;
+
+        populateRecipients();
+        populateTemplates();
+
+        document.getElementById('template-selector').addEventListener('change', (e) => {
+          const selectedTemplate = textTemplates.find(t => t.id === e.target.value);
+          if (selectedTemplate) {
+            document.getElementById('subject').value = selectedTemplate.subject;
+            document.getElementById('managers-note').value = selectedTemplate.body;
+          }
+        });
+
+        document.getElementById('send-monthly').addEventListener('click', () => {
+            const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
+            const subject = document.getElementById('subject').value;
+            const managersNote = document.getElementById('managers-note').value;
+
+            if(recipientList.length === 0) {
+                alert('Please select at least one recipient.');
+                return;
+            }
+
+            google.script.run.sendMonthlyPerformanceEmail(recipientList, subject, managersNote);
+            alert('Sending personalized performance emails...');
+        });
+      }
+
+      function setupCustomEmail() {
+        configurationColumn.innerHTML = `
+          <h2>Configuration</h2>
+          <div class="form-group">
+            <label for="custom-subject">Subject</label>
+            <input type="text" id="custom-subject" value="A Message from Your Manager">
+          </div>
+          <div class="form-group">
+            <label>Draggable Blocks</label>
+            <div id="draggable-blocks" style="padding: 10px; border: 1px solid #eee; border-radius: 8px;"></div>
+          </div>
+          <div class="form-group">
+            <label for="recipients">Recipients</label>
+            <select id="recipients" multiple></select>
+          </div>
+          <button id="send-custom">Send Email</button>
+        `;
+
+        livePreview.innerHTML = '';
+
+        const draggableBlocks = document.getElementById('draggable-blocks');
+        dashboardSections.forEach(section => {
+          const block = document.createElement('div');
+          block.className = 'draggable-block';
+          block.textContent = section;
+          draggableBlocks.appendChild(block);
+        });
+
+        new Sortable(draggableBlocks, {
+          group: { name: 'shared', pull: 'clone', put: false },
+          sort: false,
+          animation: 150
+        });
+
+        new Sortable(livePreview, {
+          group: 'shared',
+          animation: 150
+        });
+
+        populateRecipients();
+
+        document.getElementById('send-custom').addEventListener('click', () => {
+            const recipientList = Array.from(document.getElementById('recipients').selectedOptions).map(option => ({ email: option.value, name: option.text.split('(')[0].trim() }));
+            const subject = document.getElementById('custom-subject').value;
+            const emailBodyHtml = livePreview.innerHTML;
+
+            if(recipientList.length === 0) {
+                alert('Please select at least one recipient.');
+                return;
+            }
+
+            google.script.run.sendCustomEmail(recipientList, subject, emailBodyHtml);
+            alert('Sending custom email...');
+        });
+      }
+
+      function populateRecipients() {
+        const select = document.getElementById('recipients');
+        if (!select) return;
+        select.innerHTML = '';
+
+        const agentGroup = document.createElement('optgroup');
+        agentGroup.label = "Agents";
+        recipients.agents.forEach(agent => {
+            const option = document.createElement('option');
+            option.value = agent.email;
+            option.textContent = `${agent.name} (${agent.email})`;
+            agentGroup.appendChild(option);
+        });
+        select.appendChild(agentGroup);
+
+        const managerGroup = document.createElement('optgroup');
+        managerGroup.label = "Managers";
+         recipients.managers.forEach(manager => {
+            const option = document.createElement('option');
+            option.value = manager.email;
+            option.textContent = `${manager.name} (${manager.email})`;
+            managerGroup.appendChild(option);
+        });
+        select.appendChild(managerGroup);
+      }
+
+      function populateTemplates() {
+        const select = document.getElementById('template-selector');
+        if (!select) return;
+
+        // Clear old options but keep the placeholder
+        const placeholder = select.querySelector('option[value=""]');
+        select.innerHTML = '';
+        if(placeholder) select.appendChild(placeholder);
+
+        textTemplates.forEach(template => {
+          const option = document.createElement('option');
+          option.value = template.id;
+          option.textContent = template.subject;
+          select.appendChild(option);
+        });
+      }
+
+      init();
+    });
+  </script>
+</body>
+</html>
