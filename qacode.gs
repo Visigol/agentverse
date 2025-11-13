@@ -6,6 +6,8 @@
 // CONFIGURATION
 // =================================================================================
 
+const GOOGLE_SHEET_ID = '1mNi3qPfLLsd0VPxXk-LhiKyq_vIAYVxkp9VvQ7sEd-E';
+
 // --- Sheet Names ---
 const AUDIT_DATA_SHEET = 'Audit, WS 02/06';
 const REWORK_DATA_SHEET = 'Rework cases, WS 02/06';
@@ -75,7 +77,7 @@ function doGet(e) {
 
 function getFilterOptions() {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.openById(GOOGLE_SHEET_ID);
     const auditSheet = ss.getSheetByName(AUDIT_DATA_SHEET);
     if (!auditSheet) throw new Error(`Sheet "${AUDIT_DATA_SHEET}" not found.`);
 
@@ -96,7 +98,7 @@ function getDashboardData(filters = {}) {
     const userEmail = Session.getActiveUser().getEmail();
     const userRole = MANAGER_EMAILS.map(e => e.toLowerCase()).includes(userEmail.toLowerCase()) ? 'manager' : 'agent';
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = SpreadsheetApp.openById(GOOGLE_SHEET_ID);
     const auditSheet = ss.getSheetByName(AUDIT_DATA_SHEET);
     if (!auditSheet) throw new Error(`Sheet "${AUDIT_DATA_SHEET}" not found.`);
 
