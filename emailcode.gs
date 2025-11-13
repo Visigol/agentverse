@@ -133,7 +133,7 @@ function getDashboardSections() {
  */
 function getCustomEmailBlockHtml(blockName, agentEmail) {
   try {
-    const dateRange = getPreviousMonthDateRange();
+    const dateRange = getCurrentMonthDateRange();
 
     switch (blockName) {
       case "TAT Adherence by Market":
@@ -261,6 +261,19 @@ function generateAgentPerformanceHtml(agentEmail, startDate, endDate) {
 // =================================================================================
 // --- "MONTHLY PERFORMANCE" DATA FUNCTIONS ---
 // =================================================================================
+
+/**
+ * A helper function that returns the start and end date of the current month to date.
+ * @returns {object} An object with startDate and endDate properties.
+ */
+function getCurrentMonthDateRange() {
+  const now = new Date();
+  const firstDayOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  return {
+    startDate: firstDayOfCurrentMonth,
+    endDate: now
+  };
+}
 
 /**
  * A helper function that returns the start and end date of the previous full month.
@@ -404,11 +417,14 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
 
     const emailCol = headers.indexOf('Useremail');
     const endDateCol = headers.indexOf('Main Task End Date/Time');
+    const statusCol = headers.indexOf('Status');
     const dishesCol = headers.indexOf('Total No of dishes');
     const optionGroupsCol = headers.indexOf('Total no of option Groups');
     const optionsCol = headers.indexOf('Total no of options');
     const tagsCol = headers.indexOf('Total no of tags');
     const categoriesCol = headers.indexOf('Total no of categories');
+    const photosCol = headers.indexOf('No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)');
+    const timetablesCol = headers.indexOf('Total no of timetables.');
 
     let totalCases = 0;
     let totalDishes = 0;
@@ -416,10 +432,13 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
     let totalOptions = 0;
     let totalTags = 0;
     let totalCategories = 0;
+    let totalPhotos = 0;
+    let totalTimetables = 0;
 
     data.forEach(row => {
         const endDateValue = row[endDateCol];
-        if (endDateValue) {
+        const status = row[statusCol];
+        if (endDateValue && status === 'Completed') {
             const rowDate = new Date(endDateValue);
             if (row[emailCol] === agentEmail && rowDate >= startDate && rowDate <= endDate) {
                 totalCases++;
@@ -428,6 +447,8 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
                 totalOptions += Number(row[optionsCol]) || 0;
                 totalTags += Number(row[tagsCol]) || 0;
                 totalCategories += Number(row[categoriesCol]) || 0;
+                totalPhotos += Number(row[photosCol]) || 0;
+                totalTimetables += Number(row[timetablesCol]) || 0;
             }
         }
     });
@@ -438,7 +459,9 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
       avgOptionGroups: totalCases > 0 ? (totalOptionGroups / totalCases).toFixed(2) : 0,
       avgOptions: totalCases > 0 ? (totalOptions / totalCases).toFixed(2) : 0,
       avgTags: totalCases > 0 ? (totalTags / totalCases).toFixed(2) : 0,
-      avgCategories: totalCases > 0 ? (totalCategories / totalCases).toFixed(2) : 0
+      avgCategories: totalCases > 0 ? (totalCategories / totalCases).toFixed(2) : 0,
+      avgPhotos: totalCases > 0 ? (totalPhotos / totalCases).toFixed(2) : 0,
+      avgTimetables: totalCases > 0 ? (totalTimetables / totalCases).toFixed(2) : 0
     };
   } catch(e) {
     Logger.log('Error in getAgentMainTaskKPIs: ' + e.toString());
