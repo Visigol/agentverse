@@ -133,6 +133,15 @@
       let dataLoadCounter = 0;
       const totalDataToLoad = 3;
 
+      function debounce(func, delay) {
+        let timeout;
+        return function(...args) {
+          const context = this;
+          clearTimeout(timeout);
+          timeout = setTimeout(() => func.apply(context, args), delay);
+        };
+      }
+
       function checkAllDataLoaded() {
         dataLoadCounter++;
         if (dataLoadCounter === totalDataToLoad) {
@@ -251,17 +260,19 @@
           animation: 150
         });
 
+        const debouncedOnAdd = debounce(function (evt) {
+          const blockName = evt.item.textContent;
+          evt.item.innerHTML = '<div>Loading...</div>';
+          const selectedRecipient = document.getElementById('recipients').value;
+          google.script.run
+            .withSuccessHandler(html => { evt.item.innerHTML = html; })
+            .getCustomEmailBlockHtml(blockName, selectedRecipient);
+        }, 400); // 400ms delay to prevent rapid firing
+
         new Sortable(livePreview, {
           group: 'shared',
           animation: 150,
-          onAdd: function (evt) {
-            const blockName = evt.item.textContent;
-            evt.item.innerHTML = '<div>Loading...</div>';
-            const selectedRecipient = document.getElementById('recipients').value;
-            google.script.run
-              .withSuccessHandler(html => { evt.item.innerHTML = html; })
-              .getCustomEmailBlockHtml(blockName, selectedRecipient);
-          }
+          onAdd: debouncedOnAdd
         });
 
         populateRecipients();
