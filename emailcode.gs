@@ -508,7 +508,7 @@ function sendMonthlyPerformanceEmail(recipientList, subject, managersNote) {
       const tatTable = getAgentTATData(agent.email, dateRange.startDate, dateRange.endDate);
       const htmlBody = buildMonthlyPerformanceHtml(agent.name, kpiData, qualityData, tatTable, managersNote);
 
-      GmailApp.sendEmail(agent.email, subject, "Please view this email in an HTML-compatible client.", { htmlBody: htmlBody });
+      MailApp.sendEmail(agent.email, subject, "Please view this email in an HTML-compatible client.", { htmlBody: htmlBody });
       log.success.push(agent.email);
       Logger.log(`Successfully sent performance email to ${agent.email}`);
     } catch (e) {
@@ -541,7 +541,7 @@ function sendCustomEmail(recipientList, subject, emailBodyHtml) {
     try {
       // Replace placeholder for manager's note if it exists
       const personalizedBody = emailBodyHtml.replace(/{{manager_note}}/g, "This is a test note."); // Basic placeholder replacement
-      GmailApp.sendEmail(recipient.email, subject, "Please view this email in an HTML-compatible client.", { htmlBody: personalizedBody });
+      MailApp.sendEmail(recipient.email, subject, "Please view this email in an HTML-compatible client.", { htmlBody: personalizedBody });
       log.success.push(recipient.email);
     } catch (e) {
       log.failed.push({ email: recipient.email, error: e.message });
