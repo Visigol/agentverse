@@ -113,6 +113,10 @@ function doGet(e) {
         return HtmlService.createHtmlOutputFromFile('QueryBuilderUI.html')
             .setTitle('Dynamic Query Engine')
             .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    } else if (e.parameter.page === 'Quality') {
+      return HtmlService.createHtmlOutputFromFile('Dashboard.html')
+        .setTitle('Quality Dashboard')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     } else {
       // Otherwise, show the default manager homepage.
       return HtmlService.createTemplateFromFile('manager').evaluate()
