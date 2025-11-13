@@ -413,18 +413,18 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
     if (!sheet) return {};
 
     const data = sheet.getDataRange().getValues();
-    const headers = data.shift();
+    const headers = data.shift().map(h => h.toLowerCase());
 
-    const emailCol = headers.indexOf('Useremail');
-    const endDateCol = headers.indexOf('Main Task End Date/Time');
-    const statusCol = headers.indexOf('Status');
-    const dishesCol = headers.indexOf('Total No of dishes');
-    const optionGroupsCol = headers.indexOf('Total no of option Groups');
-    const optionsCol = headers.indexOf('Total no of options');
-    const tagsCol = headers.indexOf('Total no of tags');
-    const categoriesCol = headers.indexOf('Total no of categories');
-    const photosCol = headers.indexOf('No of Valid Photos for Main dishes (Exlcuding Extras, drinks, sides etc.)');
-    const timetablesCol = headers.indexOf('Total no of timetables.');
+    const emailCol = headers.indexOf('useremail');
+    const endDateCol = headers.indexOf('main task end date/time');
+    const statusCol = headers.indexOf('status');
+    const dishesCol = headers.indexOf('total no of dishes');
+    const optionGroupsCol = headers.indexOf('total no of option groups');
+    const optionsCol = headers.indexOf('total no of options');
+    const tagsCol = headers.indexOf('total no of tags');
+    const categoriesCol = headers.indexOf('total no of categories');
+    const photosCol = headers.indexOf('no of valid photos for main dishes (exlcuding extras, drinks, sides etc.)');
+    const timetablesCol = headers.indexOf('total no of timetables.');
 
     let totalCases = 0;
     let totalDishes = 0;
