@@ -1,0 +1,128 @@
+Here is a diagram that explains the workflow of the data, the source files, backup files, and CSV files, to understand how all the data is flowing from one point to another.
+
+**1. Production Dashboard & Case Management (`production.html`, `cases.html`)**
+
+This workflow revolves around the primary **Production Google Sheet**. It's the central hub for all live case data.
+
+*   **Data Sources (Google Sheets):**
+    *   `[Google Sheet] Main Tasks`: The master sheet containing all case details (ID, status, country, timestamps, etc.). This is the single source of truth for a case's primary data.
+    *   `[Google Sheet] Pausing Logs`: Records every time a case is paused and unpaused.
+    *   `[Google Sheet] Escalation Logs`: Records every time a case is escalated and de-escalated.
+    *   `[Google Sheet] Cooperation Logs`: Records cooperation events related to a case.
+
+*   **Backend Processing (`code.gs`):**
+    *   `code.gs` acts as the central nervous system.
+    *   Functions like `getProductionReport()` read data from all the sheets mentioned above.
+    *   It aggregates and calculates metrics (e.g., Turnaround Time, Agent Handling Time) on the fly.
+    *   For performance, it uses `CacheService` to temporarily store data and `LockService` to prevent simultaneous data fetches.
+    *   Functions like `claimCase()`, `pauseCase()`, and `endCase()` write data back to these sheets, ensuring logs are created and the `Main Tasks` status is updated.
+
+*   **User Interface (Frontend):**
+    *   `production.html` (Production Dashboard):
+        *   Receives aggregated data from `getProductionReport()` in `code.gs`.
+        *   Visualizes the data using charts and tables.
+        *   Allows users to filter data, which triggers a new data request to the backend.
+    *   `cases.html` (Case Management):
+        *   Fetches case data via `getCasesByStatus()` from `code.gs`.
+        *   Displays cases in status-based columns.
+        *   When a user performs an action (e.g., "Claim Case"), it calls the corresponding function in `code.gs` to modify the data in the Google Sheets.
+
+*   **Data Flow Diagram:**
+
+    ```
+    [Google Sheet: Main Tasks] <------> |           | ------> [production.html] (View)
+    [Google Sheet: Pausing Logs] <-----> |           |
+    [Google Sheet: Escalation Logs] <--> | code.gs | ------> [cases.html] (View/Edit)
+    [Google Sheet: Cooperation Logs] <-> |           | <------ [cases.html] (User Actions)
+                                         |___________|
+    ```
+
+**2. Quality Dashboard (`Dashboard.html`)**
+
+The Quality workflow operates independently from the Production/Attendance system, using its own dedicated Google Sheet.
+
+*   **Data Source (Google Sheet):**
+    *   `[Google Sheet] Quality Audit Sheet (ID: 1mNi3qPfLLsd0VPxXk-LhiKyq_vIAYVxkp9VvQ7sEd-E)`: A separate spreadsheet containing two main sheets.
+        *   `'Audit, WS 02/06'`: Contains results of quality assurance audits on cases.
+        *   `'Rework cases, WS 02/06'`: Contains data on cases that required rework.
+
+*   **Backend Processing (`qacode.gs`):**
+    *   This script is dedicated solely to the Quality Dashboard.
+    *   `getDashboardData()` reads from both the 'Audit' and 'Rework' sheets.
+    *   It processes the data to calculate metrics like Quality Score, error rates by market, and agent-specific performance.
+    *   It has its own user access list (`MANAGER_EMAILS`) to determine if a user sees aggregated manager data or filtered agent-specific data.
+
+*   **User Interface (Frontend):**
+    *   `Dashboard.html` (Quality Dashboard):
+        *   Presents the quality and rework metrics calculated by `qacode.gs`.
+        *   Features filters (market, request type) that trigger new data processing requests to the backend.
+
+*   **Data Flow Diagram:**
+
+    ```
+    [Google Sheet: Audit, WS 02/06] <-----> |            | ------> [Dashboard.html] (View)
+                                            |            |
+    [Google Sheet: Rework cases, WS 02/06] -> | qacode.gs  | <------ [Dashboard.html] (Filters)
+                                            |____________|
+    ```
+
+**3. Attendance System (`index.html`)**
+
+This system tracks agent work sessions, breaks, and meetings. It uses a separate **Attendance Google Sheet**.
+
+*   **Data Source (Google Sheet):**
+    *   `[Google Sheet] AgentLog`: The primary ledger for all agent status changes. Every "Start Work," "End Break," etc., is recorded here with a timestamp.
+    *   `[Google Sheet] Agents` / `[Google Sheet] Managers`: Lists used for authentication and role-based access.
+    *   `[Google Sheet] Requests`: Stores agent requests for attendance corrections, which managers can approve or deny.
+
+*   **Backend Processing (`code.gs`):**
+    *   `logAgentAction()` is the core function that writes new entries to the `AgentLog` sheet when an agent clicks a status button.
+    *   `_determineCurrentAgentState()` reads the `AgentLog` to reconstruct an agent's current status in real-time.
+    *   `applyCorrection()` allows managers to modify entries in the `AgentLog` based on approved requests from the `Requests` sheet.
+
+*   **User Interface (Frontend):**
+    *   `index.html` (Agent Dashboard):
+        *   The main interface for agents to manage their work status.
+        *   Buttons like "Start Work" and "Start Break" call `logAgentAction()` in `code.gs`.
+        *   The dashboard state (e.g., timers, current status display) is determined by the data returned from `_determineCurrentAgentState()`.
+
+*   **Data Flow Diagram:**
+
+    ```
+    [Google Sheet: AgentLog] <------> |           | ------> [index.html] (View/Update Status)
+                                      |           |
+    [Google Sheet: Requests] <------> | code.gs   | <------ [index.html] (User Actions)
+                                      |___________|
+    ```
+
+**4. Archive Workflow (`manager.html` - Archive Tab)**
+
+The Archive system provides a read-only view of historical data stored in a CSV file, keeping the live Google Sheets clean and performant.
+
+*   **Data Source (CSV File):**
+    *   `[CSV File] HistoricalProductionReport.csv`: A comma-separated value file stored in a specific Google Drive folder. This file contains the exported data of old cases and their associated logs. It is not a live database.
+
+*   **Backend Processing (`code.gs`):**
+    *   `getArchivedCases()` is the function responsible for handling archive data.
+    *   It does **not** read from the live Google Sheets. Instead, it finds and parses the `HistoricalProductionReport.csv` file directly from Google Drive.
+    *   It reads the CSV, filters the data based on the manager's search criteria, and aggregates the log entries (which are stored as separate rows in the CSV) under their corresponding main task.
+    *   `startArchiveExport()` initiates an asynchronous process to create a *new* Google Sheet from the contents of the CSV file when a manager requests an extract.
+
+*   **User Interface (Frontend):**
+    *   `manager.html` (Manager Dashboard - Archive Tab):
+        *   Provides search and filter inputs for the historical data.
+        *   Calls `getArchivedCases()` in `code.gs` to fetch and display the data from the CSV.
+        *   The view is strictly read-only; no data can be modified.
+        *   The "Extract to Google Sheets" button triggers the `startArchiveExport()` process.
+
+*   **Data Flow Diagram:**
+
+    ```
+                                              (Read-Only)
+    [Google Drive: HistoricalProductionReport.csv] ------> |         | ------> [manager.html] (Archive Tab View)
+                                                            |         |
+                                                            | code.gs | <------ [manager.html] (Search/Filter)
+                                                            |         |
+    (New Sheet Created On Demand)                         |_________| ------> [New Google Sheet] (Export)
+    [Google Sheet] <---------------------------------------|
+    ```
