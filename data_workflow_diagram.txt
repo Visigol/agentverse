@@ -125,4 +125,30 @@ The Archive system provides a read-only view of historical data stored in a CSV 
                                                             |         |
     (New Sheet Created On Demand)                         |_________| ------> [New Google Sheet] (Export)
     [Google Sheet] <---------------------------------------|
+
+---
+
+**5. Data Source File IDs**
+
+This section lists the unique identifiers for the Google Sheets and other files that serve as the database for this application.
+
+*   **Production Spreadsheet**
+    *   **ID:** `1AaJmBfDpZnk0J1A4WbInEPuspUyae5jXm42SyQIaJn8`
+    *   **Purpose:** This is the primary database for all live production data.
+    *   **Connection:** It contains the `Main Tasks`, `Pausing Logs`, `Escalation Logs`, and `Cooperation Logs` sheets. Data from this spreadsheet feeds the **Production Dashboard** and the **Case Management** page. All case updates from the user interface are written to this file.
+
+*   **Attendance Spreadsheet**
+    *   **ID:** `1-3UfwCsL9dc3brmTCxYpbqfuCeDGEvSIz-Cfm_iqoYI`
+    *   **Purpose:** This spreadsheet manages user roles, permissions, and all attendance-related records.
+    *   **Connection:** It contains the `AgentLog` (for tracking work/break status), `Managers` and `Agents` (for role management), and `BackupSystemAccess` (for "Cases" tab permissions). This file is the backend for the **Attendance System** on both agent and manager dashboards.
+
+*   **Quality Audit Spreadsheet**
+    *   **ID:** `1mNi3qPfLLsd0VPxXk-LhiKyq_vIAYVxkp9VvQ7sEd-E`
+    *   **Purpose:** A dedicated database for all Quality Assurance data, completely separate from the production and attendance systems.
+    *   **Connection:** This sheet contains the `Audit, WS 02/06` and `Rework cases, WS 02/06` data, which is read by `qacode.gs` to populate the **Quality Dashboard**.
+
+*   **Historical Data CSV (Google Drive Folder)**
+    *   **Folder ID:** `1WXiYBNDjxw7DK5L-K2JJlW6nOTpnlFfQ`
+    *   **Purpose:** This Google Drive folder contains the `HistoricalProductionReport.csv` file. This CSV serves as the long-term, read-only storage for old case data.
+    *   **Connection:** The `code.gs` script reads the CSV file from this folder to populate the **Archive Tab** on the manager dashboard. It is not a live database and is only used for historical lookups.
     ```
