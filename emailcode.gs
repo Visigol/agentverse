@@ -440,8 +440,8 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
 
     data.forEach(row => {
         const endDateValue = row[endDateCol];
-        const status = row[statusCol];
-        if (endDateValue && status === 'Completed') {
+        const status = row[statusCol] ? String(row[statusCol]).toLowerCase() : '';
+        if (endDateValue && status === 'completed') {
             const rowDate = new Date(endDateValue);
             if (row[emailCol] === agentEmail && rowDate >= startDate && rowDate <= endDate) {
                 totalCases++;
