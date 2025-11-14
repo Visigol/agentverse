@@ -118,7 +118,8 @@ function saveCustomEmailTemplate(templateName, templateHtml) {
 function getDashboardSections() {
   return [
     "TAT Adherence by Market",
-    "Quality Scorecard",
+    "Quality Team Scorecard",
+    "Quality Agent Scorecard",
     "Agent Performance Summary",
     "Manager's Note"
   ];
@@ -138,8 +139,11 @@ function getCustomEmailBlockHtml(blockName, agentEmail) {
     switch (blockName) {
       case "TAT Adherence by Market":
         return generateTatByMarketHtml(dateRange.startDate, dateRange.endDate);
-      case "Quality Scorecard":
-        return generateQualityScorecardHtml(dateRange.startDate, dateRange.endDate);
+      case "Quality Team Scorecard":
+        return generateQualityTeamScorecardHtml(dateRange.startDate, dateRange.endDate);
+      case "Quality Agent Scorecard":
+        if (!agentEmail) return "<p><i>Select a recipient to preview agent-specific data.</i></p>";
+        return generateQualityAgentScorecardHtml(agentEmail, dateRange.startDate, dateRange.endDate);
       case "Agent Performance Summary":
         if (!agentEmail) return "<p><i>Select a recipient to preview agent-specific data.</i></p>";
         return generateAgentPerformanceHtml(agentEmail, dateRange.startDate, dateRange.endDate);
@@ -160,6 +164,97 @@ function getCustomEmailBlockHtml(blockName, agentEmail) {
 // =================================================================================
 // --- CUSTOM EMAIL BLOCK GENERATOR FUNCTIONS ---
 // =================================================================================
+
+/**
+ * Generates an HTML block for the agent-specific Quality Scorecard.
+ */
+function generateQualityAgentScorecardHtml(agentEmail, startDate, endDate) {
+  const qualitySheet = SpreadsheetApp.openById('1mNi3qPfLLsd0VPxXk-LhiKyq_vIAYVxkp9VvQ7sEd-E').getSheetByName('Audit, WS 02/06');
+  if (!qualitySheet) return "<p>Could not find Quality Audit sheet.</p>";
+
+  const data = qualitySheet.getDataRange().getValues();
+  const headers = data.shift();
+
+  const dateCol = headers.indexOf('Date');
+  const caseIdCol = headers.indexOf('Internal Case ID');
+  const agentIdCol = headers.indexOf('Agent ID');
+  const qaFeedbackCol = headers.indexOf('General QA Feedback');
+  const criticalErrorsCol = headers.indexOf('Total Critical Errors');
+  const nonCriticalErrorsCol = headers.indexOf('Total Non Critical Errors');
+
+  let casesAudited = 0;
+  let casesWithCritical = 0;
+  let casesWithNonCritical = 0;
+  let agentTasks = [];
+
+  const normalizedAgentEmail = agentEmail.trim().toLowerCase();
+
+  data.forEach(row => {
+    const rowDate = new Date(row[dateCol]);
+    const rowEmail = String(row[agentIdCol]).trim().toLowerCase();
+
+    if (rowEmail === normalizedAgentEmail && rowDate >= startDate && rowDate <= endDate) {
+      casesAudited++;
+      const criticalErrors = Number(row[criticalErrorsCol] || 0);
+      const nonCriticalErrors = Number(row[nonCriticalErrorsCol] || 0);
+
+      if (criticalErrors > 0) casesWithCritical++;
+      if (nonCriticalErrors > 0) casesWithNonCritical++;
+
+      const qualityPercentage = (criticalErrors === 0) ? '100%' : '0%';
+
+      agentTasks.push({
+        caseId: row[caseIdCol],
+        qaFeedback: row[qaFeedbackCol],
+        criticalErrors: criticalErrors,
+        nonCriticalErrors: nonCriticalErrors,
+        qualityPercentage: qualityPercentage
+      });
+    }
+  });
+
+  const qualityScore = casesAudited > 0 ? (((casesAudited - casesWithCritical) / casesAudited) * 100).toFixed(2) + '%' : '100%';
+
+  let tasksHtml = '';
+  if (agentTasks.length > 0) {
+    tasksHtml += `
+      <h3 style="margin-top: 20px;">Audited Cases Details</h3>
+      <table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; font-size: 12px;">
+        <thead>
+          <tr>
+            <th>Case ID</th>
+            <th>QA Feedback</th>
+            <th>Critical Errors</th>
+            <th>Non-Critical Errors</th>
+            <th>Quality %</th>
+          </tr>
+        </thead>
+        <tbody>`;
+    agentTasks.forEach(task => {
+      tasksHtml += `
+        <tr>
+          <td>${task.caseId}</td>
+          <td>${task.qaFeedback}</td>
+          <td>${task.criticalErrors}</td>
+          <td>${task.nonCriticalErrors}</td>
+          <td>${task.qualityPercentage}</td>
+        </tr>`;
+    });
+    tasksHtml += '</tbody></table>';
+  } else {
+    tasksHtml = '<p>No audited cases found for this period.</p>';
+  }
+
+  return `
+    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 8px;">
+      <h2 style="margin-top: 0;">Quality Agent Scorecard: ${agentEmail}</h2>
+      <p>Cases Audited: <strong>${casesAudited}</strong></p>
+      <p>Quality Score: <strong>${qualityScore}</strong></p>
+      <p>Cases with Critical Errors: <strong>${casesWithCritical}</strong></p>
+      <p>Cases with Non-Critical Errors: <strong>${casesWithNonCritical}</strong></p>
+      ${tasksHtml}
+    </div>`;
+}
 
 /**
  * Generates an HTML table for TAT Adherence by Market.
@@ -206,9 +301,9 @@ function generateTatByMarketHtml(startDate, endDate) {
 }
 
 /**
- * Generates an HTML block for the Quality Scorecard.
+ * Generates an HTML block for the Team Quality Scorecard.
  */
-function generateQualityScorecardHtml(startDate, endDate) {
+function generateQualityTeamScorecardHtml(startDate, endDate) {
   const qualitySheet = SpreadsheetApp.openById('1mNi3qPfLLsd0VPxXk-LhiKyq_vIAYVxkp9VvQ7sEd-E').getSheetByName('Audit, WS 02/06');
   if (!qualitySheet) return "<p>Could not find Quality Audit sheet.</p>";
 
