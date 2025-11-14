@@ -436,12 +436,15 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
     let totalPhotos = 0;
     let totalTimetables = 0;
 
+    const normalizedAgentEmail = agentEmail.trim().toLowerCase();
     data.forEach(row => {
         const endDateValue = row[endDateCol];
-        const status = row[statusCol];
-        if (endDateValue && status === 'Completed') {
+        const status = row[statusCol] ? String(row[statusCol]).trim().toLowerCase() : '';
+        const rowEmail = row[emailCol] ? String(row[emailCol]).trim().toLowerCase() : '';
+
+        if (endDateValue && status === 'completed') {
             const rowDate = new Date(endDateValue);
-            if (row[emailCol] === agentEmail && rowDate >= startDate && rowDate <= endDate) {
+            if (rowEmail === normalizedAgentEmail && rowDate >= startDate && rowDate <= endDate) {
                 totalCases++;
                 totalDishes += Number(row[dishesCol]) || 0;
                 totalOptionGroups += Number(row[optionGroupsCol]) || 0;
