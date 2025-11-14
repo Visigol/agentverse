@@ -410,7 +410,9 @@ function getAgentTATData(agentEmail, startDate, endDate) {
  */
 function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
   try {
-    const sheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID).getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    SpreadsheetApp.flush();
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
     if (!sheet) return {};
 
     const data = sheet.getDataRange().getValues();
@@ -438,8 +440,8 @@ function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
 
     data.forEach(row => {
         const endDateValue = row[endDateCol];
-        const status = row[statusCol];
-        if (endDateValue && status === 'Completed') {
+        const status = row[statusCol] ? String(row[statusCol]).toLowerCase() : '';
+        if (endDateValue && status === 'completed') {
             const rowDate = new Date(endDateValue);
             if (row[emailCol] === agentEmail && rowDate >= startDate && rowDate <= endDate) {
                 totalCases++;
