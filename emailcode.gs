@@ -410,7 +410,9 @@ function getAgentTATData(agentEmail, startDate, endDate) {
  */
 function getAgentMainTaskKPIs(agentEmail, startDate, endDate) {
   try {
-    const sheet = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID).getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
+    const ss = SpreadsheetApp.openById(CONFIG.PRODUCTION.ID);
+    SpreadsheetApp.flush();
+    const sheet = ss.getSheetByName(CONFIG.PRODUCTION.SHEETS.AVAILABLE_CASES);
     if (!sheet) return {};
 
     const data = sheet.getDataRange().getValues();
