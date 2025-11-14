@@ -263,11 +263,15 @@
         const debouncedOnAdd = debounce(function (evt) {
           const blockName = evt.item.textContent;
           evt.item.innerHTML = '<div>Loading...</div>';
-          const selectedRecipient = document.getElementById('recipients').value;
+
+          const recipientsSelect = document.getElementById('recipients');
+          const selectedOptions = Array.from(recipientsSelect.selectedOptions);
+          const lastSelectedEmail = selectedOptions.length > 0 ? selectedOptions[selectedOptions.length - 1].value : null;
+
           google.script.run
             .withSuccessHandler(html => { evt.item.innerHTML = html; })
-            .getCustomEmailBlockHtml(blockName, selectedRecipient);
-        }, 400); // 400ms delay to prevent rapid firing
+            .getCustomEmailBlockHtml(blockName, lastSelectedEmail);
+        }, 400);
 
         new Sortable(livePreview, {
           group: 'shared',
